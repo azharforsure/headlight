@@ -1043,7 +1043,14 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
 
         const configuredWsUrl = (import.meta as any).env?.VITE_CRAWLER_WS_URL;
         const wsUrl = configuredWsUrl || `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.hostname}:3001`;
-        addLog(`Connecting to scanner...`, 'info');
+        const shouldAutoUseGhost = !config.useGhostEngine && !configuredWsUrl;
+        const useGhostMode = Boolean(config.useGhostEngine || shouldAutoUseGhost);
+
+        if (!useGhostMode) {
+            addLog(`Connecting to scanner...`, 'info');
+        } else if (shouldAutoUseGhost) {
+            addLog('No remote scanner configured. Using Ghost Engine (Local-Only).', 'info');
+        }
 
         if (sessionId) {
             const sessionDraft: CrawlSession = {
@@ -1086,7 +1093,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
                 .catch((error) => console.error('Failed to create initial crawl draft:', error));
         }
 
-        if (config.useGhostEngine) {
+        if (useGhostMode) {
             addLog(`Initializing Ghost Engine (Local-Only)...`, 'info');
             
             const ghost = new GhostCrawler({
