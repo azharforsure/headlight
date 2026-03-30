@@ -22,6 +22,7 @@ export class GhostCrawler {
     private listeners: Record<string, Function[]> = {};
     private aiWorker: Worker | null = null;
     private aiWorkerReady = false;
+    private runLoopActive = false;
 
     constructor(private config: GhostCrawlConfig) {
         if (config.aiCategorization) {
@@ -70,34 +71,46 @@ export class GhostCrawler {
         this.queue.push({ url: startUrl, depth: 0 });
         this.discoveredCount = 1;
         this.emit('log', `Ghost Engine starting at ${startUrl}`, 'info');
+        this.scheduleRun();
+    }
+
+    private scheduleRun() {
+        if (this.isStopped || this.runLoopActive) return;
         this.run();
     }
 
     private async run() {
-        while (this.queue.length > 0 && !this.isStopped) {
-            if (this.activeRequests >= (this.config.maxConcurrent || 5)) {
-                await new Promise(r => setTimeout(r, 100));
-                continue;
-            }
-
-            if (this.config.limit && this.crawledCount >= this.config.limit) {
-                this.emit('log', 'Crawl limit reached.', 'info');
-                break;
-            }
-
-            const item = this.queue.shift();
-            if (!item || this.visited.has(item.url)) continue;
-
-            this.visited.add(item.url);
-            this.activeRequests++;
-            
-            this.crawlPage(item.url, item.depth).finally(() => {
-                this.activeRequests--;
-                this.emitProgress();
-                if (this.activeRequests === 0 && this.queue.length === 0) {
-                    this.emit('complete');
+        this.runLoopActive = true;
+        try {
+            while (this.queue.length > 0 && !this.isStopped) {
+                if (this.activeRequests >= (this.config.maxConcurrent || 5)) {
+                    await new Promise(r => setTimeout(r, 100));
+                    continue;
                 }
-            });
+
+                if (this.config.limit && this.crawledCount >= this.config.limit) {
+                    this.emit('log', 'Crawl limit reached.', 'info');
+                    break;
+                }
+
+                const item = this.queue.shift();
+                if (!item || this.visited.has(item.url)) continue;
+
+                this.visited.add(item.url);
+                this.activeRequests++;
+                
+                this.crawlPage(item.url, item.depth).finally(() => {
+                    this.activeRequests--;
+                    this.emitProgress();
+                    if (!this.isStopped && this.queue.length > 0) {
+                        this.scheduleRun();
+                    } else if (this.activeRequests === 0 && this.queue.length === 0) {
+                        this.emit('complete');
+                    }
+                });
+            }
+        } finally {
+            this.runLoopActive = false;
         }
     }
 
