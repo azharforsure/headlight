@@ -993,7 +993,6 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
                 activeWorkers: 0,
                 workerUtilization: 0
             }));
-            addLog("Scan paused.", 'info');
             flushPendingPageUpdates();
             // Save current session as paused (with pages for reload safety)
             if (currentSessionId) {
@@ -1133,6 +1132,10 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
             });
             
             ghostCrawlerRef.current = ghost;
+            
+            ghost.on('log', (message: string, type: string) => {
+                addLog(message, type as any);
+            });
 
             ghost.on('page', (pageData: any) => {
                 queuePageUpdate(pageData);

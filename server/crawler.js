@@ -1400,7 +1400,9 @@ export function runCrawler(config, onEvent, initialState = null) {
                         onEvent('LOG', { message: `Parser timeout detected. Rebuilding worker pool and continuing crawl.`, type: 'error' });
                         rebuildWorkerPool();
                     }
-                    onEvent('ERROR', { url: currentUrl, message: err.message });
+                    if (!isStopped) {
+                        onEvent('ERROR', { url: currentUrl, message: err.message });
+                    }
                 }
             } finally {
                 clearTimeout(totalTimeout);
@@ -1431,7 +1433,9 @@ export function runCrawler(config, onEvent, initialState = null) {
                 }
             }
 
-            onEvent('ERROR', { url: currentUrl, message: err.message });
+            if (!isStopped) {
+                onEvent('ERROR', { url: currentUrl, message: err.message });
+            }
         }
     }
 
@@ -1664,9 +1668,8 @@ export function runCrawler(config, onEvent, initialState = null) {
                 for (const [, task] of activeTasks) {
                     task.abort('Crawler stopped');
                 }
-                await closeBrowser();
-                closeAllPools();
-                compactQueue();
+                
+                // Emit stop signal immediately so the UI is responsive
                 emitProgress('paused', true);
                 onEvent('CRAWL_STOPPED', {
                     message: 'Crawl paused manually.',
@@ -1682,6 +1685,11 @@ export function runCrawler(config, onEvent, initialState = null) {
                         crawlStartedAt
                     }
                 });
+
+                // Cleanup in the background
+                await closeBrowser();
+                closeAllPools();
+                compactQueue();
             })();
             return stopPromise;
         }
