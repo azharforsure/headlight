@@ -7,7 +7,7 @@ export const Navbar: React.FC = () => {
   const [isOpen, setIsOpen] = React.useState(false);
   const location = useLocation();
 
-  if (location.pathname.startsWith('/app')) return null;
+  if (location.pathname.startsWith('/dashboard')) return null;
 
   return (
     <nav className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-gray-200 h-[76px] flex items-center">
@@ -29,7 +29,7 @@ export const Navbar: React.FC = () => {
             <Link to="/" className="hover:text-brand-red transition-colors">Home</Link>
             <Link to="/agency" className="hover:text-brand-red transition-colors">Agency</Link>
             <Link to="/pricing" className="hover:text-brand-red transition-colors">SaaS Pricing</Link>
-            <Link to="/app" className="hover:text-brand-red transition-colors">Platform</Link>
+            <Link to="/dashboard" className="hover:text-brand-red transition-colors">Platform</Link>
             <Link to="/board" className="hover:text-brand-red transition-colors">Investors</Link>
           </div>
         </div>
@@ -54,7 +54,7 @@ export const Navbar: React.FC = () => {
           <Link to="/" className="text-gray-600 font-bold uppercase tracking-wide py-2">Home</Link>
           <Link to="/agency" className="text-gray-600 font-bold uppercase tracking-wide py-2">Agency Services</Link>
           <Link to="/pricing" className="text-gray-600 font-bold uppercase tracking-wide py-2">SaaS Pricing</Link>
-          <Link to="/app" className="text-gray-600 font-bold uppercase tracking-wide py-2">Platform Demo</Link>
+          <Link to="/dashboard" className="text-gray-600 font-bold uppercase tracking-wide py-2">Platform Demo</Link>
           <Link to="/board" className="text-gray-600 font-bold uppercase tracking-wide py-2">Investor Board</Link>
           <div className="flex flex-col gap-3 mt-4">
             <Link to="/auth" className="text-center py-3 text-gray-600 font-bold uppercase tracking-wide border-b border-gray-100">Log in</Link>

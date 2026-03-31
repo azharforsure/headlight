@@ -1069,7 +1069,10 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
 
         const configuredWsUrl = (import.meta as any).env?.VITE_CRAWLER_WS_URL;
         const wsUrl = configuredWsUrl || `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.hostname}:3001`;
-        const shouldAutoUseGhost = !config.useGhostEngine && !configuredWsUrl;
+        
+        // Auto-use Ghost if no remote URL is configured AND we're not on localhost
+        const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        const shouldAutoUseGhost = !config.useGhostEngine && !configuredWsUrl && !isLocalhost;
         const useGhostMode = Boolean(config.useGhostEngine || shouldAutoUseGhost);
 
         if (!useGhostMode) {

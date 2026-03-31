@@ -60,7 +60,7 @@ const postBillingRoute = async <TBody extends Record<string, unknown>>(
 };
 
 export const startBillingCheckout = async ({ priceId, tierName, user, token }: CheckoutRequest) => {
-  const successUrl = `${window.location.origin}/app?billing=success`;
+  const successUrl = `${window.location.origin}/dashboard?billing=success`;
   const cancelUrl = `${window.location.origin}/pricing?billing=canceled`;
 
   return postBillingRoute('/api/billing/checkout', {
@@ -74,7 +74,7 @@ export const startBillingCheckout = async ({ priceId, tierName, user, token }: C
 };
 
 export const openBillingPortal = async ({ stripeCustomerId, user, token }: PortalRequest) => {
-  const returnUrl = `${window.location.origin}/app`;
+  const returnUrl = `${window.location.origin}/dashboard`;
 
   return postBillingRoute('/api/billing/portal', {
     stripeCustomerId,

@@ -101,7 +101,7 @@ const Auth: React.FC = () => {
 
     useEffect(() => {
         if (!authLoaded || !isSignedIn || mode === 'sso_callback') return;
-        navigate('/app', { replace: true });
+        navigate('/dashboard', { replace: true });
     }, [authLoaded, isSignedIn, mode, navigate]);
 
     useEffect(() => {
@@ -115,7 +115,7 @@ const Auth: React.FC = () => {
 
         const finishToApp = async () => {
             void loadDashboardPage();
-            navigate('/app', { replace: true });
+            navigate('/dashboard', { replace: true });
         };
 
         const run = async () => {
@@ -167,7 +167,7 @@ const Auth: React.FC = () => {
 
     const finishToApp = async () => {
         void loadDashboardPage();
-        navigate('/app', { replace: true });
+        navigate('/dashboard', { replace: true });
     };
     const clearFormErrors = () => {
         setError(null);
@@ -454,7 +454,7 @@ const Auth: React.FC = () => {
             await withTimeout(signIn.authenticateWithRedirect({
                 strategy,
                 redirectUrl: `${window.location.origin}/auth?mode=sso-callback`,
-                redirectUrlComplete: `${window.location.origin}/app`
+                redirectUrlComplete: `${window.location.origin}/dashboard`
             }), 'Social sign-in redirect');
         } catch (err: any) {
             reportAuthError('social_auth', err);

@@ -82,7 +82,7 @@ const App: React.FC = () => {
                                     <SeoCrawler />
                                 </OptionalAuthWrapper>
                             } />
-                            <Route path="/app" element={
+                            <Route path="/dashboard" element={
                                 <ProtectedRoute>
                                     <ProjectProvider>
                                         <Dashboard />
@@ -101,8 +101,8 @@ const App: React.FC = () => {
             publishableKey={clerkPublishableKey}
             signInUrl="/auth"
             signUpUrl="/auth?mode=signup"
-            afterSignInUrl="/app"
-            afterSignUpUrl="/app"
+            afterSignInUrl="/dashboard"
+            afterSignUpUrl="/dashboard"
         >
             {app}
         </ClerkProvider>
