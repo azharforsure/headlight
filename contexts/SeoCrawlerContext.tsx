@@ -8,6 +8,7 @@ import { useAuth } from '../services/AuthContext';
 import { useOptionalProject } from '../services/ProjectContext';
 import { calculateInternalPageRank, calculatePredictiveScore } from '../services/StrategicIntelligence';
 import { persistCrawlResults, syncCrawlStatus } from '../services/CrawlPersistenceService';
+import { syncFromCrawl } from '../services/DashboardDataService';
 import {
     CrawlerIntegrationConnection,
     CrawlerIntegrationProvider,
@@ -228,16 +229,17 @@ const getHashRouteSearchParams = () => {
 const replaceHashRouteSearchParams = (mutate: (params: URLSearchParams) => void) => {
     if (typeof window === 'undefined') return;
 
-    const hash = window.location.hash || '#/crawler';
+    const hash = window.location.hash || '';
     const normalizedHash = hash.startsWith('#') ? hash.slice(1) : hash;
     const [pathPart] = normalizedHash.split('?');
-    const path = pathPart || '/crawler';
+    // Use empty path — the React Router path already provides /crawler
+    const path = '';
     const params = getHashRouteSearchParams();
 
     mutate(params);
 
     const nextQuery = params.toString();
-    const nextHash = `#${path}${nextQuery ? `?${nextQuery}` : ''}`;
+    const nextHash = nextQuery ? `#?${nextQuery}` : '';
 
     if (window.location.hash === nextHash) return;
 
@@ -330,6 +332,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
     const { session, user, profile, signOut } = useAuth();
     const projectContext = useOptionalProject();
     const activeProject = projectContext?.activeProject || null;
+    const updateProject = projectContext?.updateProject || null;
     const isAuthenticated = !!session;
     // Crawling mode & input
     const [crawlingMode, setCrawlingMode] = useState<'spider' | 'list' | 'sitemap'>('spider');
@@ -673,15 +676,10 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
             if (crawlingMode !== 'spider') params.set('mode', crawlingMode);
             else params.delete('mode');
 
-            if (crawlingMode === 'list') {
-                params.delete('url');
-            } else if (urlInput.trim()) {
-                params.set('url', urlInput.trim());
-            } else {
-                params.delete('url');
-            }
+            // Don't sync urlInput to hash here — only sync on scan start
+            // This prevents the URL bar from changing while the user is typing
         });
-    }, [currentSessionId, crawlingMode, urlInput]);
+    }, [currentSessionId, crawlingMode]);
 
     useEffect(() => {
         if (!isCrawling) {
@@ -971,15 +969,33 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
 
     const handleStartPause = (forceResume?: boolean) => {
         if (isCrawling) {
-            if (config.useGhostEngine && ghostCrawlerRef.current) {
+            // Check ghostCrawlerRef directly — Ghost Engine may be auto-selected
+            // even when config.useGhostEngine is false (no WS URL configured)
+            if (ghostCrawlerRef.current) {
                 ghostCrawlerRef.current.stop();
-            } else {
-                wsRef.current?.send(JSON.stringify({ type: 'STOP_CRAWL' }));
+                ghostCrawlerRef.current = null;
+            }
+            if (wsRef.current) {
+                // Send STOP and let the server respond with CRAWL_STOPPED
+                wsRef.current.send(JSON.stringify({ type: 'STOP_CRAWL' }));
+                // Safety net: force close after 3s if server doesn't respond
+                const ws = wsRef.current;
+                setTimeout(() => {
+                    if (wsRef.current === ws) {
+                        closeCrawlerSocket();
+                    }
+                }, 3000);
             }
             setIsCrawling(false);
+            setCrawlRuntime(prev => ({
+                ...prev,
+                stage: 'paused',
+                activeWorkers: 0,
+                workerUtilization: 0
+            }));
             addLog("Scan paused.", 'info');
             flushPendingPageUpdates();
-            // Save current session as paused
+            // Save current session as paused (with pages for reload safety)
             if (currentSessionId) {
                 saveCrawlSession('paused');
             }
@@ -1026,6 +1042,16 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         }
 
         setIsCrawling(true);
+        // Sync URL to browser address bar only when scan starts (not on typing)
+        replaceHashRouteSearchParams((params) => {
+            if (crawlingMode === 'list') {
+                params.delete('url');
+            } else if (urlInput.trim()) {
+                params.set('url', urlInput.trim());
+            } else {
+                params.delete('url');
+            }
+        });
         setCrawlRuntime({
             stage: 'connecting',
             queued: 0,
@@ -1149,6 +1175,45 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
                             upsertPages(currentSessionIdRef.current || sessionId || '', updated);
                             return updated;
                         });
+                    });
+                }
+
+                // Persist crawl results to Turso for Dashboard (Ghost Engine path)
+                if (activeProject?.id && pagesRef.current.length > 0) {
+                    const crawlDuration = crawlStartTime ? Date.now() - crawlStartTime : 0;
+                    persistCrawlResults({
+                        projectId: activeProject.id,
+                        sessionId: currentSessionIdRef.current || sessionId || '',
+                        urlCrawled: pagesRef.current[0]?.url || urlInput,
+                        pages: pagesRef.current,
+                        crawlMode: crawlingMode,
+                        crawlDuration,
+                        crawlRate: crawlRuntime.rate || 0,
+                        maxDepthSeen: crawlRuntime.maxDepthSeen || 0,
+                        strategicSummary: {},
+                        sitemapCoverage: null,
+                        robotsTxt: robotsTxt?.raw || ''
+                    }).then(result => {
+                        if (result) {
+                            addLog(`Dashboard synced — Health Score: ${result.score}/100, ${result.issues.length} issues detected.`, 'success');
+                            if (updateProject && activeProject?.id) {
+                                const grade = result.score >= 90 ? 'A' : result.score >= 80 ? 'B' : result.score >= 65 ? 'C' : result.score >= 50 ? 'D' : 'F';
+                                updateProject(activeProject.id, {
+                                    last_crawl_at: new Date().toISOString(),
+                                    last_crawl_score: result.score,
+                                    last_crawl_grade: grade,
+                                    crawl_count: (activeProject.crawl_count || 0) + 1
+                                });
+                            }
+                            // Auto-populate Dashboard: keywords, competitors, mentions
+                            syncFromCrawl(activeProject!.id, pagesRef.current, activeProject!.name).then(sync => {
+                                if (sync.keywordsImported > 0 || sync.competitorsFound > 0) {
+                                    addLog(`Auto-discovered: ${sync.keywordsImported} keywords, ${sync.competitorsFound} competitors.`, 'info');
+                                }
+                            }).catch(() => {});
+                        }
+                    }).catch(err => {
+                        console.error('[CrawlPersistence] Ghost crawl dashboard sync failed:', err);
                     });
                 }
                 
@@ -1370,6 +1435,22 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
                         }).then(result => {
                             if (result) {
                                 addLog(`Dashboard synced — Health Score: ${result.score}/100, ${result.issues.length} issues detected.`, 'success');
+                                // Auto-update project record with latest crawl data
+                                if (updateProject && activeProject?.id) {
+                                    const grade = result.score >= 90 ? 'A' : result.score >= 80 ? 'B' : result.score >= 65 ? 'C' : result.score >= 50 ? 'D' : 'F';
+                                    updateProject(activeProject.id, {
+                                        last_crawl_at: new Date().toISOString(),
+                                        last_crawl_score: result.score,
+                                        last_crawl_grade: grade,
+                                        crawl_count: (activeProject.crawl_count || 0) + 1
+                                    });
+                                }
+                                // Auto-populate Dashboard: keywords, competitors, mentions
+                                syncFromCrawl(activeProject!.id, pagesRef.current, activeProject!.name).then(sync => {
+                                    if (sync.keywordsImported > 0 || sync.competitorsFound > 0) {
+                                        addLog(`Auto-discovered: ${sync.keywordsImported} keywords, ${sync.competitorsFound} competitors.`, 'info');
+                                    }
+                                }).catch(() => {});
                             }
                         }).catch(err => {
                             console.error('[CrawlPersistence] Failed to sync to dashboard:', err);
@@ -2024,6 +2105,9 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         }
     }, [crawlingMode, listUrls, urlInput, crawlStartTime, stats.totalIssues, healthScore.score, healthScore.grade, config, isCrawling, crawlRuntime, ignoredUrls, urlTags, columnWidths, robotsTxt, sitemapData]);
 
+    // Periodic checkpoint during crawl — save metadata every 1.5s, pages every 30s
+    const lastPagesCheckpointRef = useRef<number>(0);
+
     useEffect(() => {
         if (!currentSessionId) return;
         if (pages.length === 0 && !isCrawling) return;
@@ -2033,7 +2117,14 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         }
 
         sessionCheckpointTimeoutRef.current = window.setTimeout(() => {
-            persistSessionCheckpoint(isCrawling ? 'running' : undefined, { includePages: false }).catch((err) => {
+            const now = Date.now();
+            const shouldIncludePages = isCrawling && (now - lastPagesCheckpointRef.current > 30000);
+            if (shouldIncludePages) {
+                lastPagesCheckpointRef.current = now;
+            }
+            persistSessionCheckpoint(isCrawling ? 'running' : undefined, {
+                includePages: shouldIncludePages || !isCrawling
+            }).catch((err) => {
                 console.error('Failed to checkpoint crawl session:', err);
             });
         }, isCrawling ? 1500 : 400);
@@ -2045,6 +2136,20 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
             }
         };
     }, [currentSessionId, pages, crawlRuntime, isCrawling, persistSessionCheckpoint]);
+
+    // Save pages on tab close / reload so data isn't lost
+    useEffect(() => {
+        const handleBeforeUnload = () => {
+            if (!currentSessionIdRef.current || pagesRef.current.length === 0) return;
+            // Synchronous write to IndexedDB isn't possible, but we can fire it off
+            // The browser usually gives about 100ms for beforeunload to complete
+            const status = isCrawling ? 'paused' : 'completed';
+            persistSessionCheckpoint(status, { includePages: true }).catch(() => {});
+        };
+
+        window.addEventListener('beforeunload', handleBeforeUnload);
+        return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+    }, [isCrawling, persistSessionCheckpoint]);
 
     const auditInsights = useMemo(() => {
         if (analysisPages.length === 0) return [];
@@ -2220,7 +2325,8 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
     const saveCrawlSession = useCallback(async (status: 'completed' | 'paused' | 'failed' = 'completed') => {
         if (!currentSessionIdRef.current) return;
         try {
-            await persistSessionCheckpoint(status);
+            // Always include pages when explicitly saving — this is what the History tab reads
+            await persistSessionCheckpoint(status, { includePages: true });
             await loadCrawlHistory();
             addLog(`Session saved locally (${pagesRef.current.length} pages).`, 'success');
         } catch (err) {
@@ -2238,6 +2344,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
                 setSelectedPage(null);
                 setSelectedRows(new Set());
                 setCurrentSessionId(sessionId);
+                currentSessionIdRef.current = sessionId;
                 setDiffResult(null);
                 setCompareSessionId(null);
 
@@ -2338,7 +2445,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         }
         if (crawlHistory.length === 0) return;
 
-        const restoreTarget = crawlHistory.find((session) => session.id === preferredSessionId)?.id;
+        const restoreTarget = crawlHistory.find((session) => session.id === preferredSessionId)?.id || crawlHistory[0]?.id;
 
         autoRestoreAttemptedRef.current = true;
         persistenceReadyRef.current = true;

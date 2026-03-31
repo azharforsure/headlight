@@ -96,18 +96,10 @@ export async function saveSession(session: CrawlSession): Promise<void> {
 }
 
 export async function getSessions(limit = 50): Promise<CrawlSession[]> {
-    // Try cloud first, fallback to local
-    try {
-        const cloudResult = await turso.execute(`SELECT metadata FROM crawl_sessions ORDER BY created_at DESC LIMIT ${limit}`);
-        if (cloudResult.rows.length > 0) {
-            return cloudResult.rows.map(row => JSON.parse(row.metadata as string));
-        }
-    } catch (err) {
-        console.warn('Failed to fetch sessions from cloud, falling back to local:', err);
-    }
-
+    // Always read local sessions first; they contain the full source of truth for
+    // page snapshots and are required for reliable local restore behavior.
     const db = await openDB();
-    return new Promise((resolve, reject) => {
+    const localSessions = await new Promise<CrawlSession[]>((resolve, reject) => {
         const tx = db.transaction(SESSIONS_STORE, 'readonly');
         const store = tx.objectStore(SESSIONS_STORE);
         const idx = store.index('startedAt');
@@ -124,6 +116,31 @@ export async function getSessions(limit = 50): Promise<CrawlSession[]> {
         };
         req.onerror = () => reject(req.error);
     });
+
+    const merged = new Map<string, CrawlSession>(localSessions.map((session) => [session.id, session]));
+
+    // Merge cloud metadata as a supplement, not a replacement.
+    try {
+        const cloudResult = await turso.execute(`SELECT metadata FROM crawl_sessions ORDER BY created_at DESC LIMIT ${limit}`);
+        if (cloudResult.rows.length > 0) {
+            cloudResult.rows.forEach((row) => {
+                try {
+                    const session = JSON.parse(row.metadata as string) as CrawlSession;
+                    if (!merged.has(session.id)) {
+                        merged.set(session.id, session);
+                    }
+                } catch {
+                    // Ignore malformed cloud metadata rows and keep local state intact.
+                }
+            });
+        }
+    } catch (err) {
+        console.warn('Failed to fetch sessions from cloud, using local sessions:', err);
+    }
+
+    return Array.from(merged.values())
+        .sort((a, b) => (Number(b.startedAt) || 0) - (Number(a.startedAt) || 0))
+        .slice(0, limit);
 }
 
 export async function getSession(id: string): Promise<CrawlSession | undefined> {
@@ -256,4 +273,3 @@ export async function importSessionData(blob: Blob): Promise<string> {
 export function generateSessionId(): string {
     return `crawl_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
-

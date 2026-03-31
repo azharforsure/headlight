@@ -239,3 +239,158 @@ export const getProjectMetrics = async (projectId: string) => {
         mentionCount: mentions.length
     };
 };
+
+// ─── Crawl → Dashboard Sync ─────────────────────────────────
+// Automatically populates dashboard features from crawl results
+
+/**
+ * After a crawl finishes, call this to auto-populate keywords, competitors,
+ * and brand mentions from the crawl data. All free, all local.
+ */
+export const syncFromCrawl = async (
+    projectId: string,
+    crawlPages: any[],
+    projectName?: string
+): Promise<{ keywordsImported: number; competitorsFound: number; mentionsFound: number }> => {
+    let keywordsImported = 0;
+    let competitorsFound = 0;
+    let mentionsFound = 0;
+
+    const existingKeywords = await listKeywords(projectId);
+    const existingKeywordSet = new Set(existingKeywords.map(kw => kw.keyword.toLowerCase().trim()));
+
+    // 1. Auto-import keywords from GSC data
+    const gscPages = crawlPages.filter(p => p.gscClicks > 0 || p.gscImpressions > 100);
+    for (const page of gscPages) {
+        // Use the page title as a keyword proxy (GSC doesn't return individual queries per page in this flow)
+        const keyword = extractKeywordFromTitle(page.title);
+        if (keyword && !existingKeywordSet.has(keyword.toLowerCase())) {
+            await addKeyword(projectId, keyword, {
+                intent: page.searchIntent || 'Informational',
+                volume: page.gscImpressions || null,
+                position: page.gscPosition ? Math.round(page.gscPosition) : null,
+                change: 0
+            });
+            existingKeywordSet.add(keyword.toLowerCase());
+            keywordsImported++;
+        }
+    }
+
+    // 2. Extract keywords from H1 tags of pages without GSC data
+    const nonGscPages = crawlPages.filter(p => !p.gscClicks && p.h1_1 && p.contentType?.includes('html'));
+    for (const page of nonGscPages.slice(0, 30)) {
+        const keyword = extractKeywordFromTitle(page.h1_1);
+        if (keyword && keyword.length > 3 && keyword.split(' ').length <= 6 && !existingKeywordSet.has(keyword.toLowerCase())) {
+            await addKeyword(projectId, keyword, {
+                intent: page.searchIntent || null,
+                volume: null,
+                position: null,
+                change: null
+            });
+            existingKeywordSet.add(keyword.toLowerCase());
+            keywordsImported++;
+        }
+    }
+
+    // 3. Auto-discover competitors from external link neighborhoods
+    const existingCompetitors = await listCompetitors(projectId);
+    const existingCompetitorDomains = new Set(existingCompetitors.map(c => {
+        try { return new URL(c.url).hostname.replace(/^www\./, ''); } catch { return ''; }
+    }));
+
+    const externalDomainCounts = new Map<string, number>();
+    let rootHostname = '';
+    try {
+        rootHostname = new URL(crawlPages[0]?.url || '').hostname.replace(/^www\./, '');
+    } catch { /* ignore */ }
+
+    for (const page of crawlPages) {
+        const links = page.externalLinks || [];
+        for (const link of links) {
+            try {
+                const domain = new URL(link).hostname.replace(/^www\./, '');
+                // Skip common non-competitor domains
+                if (isCommonDomain(domain) || domain === rootHostname) continue;
+                externalDomainCounts.set(domain, (externalDomainCounts.get(domain) || 0) + 1);
+            } catch { /* ignore bad URLs */ }
+        }
+    }
+
+    // Sort by frequency and add top competitors
+    const topDomains = [...externalDomainCounts.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5);
+
+    for (const [domain, linkCount] of topDomains) {
+        if (!existingCompetitorDomains.has(domain)) {
+            await addCompetitor(projectId, domain, `https://${domain}`);
+            competitorsFound++;
+        }
+    }
+
+    // 4. Generate brand mentions from crawl content (if brand name is found on other pages)
+    if (projectName) {
+        const brandLower = projectName.toLowerCase();
+        const existingMentions = await listBrandMentions(projectId);
+        const existingMentionSources = new Set(existingMentions.map(m => m.source));
+
+        for (const page of crawlPages) {
+            if (!page.url?.includes(rootHostname)) {
+                // External page mentioning our brand
+                const pageText = (page.title || '') + ' ' + (page.h1_1 || '') + ' ' + (page.metaDesc || '');
+                if (pageText.toLowerCase().includes(brandLower) && !existingMentionSources.has(page.url)) {
+                    const mentions = readCollection<BrandMentionRecord>('brand_mentions', projectId);
+                    const mention: BrandMentionRecord = {
+                        id: makeId('mention'),
+                        project_id: projectId,
+                        type: 'Web',
+                        sentiment: 'neutral',
+                        text: `"${projectName}" mentioned on ${page.title || page.url}`,
+                        source: page.url,
+                        detected_at: isoNow(),
+                        is_linkable: page.statusCode >= 200 && page.statusCode < 300
+                    };
+                    writeCollection('brand_mentions', projectId, [mention, ...mentions]);
+                    mentionsFound++;
+                }
+            }
+        }
+    }
+
+    return { keywordsImported, competitorsFound, mentionsFound };
+};
+
+// ─── Helpers ─────────────────────────────────────────────────
+
+function extractKeywordFromTitle(title?: string): string {
+    if (!title) return '';
+    // Remove common suffixes like " | Brand" or " - Site Name"
+    let clean = title.split(/\s*[|\-–—]\s*/).slice(0, -1).join(' ').trim();
+    if (!clean || clean.length < 3) clean = title.trim();
+    // Remove HTML entities and extra whitespace
+    clean = clean.replace(/&[a-z]+;/gi, ' ').replace(/\s+/g, ' ').trim();
+    return clean.length > 80 ? clean.slice(0, 80) : clean;
+}
+
+const COMMON_DOMAINS = new Set([
+    'google.com', 'facebook.com', 'twitter.com', 'x.com', 'youtube.com',
+    'linkedin.com', 'instagram.com', 'pinterest.com', 'reddit.com',
+    'github.com', 'wikipedia.org', 'apple.com', 'microsoft.com',
+    'amazon.com', 'cloudflare.com', 'googleapis.com', 'gstatic.com',
+    'fonts.googleapis.com', 'cdnjs.cloudflare.com', 'unpkg.com',
+    'cdn.jsdelivr.net', 'maxcdn.bootstrapcdn.com',
+    'w3.org', 'schema.org', 'gravatar.com', 'wp.com',
+    'googletagmanager.com', 'google-analytics.com', 'doubleclick.net',
+    'facebook.net', 'fbcdn.net', 'tiktok.com'
+]);
+
+function isCommonDomain(domain: string): boolean {
+    if (COMMON_DOMAINS.has(domain)) return true;
+    // Check parent domains (e.g., "cdn.example.com" → "example.com")
+    const parts = domain.split('.');
+    if (parts.length > 2) {
+        const parent = parts.slice(-2).join('.');
+        return COMMON_DOMAINS.has(parent);
+    }
+    return false;
+}

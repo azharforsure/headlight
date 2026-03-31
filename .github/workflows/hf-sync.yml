@@ -1,0 +1,27 @@
+name: Sync to Hugging Face Space
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'server/**'
+      - '.github/workflows/hf-sync.yml'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          lfs: true
+
+      - name: Push to Hugging Face
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          # Use the server directory as the root for the HF Space
+          git remote add hf https://azharsharif:$HF_TOKEN@huggingface.co/spaces/azharsharif/headlight-crawler
+          
+          # We need to push the contents of the server/ folder to the root of the HF repo
+          # The cleanest way is to use a subtree push
+          git subtree push --prefix server hf main --force

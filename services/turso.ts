@@ -166,4 +166,25 @@ export async function initializeDatabase() {
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  await turso.execute(`
+    CREATE TABLE IF NOT EXISTS projects (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      url TEXT NOT NULL,
+      domain TEXT NOT NULL DEFAULT '',
+      industry TEXT NOT NULL DEFAULT 'ecommerce',
+      last_crawl_at DATETIME,
+      last_crawl_score INTEGER,
+      last_crawl_grade TEXT,
+      crawl_count INTEGER NOT NULL DEFAULT 0,
+      gsc_connected INTEGER NOT NULL DEFAULT 0,
+      ga4_connected INTEGER NOT NULL DEFAULT 0,
+      auto_crawl_enabled INTEGER NOT NULL DEFAULT 0,
+      auto_crawl_interval TEXT NOT NULL DEFAULT 'weekly',
+      notification_email TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
 }
