@@ -655,8 +655,21 @@ async function performAIStrategicAnalysis(pagePayloads, gscDataMap) {
 // ════════════════════════════════════════════════════════════
 //  MAIN CRAWLER
 // ════════════════════════════════════════════════════════════
-export function runCrawler(config, onEvent, initialState = null) {
+export function runCrawler(config, rawOnEvent, initialState = null) {
     let isStopped = false;
+
+    // Ultimate guard: once stopped, no events except 'CRAWL_STOPPED' or 'PAUSED' are emitted.
+    // Also skip manually aborted task common error messages.
+    const onEvent = (type, payload) => {
+        if (isStopped && type !== 'CRAWL_STOPPED' && type !== 'PAUSED' && type !== 'PROGRESS') return;
+        if (type === 'ERROR' && (
+            (payload?.message || '').includes('Crawler stopped') ||
+            (payload?.message || '').includes('aborted') ||
+            (payload?.message || '').includes('terminated')
+        )) return;
+        rawOnEvent(type, payload);
+    };
+
     let stopPromise = null;
     let activeWorkers = 0;
     let browser = null;
@@ -1387,20 +1400,26 @@ export function runCrawler(config, onEvent, initialState = null) {
                         pagePayloads.set(currentUrl, payload);
 
                         urlsCrawled++;
-                        onEvent('PAGE_CRAWLED', payload);
+                        if (!isStopped) {
+                            onEvent('PAGE_CRAWLED', payload);
+                        }
                         for (const source of inlinksMap[currentUrl] || []) {
                             emitDerivedSignalUpdate(source);
                         }
-                        emitProgress('crawling', true);
+                        if (!isStopped) {
+                            emitProgress('crawling', true);
+                        }
                     } else if (msg.type === 'ERROR') {
-                        onEvent('ERROR', { url: currentUrl, message: msg.message });
+                        if (!isStopped && msg.message !== 'Crawler stopped') {
+                            onEvent('ERROR', { url: currentUrl, message: msg.message });
+                        }
                     }
                 } catch (err) {
                     if (String(err?.message || '').includes('Parser worker timeout')) {
                         onEvent('LOG', { message: `Parser timeout detected. Rebuilding worker pool and continuing crawl.`, type: 'error' });
                         rebuildWorkerPool();
                     }
-                    if (!isStopped) {
+                    if (!isStopped && err.message !== 'Crawler stopped') {
                         onEvent('ERROR', { url: currentUrl, message: err.message });
                     }
                 }
@@ -1433,7 +1452,7 @@ export function runCrawler(config, onEvent, initialState = null) {
                 }
             }
 
-            if (!isStopped) {
+            if (!isStopped && err.message !== 'Crawler stopped') {
                 onEvent('ERROR', { url: currentUrl, message: err.message });
             }
         }

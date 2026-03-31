@@ -939,6 +939,9 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         setCrawlStartTime(null);
         setUrlInput('');
         setListUrls('');
+        replaceHashRouteSearchParams((params) => {
+            params.delete('url');
+        });
         setElapsedTime('0s');
         setCrawlRuntime({
             stage: 'idle',
