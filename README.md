@@ -9,7 +9,7 @@
 Prerequisites: Node.js
 
 1. Install dependencies with `npm install`.
-2. Add app env vars in [`.env.local`](/Users/azharsharif/Documents/Work/Development/Headlight/headlight/.env.local).
+2. Add app env vars in `.env.local`.
 3. Run the app with `npm run dev`.
 
 Required client env vars:
