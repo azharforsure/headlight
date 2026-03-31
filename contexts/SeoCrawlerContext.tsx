@@ -219,32 +219,23 @@ const DEFAULT_VISIBLE_COLUMNS = [
 
 const getHashRouteSearchParams = () => {
     if (typeof window === 'undefined') return new URLSearchParams();
-
-    const hash = window.location.hash || '';
-    const queryIndex = hash.indexOf('?');
-    return new URLSearchParams(queryIndex >= 0 ? hash.slice(queryIndex + 1) : '');
+    return new URLSearchParams(window.location.search);
 };
 
 const replaceHashRouteSearchParams = (mutate: (params: URLSearchParams) => void) => {
     if (typeof window === 'undefined') return;
 
-    const hash = window.location.hash || '#/crawler';
-    const normalizedHash = hash.startsWith('#') ? hash.slice(1) : hash;
-    const [pathPart] = normalizedHash.split('?');
-    const path = pathPart || '/crawler';
-    const params = getHashRouteSearchParams();
-
+    const params = new URLSearchParams(window.location.search);
     mutate(params);
-
     const nextQuery = params.toString();
-    const nextHash = `#${path}${nextQuery ? `?${nextQuery}` : ''}`;
+    const nextSearch = nextQuery ? `?${nextQuery}` : '';
 
-    if (window.location.hash === nextHash) return;
+    if (window.location.search === nextSearch) return;
 
     window.history.replaceState(
         window.history.state,
         '',
-        `${window.location.pathname}${window.location.search}${nextHash}`
+        `${window.location.pathname}${nextSearch}${window.location.hash}`
     );
 };
 
@@ -664,26 +655,6 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
     }, [currentSessionId, urlInput, listUrls, crawlingMode, config]);
 
     useEffect(() => {
-        if (typeof window === 'undefined') return;
-
-        replaceHashRouteSearchParams((params) => {
-            if (currentSessionId) params.set('session', currentSessionId);
-            else params.delete('session');
-
-            if (crawlingMode !== 'spider') params.set('mode', crawlingMode);
-            else params.delete('mode');
-
-            if (crawlingMode === 'list') {
-                params.delete('url');
-            } else if (urlInput.trim()) {
-                params.set('url', urlInput.trim());
-            } else {
-                params.delete('url');
-            }
-        });
-    }, [currentSessionId, crawlingMode, urlInput]);
-
-    useEffect(() => {
         if (!isCrawling) {
             setAnalysisPages(pages);
             return;
@@ -1024,6 +995,22 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         } else if (!sessionEntrySignatureRef.current) {
             sessionEntrySignatureRef.current = requestedSignature;
         }
+
+        replaceHashRouteSearchParams((params) => {
+            if (sessionId) params.set('session', sessionId);
+            else params.delete('session');
+
+            if (crawlingMode !== 'spider') params.set('mode', crawlingMode);
+            else params.delete('mode');
+
+            if (crawlingMode === 'list') {
+                params.delete('url');
+            } else if (urlInput.trim()) {
+                params.set('url', urlInput.trim());
+            } else {
+                params.delete('url');
+            }
+        });
 
         setIsCrawling(true);
         setCrawlRuntime({

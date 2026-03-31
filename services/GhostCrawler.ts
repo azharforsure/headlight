@@ -14,6 +14,8 @@ export class GhostCrawler {
     private queue: { url: string; depth: number }[] = [];
     private visited = new Set<string>();
     private isStopped = false;
+    private startDomain: string | null = null;
+    private corsBlockedDomains = new Set<string>();
     private activeRequests = 0;
     private crawledCount = 0;
     private discoveredCount = 0;
@@ -62,12 +64,18 @@ export class GhostCrawler {
 
     stop() {
         this.isStopped = true;
+        this.queue = [];
         this.emit('log', 'Ghost Engine stopped by user.', 'info');
     }
 
     async start(startUrl: string) {
         if (!startUrl) return;
         this.startTime = Date.now();
+        try {
+            this.startDomain = new URL(startUrl).hostname;
+        } catch {
+            this.startDomain = null;
+        }
         this.queue.push({ url: startUrl, depth: 0 });
         this.discoveredCount = 1;
         this.emit('log', `Ghost Engine starting at ${startUrl}`, 'info');
@@ -117,18 +125,41 @@ export class GhostCrawler {
     private async crawlPage(url: string, depth: number) {
         try {
             const bridgeUrl = (import.meta as any).env?.VITE_GHOST_BRIDGE_URL;
-            const targetUrl = bridgeUrl ? `${bridgeUrl}?url=${encodeURIComponent(url)}` : url;
+            let response: Response | null = null;
+            let currentDomain = '';
 
-            const response = await fetch(targetUrl, {
-                mode: 'cors',
-                headers: { 'User-Agent': this.config.userAgent || 'Headlight-Ghost/1.0' }
-            });
+            try {
+                currentDomain = new URL(url).hostname;
+            } catch {}
 
-            if (!response.ok) {
-                if (!bridgeUrl && response.status === 0) {
+            // Try direct fetch only if domain is not known to block CORS
+            if (!this.corsBlockedDomains.has(currentDomain)) {
+                try {
+                    response = await fetch(url, {
+                        mode: 'cors',
+                        headers: { 'User-Agent': this.config.userAgent || 'Headlight-Ghost/1.0' }
+                    });
+                    if (!response.ok) throw new Error(`Direct HTTP ${response.status}`);
+                } catch (err) {
+                    if (currentDomain) this.corsBlockedDomains.add(currentDomain);
+                    response = null; // Mark for fallback
+                }
+            }
+
+            // Fallback to bridge if direct fetch failed or was skipped
+            if (!response) {
+                if (bridgeUrl) {
+                    const targetUrl = `${bridgeUrl}?url=${encodeURIComponent(url)}`;
+                    response = await fetch(targetUrl, {
+                        mode: 'cors',
+                        headers: { 'User-Agent': this.config.userAgent || 'Headlight-Ghost/1.0' }
+                    });
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}`);
+                    }
+                } else {
                     throw new Error('CORS Blocked. Please enable the Ghost Bridge or use a CORS extension.');
                 }
-                throw new Error(`HTTP ${response.status}`);
             }
 
             const html = await response.text();
@@ -204,6 +235,14 @@ export class GhostCrawler {
 
     private enqueueLinks(links: string[], nextDepth: number) {
         links.forEach(link => {
+            try {
+                if (this.startDomain && new URL(link).hostname !== this.startDomain) {
+                    return; // Enforce same-domain crawling
+                }
+            } catch {
+                return; // Skip invalid URLs
+            }
+
             if (!this.visited.has(link) && !this.queue.some(q => q.url === link)) {
                 this.queue.push({ url: link, depth: nextDepth });
                 this.discoveredCount++;
