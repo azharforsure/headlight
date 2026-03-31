@@ -930,6 +930,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         setSelectedPage(null);
         setSelectedRows(new Set());
         setCurrentSessionId(null);
+        currentSessionIdRef.current = null;
         setCompareSessionId(null);
         setDiffResult(null);
         setActiveMacro('all');
@@ -1389,7 +1390,17 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
                         };
                     });
                 }
-                else if (data.type === 'ERROR') { addLog(data.payload.message || 'Error encountered', 'error'); flushPendingPageUpdates(); setIsCrawling(false); setCrawlStartTime(null); setCrawlRuntime(prev => ({ ...prev, stage: 'error', activeWorkers: 0, workerUtilization: 0 })); }
+                else if (data.type === 'ERROR') {
+                    const errMsg = data.payload.message || 'Error encountered';
+                    // Skip redundant abort logs that we've already handled
+                    if (errMsg === 'Crawler stopped' || errMsg.includes('aborted')) return;
+                    
+                    addLog(errMsg, 'error');
+                    flushPendingPageUpdates();
+                    setIsCrawling(false);
+                    setCrawlStartTime(null);
+                    setCrawlRuntime(prev => ({ ...prev, stage: 'error', activeWorkers: 0, workerUtilization: 0 }));
+                }
                 else if (data.type === 'CRAWL_FINISHED') { 
                     flushPendingPageUpdates();
                     addLog(`Scan complete. Found ${data.payload.totalPages} URLs.`, 'success'); 
