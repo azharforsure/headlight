@@ -476,16 +476,15 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
 
     const wsRef = useRef<WebSocket | null>(null);
     const pagesRef = useRef<any[]>([]);
-const pendingPageUpdatesRef = useRef<Map<string, any>>(new Map());
+    const pendingPageUpdatesRef = useRef<Map<string, any>>(new Map());
     const pendingPagesFlushRef = useRef<number | null>(null);
     const sessionCheckpointTimeoutRef = useRef<number | null>(null);
     const lastFetchLogAtRef = useRef(0);
     const sessionEntrySignatureRef = useRef<string | null>(null);
-    const [isPersistenceReady, setIsPersistenceReady] = useState(false);
-    const [hasAttemptedRestore, setHasAttemptedRestore] = useState(false);
-    const inMemoryPageLimitAlertedRef = useRef(false);
-    const autoRestoreAttemptedRef = useRef(false);
+    const [hasHydrated, setHasHydrated] = useState(false);
     const initialUrlStateHydratedRef = useRef(false);
+    const autoRestoreAttemptedRef = useRef(false);
+    const inMemoryPageLimitAlertedRef = useRef(false);
     const currentSessionIdRef = useRef<string | null>(null);
     const integrationsHydratedRef = useRef(false);
     const ghostCrawlerRef = useRef<GhostCrawler | null>(null);
@@ -505,12 +504,7 @@ const pendingPageUpdatesRef = useRef<Map<string, any>>(new Map());
         });
     }, []);
 
-    // ─── Load crawl history on mount ───
-    useEffect(() => {
-        if (isPersistenceReady) {
-            loadCrawlHistory();
-        }
-    }, [isPersistenceReady]);
+
 
     useEffect(() => {
         pagesRef.current = pages;
@@ -634,7 +628,7 @@ const pendingPageUpdatesRef = useRef<Map<string, any>>(new Map());
 
     useEffect(() => {
         if (typeof window === 'undefined') return;
-        if (!isPersistenceReady) return;
+        if (!hasHydrated) return; // Wait until hydrated
 
         try {
             if (currentSessionId) {
@@ -645,11 +639,11 @@ const pendingPageUpdatesRef = useRef<Map<string, any>>(new Map());
         } catch (error) {
             console.error('Failed to persist last crawler session:', error);
         }
-    }, [currentSessionId, isPersistenceReady]);
+    }, [currentSessionId, hasHydrated]);
 
     useEffect(() => {
         if (typeof window === 'undefined') return;
-        if (!isPersistenceReady) return;
+        if (!hasHydrated) return;
         if (!currentSessionId) {
             window.localStorage.removeItem(CRAWLER_DRAFT_STORAGE_KEY);
             return;
@@ -667,7 +661,7 @@ const pendingPageUpdatesRef = useRef<Map<string, any>>(new Map());
         } catch (error) {
             console.error('Failed to persist crawler draft state:', error);
         }
-    }, [currentSessionId, urlInput, listUrls, crawlingMode, config, isPersistenceReady]);
+    }, [currentSessionId, urlInput, listUrls, crawlingMode, config, hasHydrated]);
 
     useEffect(() => {
         if (typeof window === 'undefined') return;
@@ -798,6 +792,11 @@ const pendingPageUpdatesRef = useRef<Map<string, any>>(new Map());
             console.error('Failed to load crawl history:', err);
         }
     }, []);
+
+    // ─── Load crawl history on mount ───
+    useEffect(() => {
+        loadCrawlHistory();
+    }, [loadCrawlHistory]);
 
     // ─── Keyboard shortcuts ───
     useEffect(() => {
@@ -2447,12 +2446,12 @@ const pendingPageUpdatesRef = useRef<Map<string, any>>(new Map());
         const draftRaw = window.localStorage.getItem(CRAWLER_DRAFT_STORAGE_KEY);
 
         if (!draftRaw && !preferredSessionId) {
-            setHasAttemptedRestore(true);
-            setIsPersistenceReady(true);
+            autoRestoreAttemptedRef.current = true;
+            setHasHydrated(true);
             return;
         }
 
-        if (draftRaw && !hasAttemptedRestore) {
+        if (draftRaw && !autoRestoreAttemptedRef.current) {
             try {
                 const draft = JSON.parse(draftRaw);
                 if (!urlInput && typeof draft.urlInput === 'string') setUrlInput(draft.urlInput);
@@ -2469,30 +2468,24 @@ const pendingPageUpdatesRef = useRef<Map<string, any>>(new Map());
         }
 
         if (currentSessionId || isLoadingHistory) return;
-        if (hasAttemptedRestore) {
-            setIsPersistenceReady(true);
-            return;
-        }
-        if (crawlHistory.length === 0) {
-            setHasAttemptedRestore(true);
-            setIsPersistenceReady(true);
+        if (autoRestoreAttemptedRef.current) {
+            setHasHydrated(true);
             return;
         }
 
         const restoreTarget = crawlHistory.find((session) => session.id === preferredSessionId)?.id || crawlHistory[0]?.id;
-
-        setHasAttemptedRestore(true);
+        autoRestoreAttemptedRef.current = true;
         
         if (restoreTarget) {
             loadSession(restoreTarget).catch((error) => {
                 console.error('Failed to auto-restore crawler session:', error);
             }).finally(() => {
-                setIsPersistenceReady(true);
+                setHasHydrated(true);
             });
         } else {
-            setIsPersistenceReady(true);
+            setHasHydrated(true);
         }
-    }, [crawlHistory, currentSessionId, isLoadingHistory, loadSession, urlInput, listUrls, hasAttemptedRestore]);
+    }, [crawlHistory, currentSessionId, isLoadingHistory, loadSession, urlInput, listUrls]);
 
     const resumeCrawlSession = useCallback(async (sessionId: string) => {
         await loadSession(sessionId);
