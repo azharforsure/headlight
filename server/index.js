@@ -3,6 +3,12 @@ import cors from 'cors';
 import { WebSocketServer } from 'ws';
 import { request as undiciRequest } from 'undici';
 import { runCrawler } from './crawler.js';
+import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: path.resolve(__dirname, '../.env.local') });
 
 const app = express();
 app.use(cors());
@@ -78,6 +84,109 @@ app.post('/api/integrations/bing/exchange', async (req, res) => {
     }
 });
 
+// ─── Google OAuth Code Exchange ─────────────────────
+app.post('/api/integrations/google/exchange', async (req, res) => {
+    const clientId = process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE_CLIENT_ID;
+    const clientSecret = process.env.GOOGLE_CLIENT_SECRET || process.env.VITE_GOOGLE_CLIENT_SECRET;
+    const { code, redirectUri } = req.body || {};
+
+    if (!clientId || !clientSecret) {
+        return res.status(500).json({
+            error: 'Google OAuth is not configured on the server.',
+            missing: [
+                !clientId ? 'GOOGLE_CLIENT_ID' : null,
+                !clientSecret ? 'GOOGLE_CLIENT_SECRET' : null
+            ].filter(Boolean)
+        });
+    }
+
+    if (!code || !redirectUri) {
+        return res.status(400).json({ error: 'Both `code` and `redirectUri` are required.' });
+    }
+
+    try {
+        const response = await undiciRequest('https://oauth2.googleapis.com/token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({
+                client_id: clientId,
+                client_secret: clientSecret,
+                code,
+                grant_type: 'authorization_code',
+                redirect_uri: redirectUri
+            }).toString()
+        });
+
+        const payload = await response.body.json();
+
+        if (response.statusCode < 200 || response.statusCode >= 300) {
+            return res.status(response.statusCode).json({
+                error: 'Google token exchange failed.',
+                details: payload
+            });
+        }
+
+        // Fetch user email
+        let email = null;
+        if (payload.access_token) {
+            try {
+                const userRes = await undiciRequest('https://www.googleapis.com/oauth2/v2/userinfo', {
+                    headers: { 'Authorization': `Bearer ${payload.access_token}` }
+                });
+                if (userRes.statusCode === 200) {
+                    const userData = await userRes.body.json();
+                    email = userData.email || null;
+                }
+            } catch { /* non-fatal */ }
+        }
+
+        return res.json({
+            access_token: payload.access_token,
+            refresh_token: payload.refresh_token,
+            expires_in: payload.expires_in,
+            email
+        });
+    } catch (error) {
+        console.error('Google token exchange failed:', error);
+        return res.status(500).json({ error: 'Google token exchange failed unexpectedly.' });
+    }
+});
+
+// ─── Google OAuth Token Refresh ─────────────────────
+app.post('/api/integrations/google/refresh', async (req, res) => {
+    const clientId = process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE_CLIENT_ID;
+    const clientSecret = process.env.GOOGLE_CLIENT_SECRET || process.env.VITE_GOOGLE_CLIENT_SECRET;
+    const { refreshToken } = req.body || {};
+
+    if (!clientId || !clientSecret) {
+        return res.status(500).json({ error: 'Google OAuth not configured on server.' });
+    }
+    if (!refreshToken) {
+        return res.status(400).json({ error: 'refreshToken is required.' });
+    }
+
+    try {
+        const response = await undiciRequest('https://oauth2.googleapis.com/token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({
+                client_id: clientId,
+                client_secret: clientSecret,
+                refresh_token: refreshToken,
+                grant_type: 'refresh_token'
+            }).toString()
+        });
+
+        const data = await response.body.json();
+        if (response.statusCode === 200 && data.access_token) {
+            return res.json({ access_token: data.access_token });
+        }
+        return res.status(401).json({ error: 'Token refresh failed', details: data });
+    } catch (err) {
+        return res.status(500).json({ error: 'Token refresh exception' });
+    }
+});
+
 const wss = new WebSocketServer({ server });
 const activeSessions = new Map(); // sessionId -> { state, config }
 
@@ -117,13 +226,25 @@ wss.on('connection', (ws) => {
                 const sessionId = data.sessionId;
                 const existingSession = sessionId ? activeSessions.get(sessionId) : null;
                 const initialState = existingSession?.state || null;
+                const rawConfig = data.config || {};
+                const googleConfig = rawConfig.google || {};
+                const bingConfig = rawConfig.bing || {};
+                const normalizedConfig = {
+                    ...rawConfig,
+                    gscApiKey: rawConfig.gscApiKey || googleConfig.accessToken || '',
+                    gscRefreshToken: rawConfig.gscRefreshToken || googleConfig.refreshToken || '',
+                    gscSiteUrl: rawConfig.gscSiteUrl || googleConfig.gscSiteUrl || '',
+                    ga4AccessToken: rawConfig.ga4AccessToken || googleConfig.accessToken || '',
+                    ga4PropertyId: rawConfig.ga4PropertyId || googleConfig.ga4PropertyId || '',
+                    bingAccessToken: rawConfig.bingAccessToken || bingConfig.accessToken || ''
+                };
 
-                crawlerInstance = runCrawler(data.config, (event, payload) => {
+                crawlerInstance = runCrawler(normalizedConfig, (event, payload) => {
                     // Save state on pause/stop
                     if (event === 'CRAWL_STOPPED' && sessionId) {
                         activeSessions.set(sessionId, {
                             state: payload.state,
-                            config: data.config,
+                            config: normalizedConfig,
                             updatedAt: Date.now()
                         });
                     }

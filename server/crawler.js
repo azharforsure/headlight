@@ -747,6 +747,7 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
     const inlinksMap = normalizeLinkMap(initialState?.inlinksMap);
     const outlinksMap = normalizeLinkMap(initialState?.outlinksMap);
     const pagePayloads = new Map();
+    const failedUrls = new Map();
 
     let urlsCrawled = initialState?.urlsCrawled || 0;
     let maxDepthSeen = initialState?.maxDepthSeen || 0;
@@ -776,6 +777,15 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
         queueCursor = 0;
     };
     const shouldEmitSampledLog = (count, sampleRate = 250) => count <= 10 || count % sampleRate === 0;
+    const recordUrlFailure = (targetUrl, message) => {
+        if (!targetUrl) return;
+        const normalizedMessage = String(message || 'Unknown crawl failure');
+        failedUrls.set(targetUrl, normalizedMessage);
+        onEvent('LOG', {
+            message: `Failed ${targetUrl}: ${normalizedMessage}`,
+            type: 'error'
+        });
+    };
 
     const isInternalUrl = (targetUrl) => {
         try {
@@ -1411,6 +1421,7 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
                         }
                     } else if (msg.type === 'ERROR') {
                         if (!isStopped && msg.message !== 'Crawler stopped') {
+                            recordUrlFailure(currentUrl, msg.message);
                             onEvent('ERROR', { url: currentUrl, message: msg.message });
                         }
                     }
@@ -1420,6 +1431,7 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
                         rebuildWorkerPool();
                     }
                     if (!isStopped && err.message !== 'Crawler stopped') {
+                        recordUrlFailure(currentUrl, err.message);
                         onEvent('ERROR', { url: currentUrl, message: err.message });
                     }
                 }
@@ -1453,6 +1465,7 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
             }
 
             if (!isStopped && err.message !== 'Crawler stopped') {
+                recordUrlFailure(currentUrl, err.message);
                 onEvent('ERROR', { url: currentUrl, message: err.message });
             }
         }
@@ -1608,10 +1621,14 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
             );
             
             if (gscDataMap.__new_token) {
-                onEvent('TOKEN_REFRESHED', { provider: 'googleSearchConsole', accessToken: gscDataMap.__new_token });
+                onEvent('TOKEN_REFRESHED', { provider: 'google', accessToken: gscDataMap.__new_token });
                 config.gscApiKey = gscDataMap.__new_token; // Update local config for GA4 fetch if needed
                 delete gscDataMap.__new_token;
             }
+        } else if (config.gscSiteUrl && !config.gscApiKey) {
+            onEvent('LOG', { message: 'Skipping Google Search Console fetch: property is selected but no Google access token is available.', type: 'warn' });
+        } else if (config.gscApiKey && !config.gscSiteUrl) {
+            onEvent('LOG', { message: 'Skipping Google Search Console fetch: no Search Console property is selected.', type: 'warn' });
         }
 
         // 1b. Fetch Google Analytics 4 data if connected
@@ -1625,9 +1642,13 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
             );
 
             if (ga4DataMap.__new_token) {
-                onEvent('TOKEN_REFRESHED', { provider: 'googleAnalytics', accessToken: ga4DataMap.__new_token });
+                onEvent('TOKEN_REFRESHED', { provider: 'google', accessToken: ga4DataMap.__new_token });
                 delete ga4DataMap.__new_token;
             }
+        } else if (config.ga4PropertyId && !(config.gscApiKey || config.ga4AccessToken)) {
+            onEvent('LOG', { message: 'Skipping Google Analytics 4 fetch: property is selected but no Google access token is available.', type: 'warn' });
+        } else if ((config.gscApiKey || config.ga4AccessToken) && !config.ga4PropertyId) {
+            onEvent('LOG', { message: 'Skipping Google Analytics 4 fetch: no Analytics property ID is selected.', type: 'warn' });
         }
 
 
@@ -1660,6 +1681,10 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
 
         onEvent('CRAWL_FINISHED', {
             totalPages: visited.size,
+            successfulPages: urlsCrawled,
+            payloadPages: pagePayloads.size,
+            failedPages: failedUrls.size,
+            failedUrlSamples: Array.from(failedUrls.entries()).slice(0, 10).map(([url, message]) => ({ url, message })),
             sitemapCoverage: Object.keys(sitemapData).length > 0 ? {
                 inSitemap: [...visited].filter(u => sitemapData[u]).length,
                 notInSitemap: [...visited].filter(u => !sitemapData[u]).length,

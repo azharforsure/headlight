@@ -5,7 +5,7 @@ import { KPICard } from './Widgets';
 import { performanceData, sparklineData1, sparklineData2, sparklineData3, sparklineData4, distributionData } from '../../data/mockData';
 import { useProject } from '../../services/ProjectContext';
 import { fetchProjectCrawlerIntegrations } from '../../services/CrawlerIntegrationsService';
-import { getLatestAuditResult, getAuditAggregatedMetrics } from '../../services/CrawlPersistenceService';
+import { getLatestAuditResult, getAuditAggregatedMetrics, getAuditPages } from '../../services/CrawlPersistenceService';
 import { generateDashboardInsights } from '../../services/AppIntelligenceService';
 import { getProjectMetrics } from '../../services/DashboardDataService';
 
@@ -51,6 +51,18 @@ export const DashboardOverview = ({ openPanel, topMovers, competitorData, showHe
                         setTotalSessions(metrics.ga4Sessions);
                         setLoadingGsc(false);
                     }
+
+                    const auditPages = await getAuditPages(latestAudit.id, 0, 8);
+                    const syncedPages = auditPages.pages
+                        .filter((page: any) => Number(page.gsc_clicks || 0) > 0 || Number(page.ga4_sessions || 0) > 0)
+                        .map((page: any) => ({
+                            keys: [page.url],
+                            clicks: Number(page.gsc_clicks || 0),
+                            impressions: Number(page.gsc_impressions || 0),
+                            position: Number(page.gsc_position || 0),
+                            sessions: Number(page.ga4_sessions || 0)
+                        }));
+                    setGscData(syncedPages);
                 } else {
                     setSiteHealthScore('—');
                 }
@@ -58,7 +70,7 @@ export const DashboardOverview = ({ openPanel, topMovers, competitorData, showHe
                 // Fallback to real-time fetch if no audit data exists or if specifically requested
                 if (loadingGsc) {
                     const integrationResult = await fetchProjectCrawlerIntegrations(activeProject.id);
-                    const gscConnection = integrationResult.connections.googleSearchConsole;
+                    const gscConnection = integrationResult.connections.google;
 
                     if (gscConnection && (gscConnection.selection?.siteUrl || gscConnection.metadata?.siteUrl)) {
                         console.info('[DashboardOverview] GSC fallback skipped because crawler integrations no longer expose client-side tokens.');
@@ -354,6 +366,12 @@ export const DashboardOverview = ({ openPanel, topMovers, competitorData, showHe
                         <h3 className="text-xl font-bold font-heading text-white">Google Search Console</h3>
                     </div>
                     <div className="bg-[#0F0F0F] rounded-2xl border border-white/5 p-4 flex-1 flex flex-col">
+                        {(totalClicks !== null || totalSessions !== null) && (
+                            <div className="mb-4 flex items-center gap-2 text-[10px] text-gray-400">
+                                {totalClicks !== null && <span className="rounded border border-white/10 bg-white/5 px-2 py-1">{totalClicks.toLocaleString()} clicks</span>}
+                                {totalSessions !== null && <span className="rounded border border-white/10 bg-white/5 px-2 py-1">{totalSessions.toLocaleString()} sessions</span>}
+                            </div>
+                        )}
                         {!gscData.length && loadingGsc ? (
                             <div className="flex-1 flex items-center justify-center text-xs text-gray-500 animate-pulse">Loading queries...</div>
                         ) : gscData.length === 0 ? (
@@ -373,7 +391,7 @@ export const DashboardOverview = ({ openPanel, topMovers, competitorData, showHe
                                                 <span className="text-[10px] text-brand-green bg-brand-green/10 px-1.5 py-0.5 rounded font-bold">{row.clicks} clicks</span>
                                                 <span className="text-[10px] text-gray-500 bg-white/5 px-1.5 py-0.5 rounded border border-white/5">{row.impressions} imp.</span>
                                             </div>
-                                            <span className="text-[10px] font-bold text-gray-400">Pos: {row.position.toFixed(1)}</span>
+                                            <span className="text-[10px] font-bold text-gray-400">{row.sessions > 0 ? `${row.sessions} sessions` : `Pos: ${row.position.toFixed(1)}`}</span>
                                         </div>
                                     </div>
                                 ))}

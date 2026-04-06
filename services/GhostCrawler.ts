@@ -1,4 +1,5 @@
 import { normalizeUrl } from './UrlUtils';
+import { crawlDb, upsertPages, type CrawledPage } from './CrawlDatabase';
 
 export interface GhostCrawlConfig {
     maxConcurrent?: number;
@@ -25,6 +26,9 @@ export class GhostCrawler {
     private runLoopActive = false;
     private baseHostname = '';
     private abortController: AbortController | null = null;
+    private currentSessionId: string | null = null;
+    private flushTimer: number | null = null;
+    private pendingPages: CrawledPage[] = [];
 
     constructor(private config: GhostCrawlConfig) {
         if (config.aiCategorization) {
@@ -71,8 +75,9 @@ export class GhostCrawler {
         this.emit('log', 'Ghost Engine stopped by user.', 'info');
     }
 
-    async start(startUrl: string) {
-        if (!startUrl) return;
+    async start(startUrl: string, sessionId: string) {
+        if (!startUrl || !sessionId) return;
+        this.currentSessionId = sessionId;
         this.startTime = Date.now();
         this.abortController = new AbortController();
 
@@ -121,6 +126,7 @@ export class GhostCrawler {
                     // Check isStopped BEFORE rescheduling — this is the key fix
                     if (this.isStopped) {
                         if (this.activeRequests === 0) {
+                            this.flushPendingPages();
                             this.emit('complete');
                         }
                         return;
@@ -128,6 +134,7 @@ export class GhostCrawler {
                     if (this.queue.length > 0) {
                         this.scheduleRun();
                     } else if (this.activeRequests === 0) {
+                        this.flushPendingPages();
                         this.emit('complete');
                     }
                 });
@@ -252,6 +259,9 @@ export class GhostCrawler {
             
             this.crawledCount++;
             this.maxDepthSeen = Math.max(this.maxDepthSeen, depth);
+            
+            // Queue for IndexedDB
+            this.queueForPersistence(pageData);
             this.emit('page', pageData);
 
             if (this.config.maxDepth === undefined || depth < this.config.maxDepth) {
@@ -353,5 +363,69 @@ export class GhostCrawler {
             maxDepthSeen: this.maxDepthSeen,
             rate: elapsed > 0 ? this.crawledCount / elapsed : 0
         });
+    }
+
+    private queueForPersistence(page: any) {
+        if (!this.currentSessionId) return;
+        
+        const dbPage: CrawledPage = {
+            ...page,
+            crawlId: this.currentSessionId,
+            gscClicks: null,
+            gscImpressions: null,
+            gscCtr: null,
+            gscPosition: null,
+            mainKeyword: null,
+            mainKwVolume: null,
+            mainKwPosition: null,
+            bestKeyword: null,
+            bestKwVolume: null,
+            bestKwPosition: null,
+            ga4Views: null,
+            ga4Sessions: null,
+            ga4Users: null,
+            ga4BounceRate: null,
+            ga4AvgSessionDuration: null,
+            ga4Conversions: null,
+            ga4ConversionRate: null,
+            ga4Revenue: null,
+            sessionsDelta: null,
+            isLosingTraffic: null,
+            urlRating: null,
+            referringDomains: null,
+            backlinks: null,
+            opportunityScore: null,
+            businessValueScore: null,
+            authorityScore: null,
+            recommendedAction: null,
+            searchIntent: page.searchIntent || null,
+            timestamp: Date.now()
+        };
+
+        this.pendingPages.push(dbPage);
+        
+        if (this.pendingPages.length >= 25) {
+            this.flushPendingPages();
+        } else if (!this.flushTimer) {
+            this.flushTimer = window.setTimeout(() => this.flushPendingPages(), 1000);
+        }
+    }
+
+    private async flushPendingPages() {
+        if (this.flushTimer) {
+            clearTimeout(this.flushTimer);
+            this.flushTimer = null;
+        }
+        
+        if (this.pendingPages.length === 0) return;
+        
+        const pagesToPush = [...this.pendingPages];
+        this.pendingPages = [];
+        
+        try {
+            await upsertPages(pagesToPush);
+        } catch (err) {
+            console.error('[GhostCrawler] Failed to flush pages to Dexie:', err);
+        }
     }
 }

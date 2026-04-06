@@ -3,10 +3,10 @@ import { useProject } from '../../services/ProjectContext';
 import { useAuth } from '../../services/AuthContext';
 import { Globe, Search, Tag, CheckCircle2, ChevronRight, PlayCircle, Loader2 } from 'lucide-react';
 import { IndustryType } from '../../services/app-types';
-import { useGoogleLogin } from '@react-oauth/google';
 import { upsertProjectCrawlerIntegration } from '../../services/CrawlerIntegrationsService';
 import { storeCrawlerIntegrationSecret } from '../../services/CrawlerSecretVault';
 import { addKeywords } from '../../services/DashboardDataService';
+import { exchangeGoogleCode, fetchGoogleEmail, openGoogleOAuthPopup } from '../../services/GoogleOAuthHelper';
 
 type Step = 1 | 2 | 3;
 
@@ -60,69 +60,58 @@ export const OnboardingWizard = ({ onComplete }: { onComplete?: () => void }) =>
         setLoading(false);
     };
 
-    const login = useGoogleLogin({
-        onSuccess: async (codeResponse) => {
-            if (createdProjectId && codeResponse.access_token) {
-                try {
-                    storeCrawlerIntegrationSecret(createdProjectId, 'googleSearchConsole', { accessToken: codeResponse.access_token });
-                    storeCrawlerIntegrationSecret(createdProjectId, 'googleAnalytics', { accessToken: codeResponse.access_token });
-                    await upsertProjectCrawlerIntegration(createdProjectId, {
-                        provider: 'googleSearchConsole',
-                        label: 'Google Search Console',
-                        status: 'connected',
-                        authType: 'oauth',
-                        ownership: 'project',
-                        connectedAt: Date.now(),
-                        scopes: ['webmasters.readonly', 'analytics.readonly'],
-                        credentials: {
-                            accessToken: codeResponse.access_token
-                        },
-                        selection: {
-                            siteUrl: gscUrl
-                        },
-                        metadata: {
-                            siteUrl: gscUrl
-                        },
-                        sync: {
-                            status: 'syncing',
-                            lastAttemptedAt: Date.now()
-                        }
-                    });
-
-                    await upsertProjectCrawlerIntegration(createdProjectId, {
-                        provider: 'googleAnalytics',
-                        label: 'Google Analytics 4',
-                        status: 'connected',
-                        authType: 'oauth',
-                        ownership: 'project',
-                        connectedAt: Date.now(),
-                        scopes: ['analytics.readonly'],
-                        credentials: {
-                            accessToken: codeResponse.access_token
-                        },
-                        selection: {},
-                        metadata: {},
-                        sync: {
-                            status: 'syncing',
-                            lastAttemptedAt: Date.now()
-                        }
-                    });
-                    setGscConnected(true);
-                    setTimeout(() => finishOnboarding(), 1500);
-                } catch (error) {
-                    console.error('Failed to save onboarding integration', error);
-                }
-            }
-        },
-        scope: 'https://www.googleapis.com/auth/webmasters.readonly https://www.googleapis.com/auth/analytics.readonly',
-    });
-
-    const handleConnectGSC = () => {
+    const handleConnectGSC = async () => {
         if (!gscUrl.trim()) {
             alert('Please enter your GSC Property URL first.');
             return;
         }
-        login();
+        if (!createdProjectId) return;
+
+        try {
+            const result = await openGoogleOAuthPopup();
+            if (!result) return;
+
+            const tokens = await exchangeGoogleCode(result.code, result.redirectUri);
+            if (!tokens?.access_token) return;
+
+            const email = tokens.email || await fetchGoogleEmail(tokens.access_token);
+            storeCrawlerIntegrationSecret(createdProjectId, 'google', {
+                accessToken: tokens.access_token,
+                access_token: tokens.access_token,
+                refreshToken: tokens.refresh_token || '',
+                refresh_token: tokens.refresh_token || ''
+            });
+
+            await upsertProjectCrawlerIntegration(createdProjectId, {
+                provider: 'google',
+                label: 'Google Search & Analytics',
+                status: 'connected',
+                authType: 'oauth',
+                ownership: 'project',
+                connectedAt: Date.now(),
+                accountLabel: email || 'Connected Account',
+                scopes: ['webmasters.readonly', 'analytics.readonly', 'userinfo.email'],
+                credentials: {
+                    accessToken: tokens.access_token,
+                    refreshToken: tokens.refresh_token || ''
+                },
+                selection: {
+                    siteUrl: gscUrl
+                },
+                metadata: {
+                    siteUrl: gscUrl,
+                    email: email || ''
+                },
+                sync: {
+                    status: 'idle',
+                    lastAttemptedAt: Date.now()
+                }
+            });
+            setGscConnected(true);
+            setTimeout(() => finishOnboarding(), 1500);
+        } catch (error) {
+            console.error('Failed to save onboarding integration', error);
+        }
     };
 
     const finishOnboarding = async () => {

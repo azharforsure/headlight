@@ -110,27 +110,32 @@ export const ALL_COLUMNS = [
     { key: 'crawlTimestamp', label: 'Crawl Timestamp', width: '200px', group: 'Advanced' },
     
     // Search Performance (GSC)
-    { key: 'gscClicks', label: 'GSC Clicks (3mo)', width: '130px', group: 'Search Console' },
-    { key: 'gscImpressions', label: 'GSC Impressions (3mo)', width: '160px', group: 'Search Console' },
-    { key: 'gscCtr', label: 'GSC CTR', width: '100px', group: 'Search Console' },
-    { key: 'gscPosition', label: 'GSC Avg Position', width: '140px', group: 'Search Console' },
+    { key: 'gscClicks', label: 'Clicks (30d)', width: '130px', group: 'Search Console' },
+    { key: 'gscImpressions', label: 'Impressions (30d)', width: '160px', group: 'Search Console' },
+    { key: 'gscCtr', label: 'CTR', width: '100px', group: 'Search Console' },
+    { key: 'gscPosition', label: 'Avg Position', width: '140px', group: 'Search Console' },
+    { key: 'mainKeyword', label: 'Main Keyword', width: '180px', group: 'Search Console' },
 
     // Analytics (GA4)
-    { key: 'ga4Views', label: 'GA4 Views (3mo)', width: '140px', group: 'Analytics' },
-    { key: 'ga4Sessions', label: 'GA4 Sessions (3mo)', width: '150px', group: 'Analytics' },
-    { key: 'ga4Users', label: 'GA4 Users (3mo)', width: '140px', group: 'Analytics' },
-    { key: 'ga4BounceRate', label: 'GA4 Bounce Rate', width: '140px', group: 'Analytics' },
-    { key: 'ga4AvgSessionDuration', label: 'GA4 Avg Session (s)', width: '160px', group: 'Analytics' },
+    { key: 'ga4Views', label: 'Views (30d)', width: '140px', group: 'Analytics' },
+    { key: 'ga4Sessions', label: 'Sessions (30d)', width: '150px', group: 'Analytics' },
+    { key: 'sessionsDelta', label: 'Traffic Δ (30d)', width: '140px', group: 'Analytics' },
+    { key: 'ga4Users', label: 'Users (30d)', width: '140px', group: 'Analytics' },
+    { key: 'ga4BounceRate', label: 'Bounce Rate', width: '140px', group: 'Analytics' },
+    { key: 'ga4Conversions', label: 'Conversions', width: '130px', group: 'Analytics' },
+    { key: 'ga4Revenue', label: 'Revenue', width: '120px', group: 'Analytics' },
+
+    // Backlinks & Authority
+    { key: 'authorityScore', label: 'Authority Score', width: '150px', group: 'Authority' },
+    { key: 'urlRating', label: 'URL Rating (UR)', width: '150px', group: 'Authority' },
+    { key: 'referringDomains', label: 'Ref. Domains', width: '160px', group: 'Authority' },
+    { key: 'backlinks', label: 'Backlinks', width: '150px', group: 'Authority' },
 
     // Strategic Decisions
     { key: 'opportunityScore', label: 'Opportunity Score', width: '150px', group: 'Strategic' },
     { key: 'businessValueScore', label: 'Business Value Score', width: '160px', group: 'Strategic' },
-    { key: 'authorityScore', label: 'Authority Score', width: '140px', group: 'Strategic' },
-    { key: 'trafficQuality', label: 'Traffic Quality', width: '130px', group: 'Strategic' },
-    { key: 'engagementRisk', label: 'Engagement Risk', width: '140px', group: 'Strategic' },
-    { key: 'recommendedAction', label: 'Recommended Action', width: '190px', group: 'Strategic' },
-    { key: 'insightConfidence', label: 'Insight Confidence', width: '150px', group: 'Strategic' },
-    { key: 'dataCoverage', label: 'Data Coverage', width: '130px', group: 'Strategic' },
+    { key: 'recommendedAction', label: 'Recommended Action', width: '220px', group: 'Strategic' },
+    { key: 'isLosingTraffic', label: 'Traffic Alert', width: '130px', group: 'Strategic' },
 ];
 
 export const SEO_ISSUES_TAXONOMY = [
@@ -227,10 +232,10 @@ export const SEO_ISSUES_TAXONOMY = [
         category: 'Strategic Insights',
         issues: [
             { id: 'low_ctr', label: 'High Impressions, Low CTR', type: 'warning', condition: (p: any) => p.gscImpressions > 1000 && p.gscCtr < 0.01 },
-            { id: 'traffic_low_engagement', label: 'Traffic with Low Engagement', type: 'warning', condition: (p: any) => p.ga4Sessions > 100 && p.ga4BounceRate > 0.65 },
-            { id: 'protect_winner', label: 'Protect High-Value Pages', type: 'notice', condition: (p: any) => p.recommendedAction === 'Protect Winner' },
-            { id: 'high_equity_low_links', label: 'High Equity, Low Internal Links', type: 'notice', condition: (p: any) => p.linkEquity > 7 && p.inlinks < 5 },
-            { id: 'wrong_intent', label: 'Possible Search Intent Mismatch', type: 'notice', condition: (p: any) => p.searchIntent === 'Commercial' && p.wordCount < 500 },
+            { id: 'traffic_drop', label: 'Declining Traffic (>10% drop)', type: 'error', condition: (p: any) => p.isLosingTraffic === true },
+            { id: 'high_value_low_engagement', label: 'High Value, Low Engagement', type: 'warning', condition: (p: any) => p.businessValueScore > 70 && p.ga4BounceRate > 0.7 },
+            { id: 'striking_distance', label: 'Striking Distance Opportunity', type: 'notice', condition: (p: any) => p.opportunityScore > 70 },
+            { id: 'thin_content_high_auth', label: 'Thin Content with High Authority', type: 'warning', condition: (p: any) => p.wordCount < 300 && p.authorityScore > 50 },
         ]
     },
     {

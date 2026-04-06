@@ -9,12 +9,13 @@ import { useOptionalProject } from '../services/ProjectContext';
 import { calculateInternalPageRank, calculatePredictiveScore } from '../services/StrategicIntelligence';
 import { persistCrawlResults, syncCrawlStatus } from '../services/CrawlPersistenceService';
 import { syncFromCrawl } from '../services/DashboardDataService';
-import {
+import { 
     CrawlerIntegrationConnection,
     CrawlerIntegrationProvider,
     fetchProjectCrawlerIntegrations,
     getAnonymousCrawlerIntegrations,
     promoteAnonymousCrawlerIntegrationsToProject,
+    replaceProjectCrawlerIntegrations,
     removeProjectCrawlerIntegration,
     saveAnonymousCrawlerIntegrations,
     saveProjectCachedCrawlerIntegrations,
@@ -28,7 +29,14 @@ import {
     storeCrawlerIntegrationSecret
 } from '../services/CrawlerSecretVault';
 import { GhostCrawler } from '../services/GhostCrawler';
+import { GscClientService } from '../services/GscClientService';
+import { Ga4ClientService } from '../services/Ga4ClientService';
+import { BacklinkClientService } from '../services/BacklinkClientService';
+import { PostCrawlEnrichment } from '../services/PostCrawlEnrichment';
 import { initializeDatabase } from '../services/turso';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { crawlDb } from '../services/CrawlDatabase';
+import { autoDetectGoogleProperties } from '../services/GoogleAutoDetect';
 
 export interface CrawlerContextType {
     crawlingMode: 'spider' | 'list' | 'sitemap';
@@ -42,7 +50,6 @@ export interface CrawlerContextType {
     isCrawling: boolean;
     setIsCrawling: (s: boolean) => void;
     pages: any[];
-    setPages: (p: any[]) => void;
     logs: any[];
     setLogs: (l: any[]) => void;
     crawlStartTime: number | null;
@@ -97,6 +104,8 @@ export interface CrawlerContextType {
     setLeftSidebarWidth: (w: number) => void;
     auditSidebarWidth: number;
     setAuditSidebarWidth: (w: number) => void;
+    crawlDb: typeof crawlDb;
+    runFullEnrichment: () => Promise<void>;
     detailsHeight: number;
     setDetailsHeight: (h: number) => void;
     gridScrollOffset: number;
@@ -138,6 +147,11 @@ export interface CrawlerContextType {
     formatBytes: (b: any) => string;
     handleExport: () => void;
     handleExportRawDB: () => Promise<void>;
+    handleImport: (file: File) => Promise<void>;
+    detectedGscSite: string | null;
+    setDetectedGscSite: (s: string | null) => void;
+    detectedGa4Property: string | null;
+    setDetectedGa4Property: (p: string | null) => void;
     filteredPages: any[];
     handleSort: (k: string) => void;
     graphData: any;
@@ -221,9 +235,18 @@ const DEFAULT_VISIBLE_COLUMNS = [
 const getHashRouteSearchParams = () => {
     if (typeof window === 'undefined') return new URLSearchParams();
 
+    const params = new URLSearchParams(window.location.search || '');
     const hash = window.location.hash || '';
     const queryIndex = hash.indexOf('?');
-    return new URLSearchParams(queryIndex >= 0 ? hash.slice(queryIndex + 1) : '');
+
+    if (queryIndex >= 0) {
+        const hashParams = new URLSearchParams(hash.slice(queryIndex + 1));
+        hashParams.forEach((value, key) => {
+            params.set(key, value);
+        });
+    }
+
+    return params;
 };
 
 const replaceHashRouteSearchParams = (mutate: (params: URLSearchParams) => void) => {
@@ -256,6 +279,27 @@ const normalizeComparableText = (value: any) => {
 };
 
 const clampScore = (value: number) => Math.max(0, Math.min(100, Math.round(value)));
+
+const mergePagesByUrl = (existingPages: any[], nextPages: any[]) => {
+    const pageMap = new Map<string, any>();
+
+    existingPages.forEach((page) => {
+        if (page?.url) pageMap.set(page.url, page);
+    });
+
+    nextPages.forEach((page) => {
+        if (!page?.url) return;
+        pageMap.set(page.url, {
+            ...(pageMap.get(page.url) || {}),
+            ...page
+        });
+    });
+
+    return Array.from(pageMap.values());
+};
+
+const hasOwn = (value: Record<string, any>, key: string) =>
+    Object.prototype.hasOwnProperty.call(value, key);
 
 const derivePageIntelligence = (page: any) => {
     const impressions = Number(page.gscImpressions || 0);
@@ -349,7 +393,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
     
     // Engine States
     const [isCrawling, setIsCrawling] = useState(false);
-    const [pages, setPages] = useState<any[]>([]);
+    
     const [logs, setLogs] = useState<{
         msg: string;
         type: 'info' | 'warn' | 'error' | 'success';
@@ -426,6 +470,15 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
     const [diffResult, setDiffResult] = useState<any | null>(null);
     const [isLoadingHistory, setIsLoadingHistory] = useState(false);
     const [analysisPages, setAnalysisPages] = useState<any[]>([]);
+    const [detectedGscSite, setDetectedGscSite] = useState<string | null>(null);
+    const [detectedGa4Property, setDetectedGa4Property] = useState<string | null>(null);
+
+    // Live query for pages from IndexedDB (moved after currentSessionId)
+    const pages = useLiveQuery(
+        () => currentSessionId ? crawlDb.pages.where('crawlId').equals(currentSessionId).toArray() : Promise.resolve([]),
+        [currentSessionId],
+        [] as any[]
+    );
 
     // ─── Auth-aware states (isAuthenticated from real session above) ───
     const trialPagesLimit = 100;
@@ -496,7 +549,9 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
     const currentSessionIdRef = useRef<string | null>(null);
     const integrationsHydratedRef = useRef(false);
     const ghostCrawlerRef = useRef<GhostCrawler | null>(null);
-    const integrationSecretScope = getCrawlerSecretScope(activeProject?.id || null);
+    const routeProjectId = getHashRouteSearchParams().get('projectId');
+    const integrationProjectId = activeProject?.id || routeProjectId || null;
+    const integrationSecretScope = getCrawlerSecretScope(integrationProjectId);
 
     const buildEntryUrls = useCallback(() => {
         if (crawlingMode === 'list') {
@@ -552,8 +607,8 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
             setIntegrationsLoading(true);
 
             try {
-                if (isAuthenticated && activeProject?.id) {
-                    const promotion = await promoteAnonymousCrawlerIntegrationsToProject(activeProject.id);
+                if (isAuthenticated && integrationProjectId) {
+                    const promotion = await promoteAnonymousCrawlerIntegrationsToProject(integrationProjectId);
                     if (cancelled) return;
 
                     if (promotion.promoted) {
@@ -561,12 +616,12 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
                         setIntegrationsSource('project');
                     }
 
-                    const result = await fetchProjectCrawlerIntegrations(activeProject.id);
+                    const result = await fetchProjectCrawlerIntegrations(integrationProjectId);
                     if (cancelled) return;
 
                     setIntegrationConnections(result.connections);
                     setIntegrationsSource(result.source);
-                    saveProjectCachedCrawlerIntegrations(activeProject.id, result.connections);
+                    saveProjectCachedCrawlerIntegrations(integrationProjectId, result.connections);
                 } else {
                     const anonymousConnections = getAnonymousCrawlerIntegrations();
                     if (cancelled) return;
@@ -592,33 +647,121 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         return () => {
             cancelled = true;
         };
-    }, [isAuthenticated, activeProject?.id]);
+    }, [isAuthenticated, integrationProjectId]);
 
     useEffect(() => {
-        const gscSecrets = getCrawlerIntegrationSecret(integrationSecretScope, 'googleSearchConsole');
+        const googleSecrets = getCrawlerIntegrationSecret(integrationSecretScope, 'google');
         const bingSecrets = getCrawlerIntegrationSecret(integrationSecretScope, 'bingWebmaster');
-        const ahrefsSecrets = getCrawlerIntegrationSecret(integrationSecretScope, 'ahrefs');
-        const semrushSecrets = getCrawlerIntegrationSecret(integrationSecretScope, 'semrush');
+        
         setConfig((prev: any) => ({
             ...prev,
-            gscApiKey: gscSecrets.accessToken || prev.gscApiKey || '',
-            gscRefreshToken: gscSecrets.refreshToken || prev.gscRefreshToken || '',
-            gscSiteUrl: integrationConnections.googleSearchConsole?.selection?.siteUrl || integrationConnections.googleSearchConsole?.metadata?.siteUrl || prev.gscSiteUrl || '',
-            ga4PropertyId: integrationConnections.googleAnalytics?.selection?.propertyId || integrationConnections.googleAnalytics?.metadata?.propertyId || prev.ga4PropertyId || '',
+            gscApiKey: googleSecrets.accessToken || googleSecrets.access_token || prev.gscApiKey || '',
+            gscRefreshToken: googleSecrets.refreshToken || googleSecrets.refresh_token || prev.gscRefreshToken || '',
+            gscSiteUrl: integrationConnections.google?.sync?.siteUrl || integrationConnections.google?.selection?.siteUrl || prev.gscSiteUrl || '',
+            ga4PropertyId: integrationConnections.google?.sync?.propertyId || integrationConnections.google?.selection?.propertyId || prev.ga4PropertyId || '',
             bingAccessToken: bingSecrets.accessToken || prev.bingAccessToken || '',
-            ahrefsToken: ahrefsSecrets.apiToken || prev.ahrefsToken || '',
-            semrushApiKey: semrushSecrets.apiKey || prev.semrushApiKey || ''
         }));
-    }, [integrationConnections, integrationSecretScope]);
+    }, [integrationConnections.google, integrationConnections.bingWebmaster, integrationSecretScope]);
+
+    // ─── Legacy Migration Effect ─────────────────────
+    useEffect(() => {
+        if (!integrationsHydratedRef.current) return;
+        
+        const legacyGsc = (integrationConnections as any)['googleSearchConsole'];
+        const legacyGa4 = (integrationConnections as any)['googleAnalytics'];
+
+        if (legacyGsc || legacyGa4) {
+            setIntegrationConnections((prev: any) => {
+                const next = { ...prev };
+                const googleConnection: any = next.google || {
+                    provider: 'google',
+                    label: 'Google Unified',
+                    status: 'connected',
+                    authType: 'oauth',
+                    ownership: activeProject?.id ? 'project' : 'anonymous',
+                    connectedAt: Date.now(),
+                    accountLabel: legacyGsc?.accountLabel || legacyGa4?.accountLabel || 'Migrated Account',
+                    sync: { status: 'idle' }
+                };
+
+                if (legacyGsc?.selection?.siteUrl) {
+                    googleConnection.sync = { ...googleConnection.sync, siteUrl: legacyGsc.selection.siteUrl };
+                }
+                if (legacyGa4?.selection?.propertyId) {
+                    googleConnection.sync = { ...googleConnection.sync, propertyId: legacyGa4.selection.propertyId };
+                }
+
+                next.google = googleConnection;
+                delete next['googleSearchConsole'];
+                delete next['googleAnalytics'];
+                
+                // Migrate secrets too
+                const gscSecrets = getCrawlerIntegrationSecret(integrationSecretScope, 'googleSearchConsole' as any);
+                const ga4Secrets = getCrawlerIntegrationSecret(integrationSecretScope, 'googleAnalytics' as any);
+                const accessToken = gscSecrets?.accessToken || gscSecrets?.access_token || ga4Secrets?.accessToken || ga4Secrets?.access_token;
+                const refreshToken = gscSecrets?.refreshToken || gscSecrets?.refresh_token || ga4Secrets?.refreshToken || ga4Secrets?.refresh_token;
+                if (accessToken || refreshToken) {
+                    storeCrawlerIntegrationSecret(integrationSecretScope, 'google', {
+                        accessToken: accessToken || '',
+                        access_token: accessToken || '',
+                        refreshToken: refreshToken || '',
+                        refresh_token: refreshToken || ''
+                    });
+                }
+
+                return next;
+            });
+
+            if (integrationProjectId) {
+                const migratedConnections = {
+                    ...integrationConnections,
+                    google: {
+                        provider: 'google',
+                        label: legacyGsc?.label || legacyGa4?.label || 'Google Search & Analytics',
+                        status: 'connected',
+                        authType: 'oauth',
+                        ownership: 'project' as const,
+                        connectedAt: Date.now(),
+                        accountLabel: legacyGsc?.accountLabel || legacyGa4?.accountLabel || 'Migrated Account',
+                        selection: {
+                            siteUrl: legacyGsc?.selection?.siteUrl || integrationConnections.google?.selection?.siteUrl,
+                            propertyId: legacyGa4?.selection?.propertyId || integrationConnections.google?.selection?.propertyId
+                        },
+                        sync: {
+                            ...(integrationConnections.google?.sync || { status: 'idle' }),
+                            siteUrl: legacyGsc?.selection?.siteUrl || integrationConnections.google?.sync?.siteUrl,
+                            propertyId: legacyGa4?.selection?.propertyId || integrationConnections.google?.sync?.propertyId
+                        },
+                        hasCredentials: Boolean(
+                            getCrawlerIntegrationSecret(integrationSecretScope, 'google' as any).accessToken ||
+                            getCrawlerIntegrationSecret(integrationSecretScope, 'google' as any).access_token ||
+                            getCrawlerIntegrationSecret(integrationSecretScope, 'googleSearchConsole' as any).accessToken ||
+                            getCrawlerIntegrationSecret(integrationSecretScope, 'googleSearchConsole' as any).access_token ||
+                            getCrawlerIntegrationSecret(integrationSecretScope, 'googleAnalytics' as any).accessToken ||
+                            getCrawlerIntegrationSecret(integrationSecretScope, 'googleAnalytics' as any).access_token
+                        ),
+                        credentials: {}
+                    }
+                } as Partial<Record<CrawlerIntegrationProvider, CrawlerIntegrationConnection>>;
+
+                delete (migratedConnections as any).googleSearchConsole;
+                delete (migratedConnections as any).googleAnalytics;
+
+                replaceProjectCrawlerIntegrations(integrationProjectId, migratedConnections).catch((error) => {
+                    console.error('Failed to persist migrated Google integration:', error);
+                });
+            }
+        }
+    }, [integrationConnections, integrationSecretScope, integrationProjectId]);
 
     useEffect(() => {
         if (autoRestoreAttemptedRef.current || !hasHydrated || isLoadingHistory) return;
-        if (isAuthenticated && activeProject?.id) {
-            saveProjectCachedCrawlerIntegrations(activeProject.id, integrationConnections);
+        if (isAuthenticated && integrationProjectId) {
+            saveProjectCachedCrawlerIntegrations(integrationProjectId, integrationConnections);
             return;
         }
         saveAnonymousCrawlerIntegrations(integrationConnections);
-    }, [integrationConnections, isAuthenticated, activeProject?.id]);
+    }, [integrationConnections, isAuthenticated, integrationProjectId]);
 
     useEffect(() => {
         if (typeof window === 'undefined') return;
@@ -872,45 +1015,70 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
 
         if (updates.length === 0) return;
 
-        // INCREMENTAL PERSISTENCE
-        if (currentSessionId) {
-            upsertPages(currentSessionId, updates).catch(console.error);
+        const existingPageMap = new Map<string, any>(
+            pagesRef.current
+                .filter((page) => page?.url)
+                .map((page) => [page.url, page])
+        );
+
+        // Socket UPDATE_PAGE events are often partial payloads. Persist the
+        // fully merged record so late inlink/derived updates do not erase the
+        // fields captured earlier in PAGE_CRAWLED.
+        const mergedUpdates = updates.map((payload) => {
+            const existingPage = existingPageMap.get(payload.url) || {};
+            const mergedPage = {
+                ...existingPage,
+                ...payload,
+                crawlId: currentSessionIdRef.current || existingPage.crawlId || '',
+                gscClicks: hasOwn(payload, 'gscClicks') ? payload.gscClicks : existingPage.gscClicks ?? null,
+                gscImpressions: hasOwn(payload, 'gscImpressions') ? payload.gscImpressions : existingPage.gscImpressions ?? null,
+                gscCtr: hasOwn(payload, 'gscCtr') ? payload.gscCtr : existingPage.gscCtr ?? null,
+                gscPosition: hasOwn(payload, 'gscPosition') ? payload.gscPosition : existingPage.gscPosition ?? null,
+                mainKeyword: hasOwn(payload, 'mainKeyword') ? payload.mainKeyword : existingPage.mainKeyword ?? null,
+                mainKwVolume: hasOwn(payload, 'mainKwVolume') ? payload.mainKwVolume : existingPage.mainKwVolume ?? null,
+                mainKwPosition: hasOwn(payload, 'mainKwPosition') ? payload.mainKwPosition : existingPage.mainKwPosition ?? null,
+                bestKeyword: hasOwn(payload, 'bestKeyword') ? payload.bestKeyword : existingPage.bestKeyword ?? null,
+                bestKwVolume: hasOwn(payload, 'bestKwVolume') ? payload.bestKwVolume : existingPage.bestKwVolume ?? null,
+                bestKwPosition: hasOwn(payload, 'bestKwPosition') ? payload.bestKwPosition : existingPage.bestKwPosition ?? null,
+                ga4Views: hasOwn(payload, 'ga4Views') ? payload.ga4Views : existingPage.ga4Views ?? null,
+                ga4Sessions: hasOwn(payload, 'ga4Sessions') ? payload.ga4Sessions : existingPage.ga4Sessions ?? null,
+                ga4Users: hasOwn(payload, 'ga4Users') ? payload.ga4Users : existingPage.ga4Users ?? null,
+                ga4BounceRate: hasOwn(payload, 'ga4BounceRate') ? payload.ga4BounceRate : existingPage.ga4BounceRate ?? null,
+                ga4AvgSessionDuration: hasOwn(payload, 'ga4AvgSessionDuration') ? payload.ga4AvgSessionDuration : existingPage.ga4AvgSessionDuration ?? null,
+                ga4Conversions: hasOwn(payload, 'ga4Conversions') ? payload.ga4Conversions : existingPage.ga4Conversions ?? null,
+                ga4ConversionRate: hasOwn(payload, 'ga4ConversionRate') ? payload.ga4ConversionRate : existingPage.ga4ConversionRate ?? null,
+                ga4Revenue: hasOwn(payload, 'ga4Revenue') ? payload.ga4Revenue : existingPage.ga4Revenue ?? null,
+                sessionsDelta: hasOwn(payload, 'sessionsDelta') ? payload.sessionsDelta : existingPage.sessionsDelta ?? null,
+                isLosingTraffic: hasOwn(payload, 'isLosingTraffic') ? payload.isLosingTraffic : existingPage.isLosingTraffic ?? null,
+                urlRating: hasOwn(payload, 'urlRating') ? payload.urlRating : existingPage.urlRating ?? null,
+                referringDomains: hasOwn(payload, 'referringDomains') ? payload.referringDomains : existingPage.referringDomains ?? null,
+                backlinks: hasOwn(payload, 'backlinks') ? payload.backlinks : existingPage.backlinks ?? null,
+                opportunityScore: calculatePredictiveScore({ ...existingPage, ...payload }),
+                timestamp: Date.now()
+            };
+
+            existingPageMap.set(payload.url, mergedPage);
+            return mergedPage;
+        });
+
+        // Keep the in-memory session snapshot in sync immediately so completion,
+        // scoring, and checkpoint saves see the full crawl before Dexie/liveQuery catches up.
+        pagesRef.current = mergePagesByUrl(pagesRef.current, mergedUpdates);
+
+        // Persist to Dexie (IndexedDB)
+        if (currentSessionIdRef.current) {
+            crawlDb.pages.bulkPut(mergedUpdates).catch(err => {
+                console.error('[CrawlDB] Failed to batch put pages:', err);
+            });
         }
 
-        startTransition(() => {
-            setPages(prev => {
-                const next = [...prev];
-                const indexByUrl = new Map(next.map((page, index) => [page.url, index]));
-
-                updates.forEach((payload: any) => {
-                    // Enrich payload with Strategic Intelligence Health Score
-                    const enrichedPayload = {
-                        ...payload,
-                        healthScore: calculatePredictiveScore(payload)
-                    };
-
-                    const existingIndex = indexByUrl.get(payload.url);
-                    if (existingIndex === undefined) {
-                        if (next.length < MAX_IN_MEMORY_PAGES) {
-                            indexByUrl.set(payload.url, next.length);
-                            next.push(enrichedPayload);
-                        }
-                        return;
-                    }
-
-                    next[existingIndex] = { ...next[existingIndex], ...enrichedPayload };
-                });
-
-                return next;
-            });
-
-            setSelectedPage(prev => {
-                if (!prev) return prev;
-                const selectedUpdate = updates.find(update => update.url === prev.url);
-                return selectedUpdate ? { ...prev, ...selectedUpdate } : prev;
-            });
+        // Update selected page if it was part of the batch
+        setSelectedPage(prev => {
+            if (!prev) return prev;
+            const selectedUpdate = mergedUpdates.find(update => update.url === prev.url);
+            return selectedUpdate ? { ...prev, ...selectedUpdate } : prev;
         });
-    }, [currentSessionId]);
+    }, []);
 
     const queuePageUpdate = useCallback((payload: any) => {
         const existing = pendingPageUpdatesRef.current.get(payload.url) || {};
@@ -951,7 +1119,6 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
 
         closeCrawlerSocket();
         setIsCrawling(false);
-        setPages([]);
         setAnalysisPages([]);
         setLogs([]);
         setSelectedPage(null);
@@ -1069,7 +1236,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
             currentSessionIdRef.current = sessionId;
             setCurrentSessionId(sessionId);
             setCrawlStartTime(Date.now());
-            setPages([]); setLogs([]); setSelectedPage(null); setSelectedRows(new Set());
+            setLogs([]); setSelectedPage(null); setSelectedRows(new Set());
             setActiveMacro('all'); setSearchQuery('');
             setRobotsTxt(null); setSitemapData(null);
             setDiffResult(null); // Clear any old diff
@@ -1180,7 +1347,8 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
             });
 
             ghost.on('page', (pageData: any) => {
-                queuePageUpdate(pageData);
+                // UI Instant Reaction: Still queue for the grid, though Ghost handles persistence now
+                queuePageUpdate(pageData); 
                 const now = Date.now();
                 if (now - lastFetchLogAtRef.current > 1200) {
                     lastFetchLogAtRef.current = now;
@@ -1215,20 +1383,20 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
                 const completedPages = pagesRef.current;
                 if (completedPages.length > 0) {
                     addLog('Calculating Strategic PageRank & Health Scores...', 'info', { source: 'analysis' });
-                    startTransition(() => {
-                        const ranks = calculateInternalPageRank(completedPages);
-                        setPages(prev => {
-                            const updated = prev.map(p => {
-                                const internalPageRank = ranks[p.url] || 0;
-                                const updatedPage = { ...p, internalPageRank };
-                                return { ...updatedPage, healthScore: calculatePredictiveScore(updatedPage) };
-                            });
-                            // Final Persistence Pass
-                            upsertPages(currentSessionIdRef.current || sessionId || '', updated);
-                            addLog('Strategic analysis complete.', 'success', { source: 'analysis' });
-                            return updated;
-                        });
+                    const ranks = calculateInternalPageRank(completedPages);
+                    const updated = completedPages.map(p => {
+                        const internalPageRank = ranks[p.url] || 0;
+                        const updatedPage = { ...p, internalPageRank };
+                        return { ...updatedPage, healthScore: calculatePredictiveScore(updatedPage) };
                     });
+                    
+                    // Final Persistence Pass to Dexie
+                    if (currentSessionIdRef.current) {
+                        crawlDb.pages.bulkPut(updated).catch(err => {
+                            console.error('[CrawlDB] Failed to save PageRank updates:', err);
+                        });
+                    }
+                    addLog('Strategic analysis complete.', 'success', { source: 'analysis' });
 
                     // Persist crawl results to Turso for Dashboard (Ghost Engine path)
                     if (activeProject?.id) {
@@ -1282,7 +1450,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
                 setIsCrawling(false);
             });
 
-            ghost.start(urlsToScan[0]);
+            ghost.start(urlsToScan[0], sessionId);
             setCrawlRuntime(prev => ({ ...prev, stage: 'crawling' }));
             return;
         }
@@ -1292,7 +1460,56 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
             const ws = new WebSocket(wsUrl);
             wsRef.current = ws;
 
-            ws.onopen = () => {
+            ws.onopen = async () => {
+                let currentGsc = config.gscSiteUrl;
+                let currentGa4 = config.ga4PropertyId;
+
+                // Auto-detect properties if Google is connected but not configured
+                const googleConnection = integrationConnections.google;
+                const googleSecrets = googleConnection ? getCrawlerIntegrationSecret(integrationSecretScope, 'google') : null;
+
+                const googleAccessToken = googleSecrets?.accessToken || googleSecrets?.access_token;
+                const googleRefreshToken = googleSecrets?.refreshToken || googleSecrets?.refresh_token;
+
+                if (googleConnection && !googleAccessToken) {
+                    addLog('Google connection metadata is present, but no stored access token was found. Reconnect Google to sync GSC/GA4.', 'warn', { source: 'system' });
+                }
+
+                if (googleAccessToken && (!currentGsc || !currentGa4)) {
+                    addLog('Auto-detecting Google properties for this domain...', 'info');
+                    const detected = await autoDetectGoogleProperties(googleAccessToken, urlsToScan[0]);
+                    if (detected.gscSiteUrl && !currentGsc) {
+                        currentGsc = detected.gscSiteUrl;
+                        setDetectedGscSite(currentGsc);
+                        addLog(`Auto-detected GSC property: ${currentGsc}`, 'success');
+                    }
+                    if (detected.ga4PropertyId && !currentGa4) {
+                        currentGa4 = detected.ga4PropertyId;
+                        setDetectedGa4Property(currentGa4);
+                        addLog(`Auto-detected GA4 property: ${detected.ga4PropertyName || currentGa4}`, 'success');
+                    }
+
+                    // PERSIST the selection so it remains visible in the Integrations tab
+                    if ((detected.gscSiteUrl && !config.gscSiteUrl) || (detected.ga4PropertyId && !config.ga4PropertyId)) {
+                        saveIntegrationConnection('google', {
+                            label: 'Google (GSC/GA4)',
+                            status: 'connected',
+                            authType: 'oauth',
+                            selection: {
+                                siteUrl: currentGsc || undefined,
+                                propertyId: currentGa4 || undefined
+                            }
+                        });
+                    }
+                }
+
+                if (googleAccessToken && !currentGsc) {
+                    addLog('GSC sync will be skipped because no Search Console property is selected.', 'warn', { source: 'system' });
+                }
+                if (googleAccessToken && !currentGa4) {
+                    addLog('GA4 sync will be skipped because no Analytics property ID is selected.', 'warn', { source: 'system' });
+                }
+
                 addLog("Connected. Starting scan...", 'success', { source: 'system' });
                 setCrawlRuntime(prev => ({ ...prev, stage: 'crawling' }));
                 ws.send(JSON.stringify({ 
@@ -1319,12 +1536,23 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
                         authPass: config.authPass,
                         fetchWebVitals: config.fetchWebVitals,
                         generateEmbeddings: config.generateEmbeddings,
-                        gscApiKey: getCrawlerIntegrationSecret(integrationSecretScope, 'googleSearchConsole').accessToken || config.gscApiKey,
-                        gscSiteUrl: config.gscSiteUrl,
-                        ga4PropertyId: config.ga4PropertyId,
-                        bingAccessToken: getCrawlerIntegrationSecret(integrationSecretScope, 'bingWebmaster').accessToken || config.bingAccessToken,
-                        ahrefsToken: getCrawlerIntegrationSecret(integrationSecretScope, 'ahrefs').apiToken || config.ahrefsToken,
-                        semrushApiKey: getCrawlerIntegrationSecret(integrationSecretScope, 'semrush').apiKey || config.semrushApiKey
+                        
+                        // Unified Google & Other Integrations
+                        google: {
+                            accessToken: googleAccessToken || config.gscApiKey,
+                            refreshToken: googleRefreshToken || config.gscRefreshToken,
+                            gscSiteUrl: currentGsc,
+                            ga4PropertyId: currentGa4
+                        },
+                        bing: {
+                            accessToken: getCrawlerIntegrationSecret(integrationSecretScope, 'bingWebmaster').accessToken || config.bingAccessToken
+                        },
+                        uploads: {
+                            backlinks: integrationConnections.backlinkUpload?.uploadData,
+                            keywords: integrationConnections.keywordUpload?.uploadData,
+                            sitemap: integrationConnections.sitemapUpload?.uploadData,
+                            contentInventory: integrationConnections.contentInventory?.uploadData
+                        }
                     } 
                 }));
             };
@@ -1412,7 +1640,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
                     addLog(`${provider} access token refreshed.`, 'info', { source: 'system' });
                     mergeCrawlerIntegrationSecret(integrationSecretScope, provider as CrawlerIntegrationProvider, { accessToken });
                     setConfig((prev: any) => {
-                        if (provider === 'googleSearchConsole') return { ...prev, gscApiKey: accessToken };
+                        if (provider === 'google') return { ...prev, gscApiKey: accessToken };
                         if (provider === 'bingWebmaster') return { ...prev, bingAccessToken: accessToken };
                         return prev;
                     });
@@ -1441,7 +1669,16 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
                 }
                 else if (data.type === 'CRAWL_FINISHED') { 
                     flushPendingPageUpdates();
-                    addLog(`Scan complete. Found ${data.payload.totalPages} URLs.`, 'success', { source: 'crawler' }); 
+                    const successCount = Number(data.payload?.successfulPages ?? data.payload?.payloadPages ?? pagesRef.current.length);
+                    const foundCount = Number(data.payload?.totalPages ?? successCount);
+                    const failedCount = Number(data.payload?.failedPages ?? Math.max(0, foundCount - successCount));
+                    addLog(`Scan complete. Found ${foundCount} URLs; captured crawl data for ${successCount}; failed ${failedCount}.`, 'success', { source: 'crawler' }); 
+                    if (Array.isArray(data.payload?.failedUrlSamples)) {
+                        data.payload.failedUrlSamples.forEach((entry: any) => {
+                            if (!entry?.url || !entry?.message) return;
+                            addLog(`Failed ${entry.url}: ${entry.message}`, 'error', { source: 'crawler', url: entry.url, detail: entry.message });
+                        });
+                    }
                     setIsCrawling(false); 
                     setCrawlStartTime(null); 
                     setCrawlRuntime(prev => ({ ...prev, stage: 'completed', queued: 0, activeWorkers: 0, workerUtilization: 0 }));
@@ -1461,20 +1698,20 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
                     const completedPages = pagesRef.current;
                     if (completedPages.length > 0) {
                         addLog('Calculating Strategic PageRank & Health Scores...', 'info', { source: 'analysis' });
-                        startTransition(() => {
-                            const ranks = calculateInternalPageRank(completedPages);
-                            setPages(prev => {
-                                const updated = prev.map(p => {
-                                    const internalPageRank = ranks[p.url] || 0;
-                                    const updatedPage = { ...p, internalPageRank };
-                                    return { ...updatedPage, healthScore: calculatePredictiveScore(updatedPage) };
-                                });
-                                // Final Persistence Pass to Turso for Cloud Sync
-                                upsertPages(currentSessionIdRef.current || sessionId || '', updated);
-                                addLog('Strategic analysis complete.', 'success', { source: 'analysis' });
-                                return updated;
-                            });
+                        const ranks = calculateInternalPageRank(completedPages);
+                        const updated = completedPages.map(p => {
+                            const internalPageRank = ranks[p.url] || 0;
+                            const updatedPage = { ...p, internalPageRank };
+                            return { ...updatedPage, healthScore: calculatePredictiveScore(updatedPage) };
                         });
+                        
+                        // Final Persistence Pass to Dexie
+                        if (currentSessionIdRef.current) {
+                            crawlDb.pages.bulkPut(updated).catch(err => {
+                                console.error('[CrawlDB] Failed to save PageRank updates:', err);
+                            });
+                        }
+                        addLog('Strategic analysis complete.', 'success', { source: 'analysis' });
                     }
 
                     // Auto-save completed session
@@ -1952,6 +2189,38 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         return list;
     }, [pagesWithDerivedSignals, activeCategory, deferredSearchQuery, activeMacro, sortConfig, MACRO_FILTERS, ignoredUrls, rootHostname, duplicateTitleSet, duplicateMetaDescSet]);
 
+    const handleImport = async (file: File) => {
+        try {
+            const text = await file.text();
+            const data = JSON.parse(text);
+            
+            if (!data.sessionId || !Array.isArray(data.pages)) {
+                throw new Error('Invalid crawl data format.');
+            }
+
+            // Save session meta
+            await saveSession({
+                sessionId: data.sessionId,
+                url: data.url || data.pages[0]?.url || 'Imported Browse',
+                timestamp: data.timestamp || Date.now(),
+                pageCount: data.pages.length,
+                status: 'completed',
+                config: data.config || {}
+            } as any);
+
+            // Save pages to IndexedDB
+            await upsertPages(data.sessionId, data.pages.map((p: any) => ({ ...p, crawlId: data.sessionId })));
+            
+            await loadCrawlHistory();
+            await loadSession(data.sessionId);
+            
+            addLog(`Successfully imported ${data.pages.length} pages.`, 'success', { source: 'history' });
+        } catch (err: any) {
+            console.error('Import failed:', err);
+            addLog(`Failed to import crawl data: ${err.message}`, 'error', { source: 'history' });
+        }
+    };
+
     const handleSort = (key: string) => {
         let direction: 'asc' | 'desc' = 'asc';
         if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') direction = 'desc';
@@ -2405,7 +2674,15 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
             const savedPages = await getPages(sessionId);
             const sess = await getSession(sessionId);
             if (sess) {
-                setPages(savedPages);
+                if (savedPages.length > 0) {
+                    await crawlDb.pages.bulkPut(
+                        savedPages.map((page: any) => ({
+                            ...page,
+                            crawlId: page.crawlId || sessionId
+                        }))
+                    );
+                }
+
                 setSelectedPage(null);
                 setSelectedRows(new Set());
                 setCurrentSessionId(sessionId);
@@ -2455,7 +2732,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         } finally {
             setIsLoadingHistory(false);
         }
-    }, [buildSessionSignature, config, setPages, setSelectedPage, setSelectedRows, setCurrentSessionId, setIgnoredUrls, setUrlTags, setColumnWidths]);
+    }, [buildSessionSignature, config, setSelectedPage, setSelectedRows, setCurrentSessionId, setIgnoredUrls, setUrlTags, setColumnWidths]);
 
     // ─── DB init (runs once, separate from restore logic) ───
     useEffect(() => {
@@ -2598,7 +2875,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         const nextConnection: CrawlerIntegrationConnection = {
             provider,
             connectedAt: Date.now(),
-            ownership: isAuthenticated && activeProject?.id ? 'project' : 'anonymous',
+            ownership: isAuthenticated && integrationProjectId ? 'project' : 'anonymous',
             sync: connection.sync || { status: 'idle' },
             ...connection,
             credentials: {},
@@ -2611,8 +2888,8 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
                 [provider]: nextConnection
             };
 
-            if (isAuthenticated && activeProject?.id) {
-                upsertProjectCrawlerIntegration(activeProject.id, nextConnection).catch((error) => {
+            if (isAuthenticated && integrationProjectId) {
+                upsertProjectCrawlerIntegration(integrationProjectId, nextConnection).catch((error) => {
                     console.error('Failed to persist project crawler integration:', error);
                 });
             } else {
@@ -2621,7 +2898,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
 
             return next;
         });
-    }, [isAuthenticated, activeProject?.id]);
+    }, [isAuthenticated, integrationProjectId, integrationSecretScope]);
 
     const removeIntegrationConnection = useCallback((provider: CrawlerIntegrationProvider) => {
         setIntegrationConnections((prev) => {
@@ -2629,8 +2906,8 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
             delete next[provider];
             clearCrawlerIntegrationSecret(integrationSecretScope, provider);
 
-            if (isAuthenticated && activeProject?.id) {
-                removeProjectCrawlerIntegration(activeProject.id, provider).catch((error) => {
+            if (isAuthenticated && integrationProjectId) {
+                removeProjectCrawlerIntegration(integrationProjectId, provider).catch((error) => {
                     console.error('Failed to remove project crawler integration:', error);
                 });
             } else {
@@ -2639,11 +2916,142 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
 
             return next;
         });
-    }, [isAuthenticated, activeProject?.id, integrationSecretScope]);
+    }, [isAuthenticated, integrationProjectId, integrationSecretScope]);
+
+    const refreshGoogleToken = useCallback(async (refreshToken: string) => {
+        try {
+            const resp = await fetch('/api/integrations/google/refresh', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ refreshToken })
+            });
+
+            if (!resp.ok) throw new Error('Refresh failed');
+            const data = await resp.json(); // { access_token, expires_in, ... }
+            
+            if (data.access_token) {
+                // Store back secretly - use both casing just in case
+                await storeCrawlerIntegrationSecret(integrationSecretScope, 'google', { 
+                    access_token: data.access_token, 
+                    accessToken: data.access_token,
+                    refresh_token: refreshToken,
+                    refreshToken: refreshToken
+                });
+                return data.access_token;
+            }
+        } catch (e) {
+            console.error('[Google Refresh] Failed:', e);
+            return null;
+        }
+        return null;
+    }, [integrationSecretScope]);
+
+    const runFullEnrichment = useCallback(async () => {
+        if (!currentSessionId) {
+            addLog('No active crawl session to enrich.', 'error');
+            return;
+        }
+
+        const gscIntegration = integrationConnections.google;
+        const ga4Integration = integrationConnections.google;
+        const ahrefsSecrets = getCrawlerIntegrationSecret(integrationSecretScope, 'ahrefs' as any);
+        const semrushSecrets = getCrawlerIntegrationSecret(integrationSecretScope, 'semrush' as any);
+        
+        const googleSecrets = gscIntegration?.authType === 'oauth' ? 
+            getCrawlerIntegrationSecret(integrationSecretScope, 'google') : null;
+        
+        const accessToken = googleSecrets?.accessToken || googleSecrets?.access_token || null;
+        const refreshToken = googleSecrets?.refreshToken || googleSecrets?.refresh_token || null;
+
+        // Auto-detect targets
+        const gscSiteUrl = detectedGscSite || config.gscSiteUrl || urlInput;
+        const ga4PropertyId = detectedGa4Property 
+            || config.ga4PropertyId 
+            || ga4Integration?.sync?.propertyId 
+            || ga4Integration?.selection?.propertyId;
+
+        const ahrefsToken = ahrefsSecrets?.api_key || null;
+        const semrushApiKey = semrushSecrets?.api_key || null;
+
+        try {
+            addLog('Starting Strategic Intelligence Pipeline...', 'info');
+            if (!googleSecrets) {
+                addLog('Google enrichment skipped: no Google OAuth connection is available for this project scope.', 'warn');
+            } else if (!accessToken && !refreshToken) {
+                addLog('Google enrichment skipped: connection metadata exists, but no access or refresh token is stored. Reconnect Google.', 'warn');
+            }
+            if (!gscSiteUrl) {
+                addLog('GSC enrichment skipped: no Search Console property is selected.', 'warn');
+            }
+            if (!ga4PropertyId) {
+                addLog('GA4 enrichment skipped: no Analytics property ID is selected.', 'warn');
+            }
+            
+            // Always prefer a freshly refreshed access token when available.
+            let currentToken = accessToken;
+            if (refreshToken) {
+                const refreshedToken = await refreshGoogleToken(refreshToken);
+                if (refreshedToken) {
+                    currentToken = refreshedToken;
+                } else if (!currentToken) {
+                    addLog('Google token refresh failed.', 'error');
+                }
+            }
+
+            await PostCrawlEnrichment.run({
+                sessionId: currentSessionId,
+                accessToken: currentToken,
+                refreshToken,
+                gscSiteUrl,
+                ga4PropertyId,
+                ahrefsToken,
+                semrushApiKey
+            }, (msg) => addLog(msg, 'info', { source: 'enrichment' }));
+
+            if (activeProject?.id && currentSessionId) {
+                const enrichedPages = await crawlDb.pages.where('crawlId').equals(currentSessionId).toArray();
+                await persistCrawlResults({
+                    projectId: activeProject.id,
+                    sessionId: currentSessionId,
+                    urlCrawled: enrichedPages[0]?.url || urlInput,
+                    pages: enrichedPages,
+                    crawlMode: crawlingMode,
+                    crawlDuration: 0,
+                    crawlRate: Number(crawlRuntime.rate || 0),
+                    maxDepthSeen: Number(crawlRuntime.maxDepthSeen || 0),
+                    sitemapCoverage: sitemapData,
+                    robotsTxt: robotsTxt?.raw || ''
+                });
+            }
+
+            addLog('All data points successfully enriched & strategic scores updated.', 'success');
+        } catch (error: any) {
+            console.error('[Full Enrichment] Failed:', error);
+            addLog(`Enrichment Pipeline failed: ${error.message}`, 'error');
+        }
+    }, [
+        currentSessionId, 
+        integrationConnections, 
+        integrationSecretScope, 
+        addLog, 
+        refreshGoogleToken, 
+        detectedGscSite, 
+        detectedGa4Property, 
+        config.gscSiteUrl, 
+        config.ga4PropertyId, 
+        urlInput,
+        integrationProjectId,
+        crawlingMode,
+        crawlRuntime.rate,
+        crawlRuntime.maxDepthSeen,
+        sitemapData,
+        robotsTxt?.raw
+    ]);
 
     const value = {
         crawlingMode, setCrawlingMode, urlInput, setUrlInput, listUrls, setListUrls, showListModal, setShowListModal,
-        isCrawling, setIsCrawling, pages: pagesWithDerivedSignals, setPages, logs, setLogs, crawlStartTime, setCrawlStartTime,
+        isCrawling, setIsCrawling, pages: pagesWithDerivedSignals, logs, setLogs, crawlStartTime, setCrawlStartTime,
+        crawlDb,
         activeCategory, setActiveCategory, openCategories, setOpenCategories, searchQuery, setSearchQuery,
         selectedPage, setSelectedPage, activeTab, setActiveTab, showAuditSidebar, setShowAuditSidebar,
         activeAuditTab, setActiveAuditTab, showSettings, setShowSettings, activeMacro, setActiveMacro,
@@ -2660,9 +3068,11 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         theme, setTheme, integrationConnections, integrationsLoading, integrationsSource, saveIntegrationConnection, removeIntegrationConnection, wsRef, addLog, toggleCategory, handleStartPause,
         clearCrawlerWorkspace,
         dynamicClusters, categoryCounts, healthScore, auditInsights, strategicOpportunities, crawlRate, crawlRuntime, elapsedTime, setElapsedTime,
-        formatBytes, handleExport, handleExportRawDB, filteredPages, handleSort, graphData, handleNodeClick,
+        formatBytes, handleExport, handleExportRawDB, handleImport, filteredPages, handleSort, graphData, handleNodeClick,
         crawlHistory, currentSessionId, compareSessionId, diffResult, isLoadingHistory,
         saveCrawlSession, loadSession, resumeCrawlSession, compareSessions, deleteCrawlSession, loadCrawlHistory,
+        detectedGscSite, setDetectedGscSite, detectedGa4Property, setDetectedGa4Property,
+        runFullEnrichment,
         isAuthenticated, user, profile, signOut, trialPagesLimit,
         prioritizedCategories, prioritizeByIssues, setPrioritizeByIssues,
         sidebarCollapsed, setSidebarCollapsed,

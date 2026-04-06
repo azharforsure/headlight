@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { 
     Network, List, Upload, Play, Pause, Settings, X,
     Save, LogIn, 
-    Keyboard
+    Keyboard, Database, Sparkles
 } from 'lucide-react';
 import { useSeoCrawler } from '../../contexts/SeoCrawlerContext';
 
@@ -21,7 +21,8 @@ export default function CrawlerHeader() {
         crawlRuntime, elapsedTime, crawlRate,
         clearCrawlerWorkspace,
         integrationConnections,
-        integrationsSource
+        integrationsSource,
+        runFullEnrichment
     } = useSeoCrawler();
 
     const [showShortcuts, setShowShortcuts] = useState(false);
@@ -136,6 +137,15 @@ export default function CrawlerHeader() {
                 <div className="hidden xl:flex items-center gap-1.5">
                     {showNoIntegrationsState && (
                         <span className="px-2 py-1 rounded border border-[#222] text-[10px] text-[#666]">No integrations</span>
+                    )}
+                    {integrationConnections.google?.status === 'connected' && pages.length > 0 && !isCrawling && (
+                        <button 
+                            onClick={() => runFullEnrichment()}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-t from-[#059669] to-[#10b981] text-white rounded text-[11px] font-bold shadow-[0_2px_8px_rgba(16,185,129,0.3)] hover:to-[#34d399] transition-all"
+                            title="Run GSC, GA4, and Strategic Intelligence pipeline (Opportunity, Authority, Priority) based on current signals"
+                        >
+                            <Sparkles size={12} fill="currentColor" /> Run Strategic Audit
+                        </button>
                     )}
                 </div>
 

@@ -1,13 +1,16 @@
 import { initializeDatabase, turso, isCloudSyncEnabled } from './turso';
 
 export type CrawlerIntegrationProvider =
-    | 'googleSearchConsole'
-    | 'googleAnalytics'
+    | 'google'            // UNIFIED: replaces separate googleSearchConsole + googleAnalytics
     | 'bingWebmaster'
-    | 'ahrefs'
-    | 'semrush';
+    | 'googleBusinessProfile'
+    | 'backlinkUpload'    // NEW: CSV upload
+    | 'keywordUpload'     // NEW: CSV upload
+    | 'sitemapUpload'     // NEW: file upload
+    | 'contentInventory'  // NEW: CSV upload
+    | 'crawlExport';      // NEW: import/export
 
-export type CrawlerIntegrationAuthType = 'oauth' | 'token' | 'property';
+export type CrawlerIntegrationAuthType = 'oauth' | 'token' | 'property' | 'upload';
 export type CrawlerIntegrationOwnership = 'anonymous' | 'project';
 export type CrawlerIntegrationStatus = 'connected' | 'configured' | 'degraded' | 'error';
 export type CrawlerIntegrationSyncStatus = 'idle' | 'syncing' | 'success' | 'partial' | 'error';
@@ -26,6 +29,25 @@ export interface CrawlerIntegrationSyncState {
     coverageLabel?: string;
     errorCode?: string;
     errorMessage?: string;
+    // For migration compatibility
+    siteUrl?: string;
+    propertyId?: string;
+}
+
+export interface CsvUploadMeta {
+    fileName: string;
+    uploadedAt: number;
+    rowCount: number;
+    matchedColumns: string[];
+    unmatchedColumns: string[];
+}
+
+export interface GoogleDetectedProperties {
+    gscSiteUrl?: string;
+    ga4PropertyId?: string;
+    ga4PropertyName?: string;
+    detectedAt?: number;
+    email?: string;
 }
 
 export interface CrawlerIntegrationConnection {
@@ -39,9 +61,12 @@ export interface CrawlerIntegrationConnection {
     scopes?: string[];
     credentials?: Record<string, string>;
     hasCredentials?: boolean;
-    metadata?: Record<string, string>;
+    metadata?: Record<string, any>;
     selection?: CrawlerIntegrationSelection;
     sync?: CrawlerIntegrationSyncState;
+    // Upload fields
+    uploadMeta?: CsvUploadMeta;
+    uploadData?: any[];
 }
 
 export interface CrawlerIntegrationsLoadResult {
@@ -61,7 +86,7 @@ type IntegrationRecord = {
     account_label?: string | null;
     scopes?: string[] | null;
     credentials?: Record<string, string> | null;
-    metadata?: Record<string, string> | null;
+    metadata?: Record<string, any> | null;
     selection?: CrawlerIntegrationSelection | null;
     sync?: CrawlerIntegrationSyncState | null;
 };
@@ -107,11 +132,57 @@ const sanitizeConnection = (connection: CrawlerIntegrationConnection): CrawlerIn
     };
 };
 
+const normalizeConnectionMap = (
+    connections: Partial<Record<CrawlerIntegrationProvider, CrawlerIntegrationConnection>> | Record<string, any>
+) => {
+    const next = { ...(connections || {}) } as Record<string, any>;
+    const legacyGsc = next.googleSearchConsole;
+    const legacyGa4 = next.googleAnalytics;
+
+    if (legacyGsc || legacyGa4) {
+        const currentGoogle = next.google || {};
+        next.google = {
+            provider: 'google',
+            label: currentGoogle.label || legacyGsc?.label || legacyGa4?.label || 'Google Search & Analytics',
+            status: currentGoogle.status || legacyGsc?.status || legacyGa4?.status || 'connected',
+            authType: 'oauth',
+            ownership: currentGoogle.ownership || legacyGsc?.ownership || legacyGa4?.ownership || 'project',
+            connectedAt: currentGoogle.connectedAt || legacyGsc?.connectedAt || legacyGa4?.connectedAt || Date.now(),
+            accountLabel: currentGoogle.accountLabel || legacyGsc?.accountLabel || legacyGa4?.accountLabel,
+            scopes: currentGoogle.scopes || legacyGsc?.scopes || legacyGa4?.scopes || [],
+            credentials: currentGoogle.credentials || {},
+            hasCredentials: Boolean(currentGoogle.hasCredentials || legacyGsc?.hasCredentials || legacyGa4?.hasCredentials),
+            metadata: {
+                ...(legacyGsc?.metadata || {}),
+                ...(legacyGa4?.metadata || {}),
+                ...(currentGoogle.metadata || {})
+            },
+            selection: {
+                siteUrl: currentGoogle.selection?.siteUrl || currentGoogle.sync?.siteUrl || legacyGsc?.selection?.siteUrl || legacyGsc?.metadata?.siteUrl,
+                propertyId: currentGoogle.selection?.propertyId || currentGoogle.sync?.propertyId || legacyGa4?.selection?.propertyId || legacyGa4?.metadata?.propertyId
+            },
+            sync: {
+                status: currentGoogle.sync?.status || legacyGsc?.sync?.status || legacyGa4?.sync?.status || 'idle',
+                lastSyncedAt: currentGoogle.sync?.lastSyncedAt || legacyGsc?.sync?.lastSyncedAt || legacyGa4?.sync?.lastSyncedAt,
+                lastAttemptedAt: currentGoogle.sync?.lastAttemptedAt || legacyGsc?.sync?.lastAttemptedAt || legacyGa4?.sync?.lastAttemptedAt,
+                siteUrl: currentGoogle.sync?.siteUrl || legacyGsc?.sync?.siteUrl || legacyGsc?.selection?.siteUrl || legacyGsc?.metadata?.siteUrl,
+                propertyId: currentGoogle.sync?.propertyId || legacyGa4?.sync?.propertyId || legacyGa4?.selection?.propertyId || legacyGa4?.metadata?.propertyId
+            }
+        };
+
+        delete next.googleSearchConsole;
+        delete next.googleAnalytics;
+    }
+
+    return next as Partial<Record<CrawlerIntegrationProvider, CrawlerIntegrationConnection>>;
+};
+
 const sanitizeConnectionMap = (
     connections: Partial<Record<CrawlerIntegrationProvider, CrawlerIntegrationConnection>>
 ) => {
+    const normalizedConnections = normalizeConnectionMap(connections);
     return Object.fromEntries(
-        Object.entries(connections).map(([provider, connection]) => [
+        Object.entries(normalizedConnections).map(([provider, connection]) => [
             provider,
             connection ? sanitizeConnection(connection) : connection
         ])
@@ -124,7 +195,7 @@ const readStorage = (key: string): Partial<Record<CrawlerIntegrationProvider, Cr
     try {
         const raw = window.localStorage.getItem(key);
         if (!raw) return {};
-        return sanitizeConnectionMap(JSON.parse(raw));
+        return sanitizeConnectionMap(normalizeConnectionMap(JSON.parse(raw)));
     } catch (error) {
         console.error(`Failed to restore crawler integrations from ${key}:`, error);
         return {};
@@ -152,7 +223,7 @@ const removeStorage = (key: string) => {
 };
 
 const toConnectionMap = (rows: IntegrationRecord[] | null | undefined): Partial<Record<CrawlerIntegrationProvider, CrawlerIntegrationConnection>> => {
-    return (rows || []).reduce((acc, row) => {
+    const mapped = (rows || []).reduce((acc, row) => {
         acc[row.provider] = {
             provider: row.provider,
             label: row.label,
@@ -170,6 +241,7 @@ const toConnectionMap = (rows: IntegrationRecord[] | null | undefined): Partial<
         };
         return acc;
     }, {} as Partial<Record<CrawlerIntegrationProvider, CrawlerIntegrationConnection>>);
+    return sanitizeConnectionMap(normalizeConnectionMap(mapped));
 };
 
 const toRecord = (projectId: string, connection: CrawlerIntegrationConnection): IntegrationRecord => ({
@@ -202,7 +274,7 @@ const mapDbRows = (rows: any[]): IntegrationRecord[] => {
         account_label: row.account_label ? String(row.account_label) : null,
         scopes: parseJson<string[]>(row.scopes_json, []),
         credentials: {},
-        metadata: parseJson<Record<string, string>>(row.metadata_json, {}),
+        metadata: parseJson<Record<string, any>>(row.metadata_json, {}),
         selection: parseJson<CrawlerIntegrationSelection>(row.selection_json, {}),
         sync: parseJson<CrawlerIntegrationSyncState>(row.sync_json, { status: 'idle' })
     }));

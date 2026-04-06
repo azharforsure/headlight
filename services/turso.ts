@@ -214,4 +214,25 @@ export async function initializeDatabase(): Promise<void> {
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     `);
+
+    // ─── Schema Migrations (Add missing columns to existing tables) ───
+    const migrate = async (sql: string) => {
+        try {
+            await client.execute(sql);
+        } catch (e: any) {
+            if (!e.message?.includes('duplicate column name') && !e.message?.includes('already exists')) {
+                console.warn('[Turso] Migration failed:', sql, e.message);
+            }
+        }
+    };
+
+    await migrate('ALTER TABLE projects ADD COLUMN last_crawl_at DATETIME');
+    await migrate('ALTER TABLE projects ADD COLUMN last_crawl_score INTEGER');
+    await migrate('ALTER TABLE projects ADD COLUMN last_crawl_grade TEXT');
+    await migrate('ALTER TABLE projects ADD COLUMN crawl_count INTEGER NOT NULL DEFAULT 0');
+    await migrate('ALTER TABLE projects ADD COLUMN gsc_connected INTEGER NOT NULL DEFAULT 0');
+    await migrate('ALTER TABLE projects ADD COLUMN ga4_connected INTEGER NOT NULL DEFAULT 0');
+    await migrate('ALTER TABLE projects ADD COLUMN auto_crawl_enabled INTEGER NOT NULL DEFAULT 0');
+    await migrate('ALTER TABLE projects ADD COLUMN auto_crawl_interval TEXT NOT NULL DEFAULT \'weekly\'');
+    await migrate('ALTER TABLE projects ADD COLUMN notification_email TEXT');
 }

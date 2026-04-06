@@ -15,8 +15,8 @@ export class IntegrationsService {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 body: new URLSearchParams({
-                    client_id: process.env.VITE_GOOGLE_CLIENT_ID || '',
-                    client_secret: process.env.VITE_GOOGLE_CLIENT_SECRET || '',
+                    client_id: process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE_CLIENT_ID || '',
+                    client_secret: process.env.GOOGLE_CLIENT_SECRET || process.env.VITE_GOOGLE_CLIENT_SECRET || '',
                     refresh_token: refreshToken,
                     grant_type: 'refresh_token'
                 }).toString()

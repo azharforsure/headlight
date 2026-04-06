@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Plug, Trash2, CheckCircle2, CreditCard, ExternalLink } from 'lucide-react';
-import { useGoogleLogin } from '@react-oauth/google';
 import { useProject } from '../../services/ProjectContext';
 import { useAuth } from '../../services/AuthContext';
 import { fetchProjectCrawlerIntegrations, upsertProjectCrawlerIntegration } from '../../services/CrawlerIntegrationsService';
 import { storeCrawlerIntegrationSecret } from '../../services/CrawlerSecretVault';
 import { openBillingPortal } from '../../services/BillingService';
+import { exchangeGoogleCode, fetchGoogleEmail, openGoogleOAuthPopup } from '../../services/GoogleOAuthHelper';
 
 const GoogleIntegrationCard = ({ project }: { project: any }) => {
     const [status, setStatus] = useState<'idle' | 'loading' | 'connected'>('idle');
@@ -18,78 +18,73 @@ const GoogleIntegrationCard = ({ project }: { project: any }) => {
                 return;
             }
             const result = await fetchProjectCrawlerIntegrations(project.id);
-            setStatus(result.connections.googleSearchConsole ? 'connected' : 'idle');
+            setStatus(result.connections.google ? 'connected' : 'idle');
         };
         loadStatus();
     }, [project]);
 
-    const login = useGoogleLogin({
-        onSuccess: async (codeResponse) => {
-            if (project && codeResponse.access_token) {
-                try {
-                    storeCrawlerIntegrationSecret(project.id, 'googleSearchConsole', { accessToken: codeResponse.access_token });
-                    storeCrawlerIntegrationSecret(project.id, 'googleAnalytics', { accessToken: codeResponse.access_token });
-                    await upsertProjectCrawlerIntegration(project.id, {
-                        provider: 'googleSearchConsole',
-                        label: 'Google Search Console',
-                        status: 'connected',
-                        authType: 'oauth',
-                        ownership: 'project',
-                        connectedAt: Date.now(),
-                        scopes: ['webmasters.readonly', 'analytics.readonly'],
-                        credentials: {
-                            accessToken: codeResponse.access_token
-                        },
-                        selection: {
-                            siteUrl
-                        },
-                        metadata: {
-                            siteUrl
-                        },
-                        sync: {
-                            status: 'syncing',
-                            lastAttemptedAt: Date.now()
-                        }
-                    });
-
-                    await upsertProjectCrawlerIntegration(project.id, {
-                        provider: 'googleAnalytics',
-                        label: 'Google Analytics 4',
-                        status: 'connected',
-                        authType: 'oauth',
-                        ownership: 'project',
-                        connectedAt: Date.now(),
-                        scopes: ['analytics.readonly'],
-                        credentials: {
-                            accessToken: codeResponse.access_token
-                        },
-                        selection: {},
-                        metadata: {},
-                        sync: {
-                            status: 'syncing',
-                            lastAttemptedAt: Date.now()
-                        }
-                    });
-                    setStatus('connected');
-                } catch (error) {
-                    console.error("Failed to save connection status", error);
-                    setStatus('idle');
-                }
-            } else {
-                setStatus('connected');
-            }
-        },
-        onError: error => console.error('Google Auth Failed:', error),
-        scope: 'https://www.googleapis.com/auth/webmasters.readonly https://www.googleapis.com/auth/analytics.readonly',
-    });
-
-    const handleConnect = () => {
+    const handleConnect = async () => {
         if (!siteUrl.trim()) {
             alert('Please enter your exact GSC Property URL (e.g., sc-domain:example.com or https://example.com/)');
             return;
         }
         setStatus('loading');
-        login();
+        if (!project?.id) {
+            setStatus('idle');
+            return;
+        }
+
+        try {
+            const result = await openGoogleOAuthPopup();
+            if (!result) {
+                setStatus('idle');
+                return;
+            }
+
+            const tokens = await exchangeGoogleCode(result.code, result.redirectUri);
+            if (!tokens?.access_token) {
+                setStatus('idle');
+                return;
+            }
+
+            const email = tokens.email || await fetchGoogleEmail(tokens.access_token);
+            storeCrawlerIntegrationSecret(project.id, 'google', {
+                accessToken: tokens.access_token,
+                access_token: tokens.access_token,
+                refreshToken: tokens.refresh_token || '',
+                refresh_token: tokens.refresh_token || ''
+            });
+
+            await upsertProjectCrawlerIntegration(project.id, {
+                provider: 'google',
+                label: 'Google Search & Analytics',
+                status: 'connected',
+                authType: 'oauth',
+                ownership: 'project',
+                connectedAt: Date.now(),
+                accountLabel: email || 'Connected Account',
+                scopes: ['webmasters.readonly', 'analytics.readonly', 'userinfo.email'],
+                credentials: {
+                    accessToken: tokens.access_token,
+                    refreshToken: tokens.refresh_token || ''
+                },
+                selection: {
+                    siteUrl
+                },
+                metadata: {
+                    siteUrl,
+                    email: email || ''
+                },
+                sync: {
+                    status: 'idle',
+                    lastAttemptedAt: Date.now()
+                }
+            });
+            setStatus('connected');
+        } catch (error) {
+            console.error("Failed to save connection status", error);
+            setStatus('idle');
+        }
     };
 
     return (

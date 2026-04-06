@@ -11,6 +11,7 @@ const Pricing = React.lazy(() => import('./pages/Pricing'));
 const Board = React.lazy(() => import('./pages/Board'));
 const Auth = React.lazy(() => import('./pages/Auth'));
 const SeoCrawler = React.lazy(() => import('./pages/SeoCrawler'));
+const GoogleOAuthCallback = React.lazy(() => import('./pages/oauth/google/callback'));
 import { AuthProvider, useAuth } from './services/AuthContext';
 import { ProjectProvider } from './services/ProjectContext';
 
@@ -22,32 +23,6 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 };
 
 
-const OAuthPopupBridge = () => {
-    useEffect(() => {
-        if (typeof window === 'undefined' || !window.opener) return;
-
-        const params = new URLSearchParams(window.location.search);
-        const provider = params.get('provider');
-        const code = params.get('code');
-        const error = params.get('error');
-        const state = params.get('state');
-
-        if (!provider || (!code && !error)) return;
-
-        window.opener.postMessage({
-            type: 'headlight-oauth-callback',
-            provider,
-            code,
-            error,
-            state
-        }, window.location.origin);
-
-        window.close();
-    }, []);
-
-    return null;
-};
-
 const App: React.FC = () => {
     const clerkPublishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY || import.meta.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
     if (!clerkPublishableKey) {
@@ -58,7 +33,6 @@ const App: React.FC = () => {
             <AuthProvider>
                 <ProjectProvider>
                     <BrowserRouter>
-                        <OAuthPopupBridge />
                         <React.Suspense fallback={<div className="h-screen bg-[#080808] text-white flex items-center justify-center">Loading...</div>}>
                             <Routes>
                                 <Route path="/" element={<Home />} />
@@ -72,6 +46,7 @@ const App: React.FC = () => {
                                         <Dashboard />
                                     </ProtectedRoute>
                                 } />
+                                <Route path="/oauth/google/callback" element={<GoogleOAuthCallback />} />
                                 <Route path="*" element={<Navigate to="/" replace />} />
                             </Routes>
                         </React.Suspense>
@@ -85,8 +60,8 @@ const App: React.FC = () => {
             publishableKey={clerkPublishableKey}
             signInUrl="/auth"
             signUpUrl="/auth?mode=signup"
-            afterSignInUrl="/dashboard"
-            afterSignUpUrl="/dashboard"
+            fallbackRedirectUrl="/dashboard"
+            forceRedirectUrl="/dashboard"
         >
             {app}
         </ClerkProvider>

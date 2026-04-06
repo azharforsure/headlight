@@ -195,3 +195,82 @@ export function calculatePredictiveScore(page: any): number {
     return Math.max(0, Math.min(100, score));
 }
 
+
+/**
+ * Authority Score
+ * Combines Ahrefs/SEMrush authority with internal link equity.
+ */
+export function calculateAuthorityScore(page: any): number {
+    const referringDomains = Number(page.referringDomains || 0);
+    const urlRating = Number(page.urlRating || 0);
+    const internalPageRank = Number(page.internalPageRank || 0);
+    
+    // Scale: RD(30%) + UR(40%) + IPR(30%)
+    const score = (Math.min(100, referringDomains * 2) * 0.3) + 
+                  (urlRating * 0.4) + 
+                  (internalPageRank * 0.3);
+                  
+    return Math.max(0, Math.min(100, Math.round(score)));
+}
+
+/**
+ * Business Value Score
+ * Uses GA4 behavioral signals to identify high-value conversion hubs.
+ */
+export function calculateBusinessValueScore(page: any): number {
+    const sessions = Number(page.ga4Sessions || 0);
+    const users = Number(page.ga4Users || 0);
+    const bounceRate = Number(page.ga4BounceRate || 0); // 0.0 to 1.0
+    const avgDuration = Number(page.ga4AvgSessionDuration || 0); // seconds
+    const conversions = Number(page.ga4Conversions || 0);
+    
+    // Weighted value: Traffic(20%) + Engagement(30%) + Conversions(50%)
+    const trafficVal = Math.min(100, (sessions * 0.5) + (users * 0.5));
+    const engagementVal = Math.min(100, (Math.max(0, 1 - bounceRate) * 50) + (Math.min(300, avgDuration) / 6));
+    const conversionVal = Math.min(100, conversions * 20);
+    
+    const score = (trafficVal * 0.2) + (engagementVal * 0.3) + (conversionVal * 0.5);
+    return Math.max(0, Math.min(100, Math.round(score)));
+}
+
+/**
+ * Opportunity Score
+ * Identifies pages with high search volume (GSC Impressions) but sub-optimal ranking/CTR.
+ */
+export function calculateOpportunityScore(page: any): number {
+    const impressions = Number(page.gscImpressions || 0);
+    const position = Number(page.gscPosition || 0);
+    const ctr = Number(page.gscCtr || 0);
+    
+    // High opportunity: High impressions + Position between 4 and 20 + Low CTR
+    let score = Math.min(40, Math.log10(impressions + 1) * 8); // Impressions base (up to 40pts)
+    
+    // Strategic position bonus (Striking distance)
+    if (position > 3 && position <= 10) score += 40;
+    else if (position > 10 && position <= 20) score += 25;
+    
+    // Low CTR bonus (Optimization potential)
+    if (ctr < 0.03 && impressions > 500) score += 20;
+    
+    // Technical penalties (from existing logic)
+    const techPenalty = page.statusCode >= 400 ? 50 : page.loadTime > 2000 ? 15 : 0;
+    
+    return Math.max(0, Math.min(100, Math.round(score - techPenalty)));
+}
+
+/**
+ * AI-Driven Recommended Action
+ */
+export function getRecommendedAction(page: any): { action: string; reason: string } {
+    const opp = calculateOpportunityScore(page);
+    const biz = calculateBusinessValueScore(page);
+    const auth = calculateAuthorityScore(page);
+    
+    if (page.statusCode >= 400) return { action: 'Fix Critical Error', reason: 'Page is broken and returning an error code.' };
+    if (opp > 70) return { action: 'Optimize for Striking Distance', reason: 'High visibility but suboptimal ranking; minor tweaks could yield massive traffic gains.' };
+    if (biz > 60 && auth < 30) return { action: 'Boost Authority', reason: 'High-value page with low link equity; prioritize internal and external linking.' };
+    if (page.ga4BounceRate > 0.7 && page.ga4Sessions > 100) return { action: 'Improve UX/Content', reason: 'High traffic but extremely high bounce rate suggests intent mismatch or poor experience.' };
+    if (opp < 10 && biz < 10 && auth < 10 && page.wordCount < 200) return { action: 'Prune or Consolidate', reason: 'Low value, low authority, and thin content; consider merging with a stronger page.' };
+    
+    return { action: 'Monitor & Maintain', reason: 'Stable performance with no immediate red flags.' };
+}
