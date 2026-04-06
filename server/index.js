@@ -6,19 +6,76 @@ import { runCrawler } from './crawler.js';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { createClient } from '@libsql/client';
+import fs from 'fs';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const debugLogPath = path.resolve(__dirname, 'debug.log');
+
+function debugLog(message) {
+    const timestamp = new Date().toISOString();
+    const entry = `[${timestamp}] ${message}\n`;
+    console.log(entry.trim());
+    try {
+        fs.appendFileSync(debugLogPath, entry);
+    } catch (err) {
+        console.error('Failed to write to debug.log:', err);
+    }
+}
 dotenv.config({ path: path.resolve(__dirname, '../.env.local') });
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
+const turso = createClient({
+    url: process.env.VITE_TURSO_DATABASE_URL,
+    authToken: process.env.VITE_TURSO_AUTH_TOKEN
+});
+
+// Initialize google_tokens table
+try {
+    // Check if table exists and has all columns
+    await turso.execute(`
+        CREATE TABLE IF NOT EXISTS google_tokens (
+            email TEXT PRIMARY KEY,
+            access_token TEXT NOT NULL,
+            refresh_token TEXT,
+            expiry_date INTEGER,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    `);
+    
+    // Safely ensure expiry_date column exists (in case table was created by older version)
+    try {
+        await turso.execute("ALTER TABLE google_tokens ADD COLUMN expiry_date INTEGER");
+        debugLog('Turso: Added missing expiry_date column to google_tokens');
+    } catch (e) {
+        // Ignored if column already exists
+    }
+
+    console.log('Turso: google_tokens table ready');
+} catch (err) {
+    console.error('Turso init error:', err);
+}
+
 const PORT = process.env.PORT || 3001;
 const server = app.listen(PORT, () => console.log(`Crawler backend running on port ${PORT}`));
 
 app.get('/api/health', (_req, res) => {
     res.json({ ok: true });
+});
+
+app.get('/api/debug/logs', (_req, res) => {
+    try {
+        if (!fs.existsSync(debugLogPath)) return res.send('No logs yet.');
+        const content = fs.readFileSync(debugLogPath, 'utf8');
+        res.header('Content-Type', 'text/plain');
+        res.send(content);
+    } catch (err) {
+        res.status(500).send(`Failed to read logs: ${err.message}`);
+    }
 });
 
 app.post('/api/integrations/bing/exchange', async (req, res) => {
@@ -84,26 +141,23 @@ app.post('/api/integrations/bing/exchange', async (req, res) => {
     }
 });
 
-// ─── Google OAuth Code Exchange ─────────────────────
+// ─── Google OAuth Code Exchange (Server-Owned Tokens) ─────────────────────
 app.post('/api/integrations/google/exchange', async (req, res) => {
+    debugLog('--- Starting Google Exchange ---');
     const clientId = process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE_CLIENT_ID;
     const clientSecret = process.env.GOOGLE_CLIENT_SECRET || process.env.VITE_GOOGLE_CLIENT_SECRET;
     const { code, redirectUri } = req.body || {};
 
     if (!clientId || !clientSecret) {
-        return res.status(500).json({
-            error: 'Google OAuth is not configured on the server.',
-            missing: [
-                !clientId ? 'GOOGLE_CLIENT_ID' : null,
-                !clientSecret ? 'GOOGLE_CLIENT_SECRET' : null
-            ].filter(Boolean)
-        });
+        debugLog('ERROR: Google OAuth not configured (missing keys)');
+        return res.status(500).json({ error: 'Google OAuth not configured on server.' });
     }
-
     if (!code || !redirectUri) {
-        return res.status(400).json({ error: 'Both `code` and `redirectUri` are required.' });
+        debugLog('ERROR: Missing code or redirectUri');
+        return res.status(400).json({ error: 'code and redirectUri are required.' });
     }
 
+    debugLog(`Code exchange with redirectUri: ${redirectUri}`);
     try {
         const response = await undiciRequest('https://oauth2.googleapis.com/token', {
             method: 'POST',
@@ -118,54 +172,94 @@ app.post('/api/integrations/google/exchange', async (req, res) => {
         });
 
         const payload = await response.body.json();
-
-        if (response.statusCode < 200 || response.statusCode >= 300) {
-            return res.status(response.statusCode).json({
-                error: 'Google token exchange failed.',
-                details: payload
-            });
+        debugLog(`Token exchange status: ${response.statusCode}`);
+        
+        if (response.statusCode !== 200) {
+            debugLog(`ERROR: Google exchange failed: ${JSON.stringify(payload)}`);
+            return res.status(response.statusCode).json({ error: 'Google exchange failed', details: payload });
         }
 
-        // Fetch user email
-        let email = null;
-        if (payload.access_token) {
-            try {
-                const userRes = await undiciRequest('https://www.googleapis.com/oauth2/v2/userinfo', {
-                    headers: { 'Authorization': `Bearer ${payload.access_token}` }
-                });
-                if (userRes.statusCode === 200) {
-                    const userData = await userRes.body.json();
-                    email = userData.email || null;
-                }
-            } catch { /* non-fatal */ }
-        }
-
-        return res.json({
-            access_token: payload.access_token,
-            refresh_token: payload.refresh_token,
-            expires_in: payload.expires_in,
-            email
+        debugLog('Fetching user info (email)...');
+        // Get user info (email)
+        const userRes = await undiciRequest('https://www.googleapis.com/oauth2/v2/userinfo', {
+            headers: { 'Authorization': `Bearer ${payload.access_token}` }
         });
+        
+        const userData = await userRes.body.json();
+        const email = userData.email;
+        debugLog(`User email resolved: ${email || 'None'}`);
+
+        if (!email) {
+            debugLog('ERROR: Could not retrieve email from Google');
+            return res.status(400).json({ error: 'Could not retrieve email from Google.' });
+        }
+
+        // Store tokens securely on server
+        const expiryDate = Date.now() + (payload.expires_in * 1000);
+        debugLog(`Storing tokens in Turso for: ${email}`);
+        
+        await turso.execute({
+            sql: `INSERT OR REPLACE INTO google_tokens (email, access_token, refresh_token, expiry_date, updated_at) 
+                  VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+            args: [email, payload.access_token, payload.refresh_token || null, expiryDate]
+        });
+
+        debugLog('Google exchange successful');
+        // Return only email and expiry to client (No tokens!)
+        return res.json({ email, expiryDate });
     } catch (error) {
-        console.error('Google token exchange failed:', error);
-        return res.status(500).json({ error: 'Google token exchange failed unexpectedly.' });
+        debugLog(`CRITICAL ERROR during exchange: ${error.message}`);
+        console.error('Exchange failed:', error);
+        return res.status(500).json({ error: 'Internal server error during exchange.', details: error.message });
     }
 });
 
-// ─── Google OAuth Token Refresh ─────────────────────
+// ─── Google OAuth Token Status ─────────────────────
+app.get('/api/integrations/google/status', async (req, res) => {
+    const { email } = req.query;
+    if (!email) return res.status(400).json({ error: 'Email required' });
+
+    try {
+        const result = await turso.execute({
+            sql: 'SELECT email, expiry_date FROM google_tokens WHERE email = ?',
+            args: [email]
+        });
+
+        if (result.rows.length === 0) {
+            return res.json({ connected: false });
+        }
+
+        const row = result.rows[0];
+        return res.json({
+            connected: true,
+            email: row.email,
+            expired: Date.now() > row.expiry_date
+        });
+    } catch (err) {
+        return res.status(500).json({ error: 'Database error' });
+    }
+});
+
+// ─── Google OAuth Token Refresh (Internal/Server-Side) ─────────────────────
 app.post('/api/integrations/google/refresh', async (req, res) => {
     const clientId = process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE_CLIENT_ID;
     const clientSecret = process.env.GOOGLE_CLIENT_SECRET || process.env.VITE_GOOGLE_CLIENT_SECRET;
-    const { refreshToken } = req.body || {};
+    const { email } = req.body;
 
-    if (!clientId || !clientSecret) {
-        return res.status(500).json({ error: 'Google OAuth not configured on server.' });
-    }
-    if (!refreshToken) {
-        return res.status(400).json({ error: 'refreshToken is required.' });
-    }
+    if (!email) return res.status(400).json({ error: 'Email required' });
 
     try {
+        const result = await turso.execute({
+            sql: 'SELECT refresh_token FROM google_tokens WHERE email = ?',
+            args: [email]
+        });
+
+        if (result.rows.length === 0 || !result.rows[0].refresh_token) {
+            return res.status(401).json({ error: 'No refresh token available' });
+        }
+
+        const refreshToken = result.rows[0].refresh_token;
+
         const response = await undiciRequest('https://oauth2.googleapis.com/token', {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -178,12 +272,34 @@ app.post('/api/integrations/google/refresh', async (req, res) => {
         });
 
         const data = await response.body.json();
-        if (response.statusCode === 200 && data.access_token) {
-            return res.json({ access_token: data.access_token });
+        if (response.statusCode === 200) {
+            const expiryDate = Date.now() + (data.expires_in * 1000);
+            await turso.execute({
+                sql: 'UPDATE google_tokens SET access_token = ?, expiry_date = ?, updated_at = CURRENT_TIMESTAMP WHERE email = ?',
+                args: [data.access_token, expiryDate, email]
+            });
+            return res.json({ access_token: data.access_token, expiryDate });
         }
-        return res.status(401).json({ error: 'Token refresh failed', details: data });
+
+        return res.status(401).json({ error: 'Refresh failed' });
     } catch (err) {
-        return res.status(500).json({ error: 'Token refresh exception' });
+        return res.status(500).json({ error: 'Refresh exception' });
+    }
+});
+
+// ─── Google OAuth Revoke ─────────────────────
+app.post('/api/integrations/google/revoke', async (req, res) => {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ error: 'Email required' });
+
+    try {
+        await turso.execute({
+            sql: 'DELETE FROM google_tokens WHERE email = ?',
+            args: [email]
+        });
+        return res.json({ success: true });
+    } catch (err) {
+        return res.status(500).json({ error: 'Database error' });
     }
 });
 
@@ -223,12 +339,34 @@ wss.on('connection', (ws) => {
                     clearTimeout(sessionTimeout);
                 }
 
-                const sessionId = data.sessionId;
+                // Handle both direct and payload-wrapped formats
+                const payload = data.payload || data;
+                const sessionId = payload.sessionId;
                 const existingSession = sessionId ? activeSessions.get(sessionId) : null;
                 const initialState = existingSession?.state || null;
-                const rawConfig = data.config || {};
+                const rawConfig = payload.config || {};
                 const googleConfig = rawConfig.google || {};
                 const bingConfig = rawConfig.bing || {};
+
+                // ── NEW: Resolve server-managed tokens before runCrawler ──
+                if (googleConfig.email && !googleConfig.accessToken) {
+                    try {
+                        const tokenRes = await turso.execute({
+                            sql: 'SELECT access_token, refresh_token, expiry_date FROM google_tokens WHERE email = ?',
+                            args: [googleConfig.email]
+                        });
+                        if (tokenRes.rows.length > 0) {
+                            const row = tokenRes.rows[0];
+                            googleConfig.accessToken = String(row.access_token);
+                            googleConfig.refreshToken = String(row.refresh_token || '');
+                            googleConfig.expiryDate = Number(row.expiry_date || 0);
+                            console.log(`Resolved server-side tokens for ${googleConfig.email}`);
+                        }
+                    } catch (err) {
+                        console.error('Failed to resolve server-side tokens:', err);
+                    }
+                }
+
                 const normalizedConfig = {
                     ...rawConfig,
                     gscApiKey: rawConfig.gscApiKey || googleConfig.accessToken || '',
@@ -239,7 +377,21 @@ wss.on('connection', (ws) => {
                     bingAccessToken: rawConfig.bingAccessToken || bingConfig.accessToken || ''
                 };
 
-                crawlerInstance = runCrawler(normalizedConfig, (event, payload) => {
+                crawlerInstance = runCrawler(normalizedConfig, async (event, payload) => {
+                    // ── NEW: Handle Token Refreshed from crawler ──
+                    if (event === 'TOKEN_REFRESHED' && payload.provider === 'google' && googleConfig.email) {
+                        try {
+                            const newExpiry = Date.now() + (3600 * 1000); // Assume 1hr if not specified
+                            await turso.execute({
+                                sql: 'UPDATE google_tokens SET access_token = ?, expiry_date = ?, updated_at = CURRENT_TIMESTAMP WHERE email = ?',
+                                args: [payload.accessToken, newExpiry, googleConfig.email]
+                            });
+                            console.log(`Updated server-side token in Turso for ${googleConfig.email}`);
+                        } catch (err) {
+                            console.error('Failed to update Turso token from crawler event:', err);
+                        }
+                    }
+
                     // Save state on pause/stop
                     if (event === 'CRAWL_STOPPED' && sessionId) {
                         activeSessions.set(sessionId, {

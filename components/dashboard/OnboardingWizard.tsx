@@ -4,9 +4,8 @@ import { useAuth } from '../../services/AuthContext';
 import { Globe, Search, Tag, CheckCircle2, ChevronRight, PlayCircle, Loader2 } from 'lucide-react';
 import { IndustryType } from '../../services/app-types';
 import { upsertProjectCrawlerIntegration } from '../../services/CrawlerIntegrationsService';
-import { storeCrawlerIntegrationSecret } from '../../services/CrawlerSecretVault';
 import { addKeywords } from '../../services/DashboardDataService';
-import { exchangeGoogleCode, fetchGoogleEmail, openGoogleOAuthPopup } from '../../services/GoogleOAuthHelper';
+import { exchangeGoogleCode, openGoogleOAuthPopup } from '../../services/GoogleOAuthHelper';
 
 type Step = 1 | 2 | 3;
 
@@ -71,16 +70,15 @@ export const OnboardingWizard = ({ onComplete }: { onComplete?: () => void }) =>
             const result = await openGoogleOAuthPopup();
             if (!result) return;
 
-            const tokens = await exchangeGoogleCode(result.code, result.redirectUri);
-            if (!tokens?.access_token) return;
+            // New metadata-only exchange: returns { email, expiryDate }
+            const meta = await exchangeGoogleCode(result.code, result.redirectUri);
+            if (!meta || !meta.email) {
+                alert('Failed to verify Google account metadata.');
+                return;
+            }
 
-            const email = tokens.email || await fetchGoogleEmail(tokens.access_token);
-            storeCrawlerIntegrationSecret(createdProjectId, 'google', {
-                accessToken: tokens.access_token,
-                access_token: tokens.access_token,
-                refreshToken: tokens.refresh_token || '',
-                refresh_token: tokens.refresh_token || ''
-            });
+            // CRITICAL: We no longer store tokens in the client-side vault or credentials object.
+            // Server handles it via Turso.
 
             await upsertProjectCrawlerIntegration(createdProjectId, {
                 provider: 'google',
@@ -89,22 +87,20 @@ export const OnboardingWizard = ({ onComplete }: { onComplete?: () => void }) =>
                 authType: 'oauth',
                 ownership: 'project',
                 connectedAt: Date.now(),
-                accountLabel: email || 'Connected Account',
+                accountLabel: meta.email,
                 scopes: ['webmasters.readonly', 'analytics.readonly', 'userinfo.email'],
-                credentials: {
-                    accessToken: tokens.access_token,
-                    refreshToken: tokens.refresh_token || ''
-                },
+                credentials: {}, // Empty - tokens are on server
                 selection: {
                     siteUrl: gscUrl
                 },
                 metadata: {
                     siteUrl: gscUrl,
-                    email: email || ''
+                    email: meta.email
                 },
                 sync: {
                     status: 'idle',
-                    lastAttemptedAt: Date.now()
+                    lastAttemptedAt: Date.now(),
+                    expiryDate: meta.expiryDate
                 }
             });
             setGscConnected(true);

@@ -8,6 +8,10 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 3000,
       host: '0.0.0.0',
+      headers: {
+        'Cross-Origin-Opener-Policy': 'unsafe-none',
+        'Cross-Origin-Embedder-Policy': 'unsafe-none',
+      },
       proxy: {
         '/api': {
           target: 'http://localhost:3001',

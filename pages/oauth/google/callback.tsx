@@ -9,20 +9,27 @@ export default function GoogleOAuthCallback() {
 
         console.log('[GoogleOAuthCallback] Handled redirect query:', { code: !!code, error });
 
-        // Send the code or error back to the opening window
+        // 1. Fallback: Write to localStorage (Same Domain)
+        const result = {
+            type: 'GOOGLE_OAUTH_CALLBACK',
+            code: code || null,
+            error: error || null,
+            provider: 'google'
+        };
+        localStorage.setItem('GOOGLE_OAUTH_RESULT', JSON.stringify(result));
+
+        // 2. Primary: Send the code or error back to the opening window via postMessage
         if (window.opener) {
-            window.opener.postMessage(
-                {
-                    type: 'GOOGLE_OAUTH_CALLBACK',
-                    code: code || null,
-                    error: error || null,
-                    provider: 'google'
-                },
-                '*' // Use wildcard to ensure delivery across local origins
-            );
+            console.log('[GoogleOAuthCallback] window.opener found, sending postMessage');
+            window.opener.postMessage(result, window.location.origin);
         } else {
-            console.error('[GoogleOAuthCallback] No window.opener found. Popup was likely detached.');
+            console.warn('[GoogleOAuthCallback] No window.opener found. Relying on localStorage fallback.');
         }
+
+        // 3. Self-close fallback (in case COOP blocks the opener from closing this window)
+        setTimeout(() => {
+            window.close();
+        }, 1500);
     }, []);
 
   return (

@@ -8,7 +8,6 @@ import { Pool, request as undiciRequest } from 'undici';
 import { lookup } from 'dns';
 import { promisify } from 'util';
 import { brotliDecompressSync, gunzipSync, inflateSync } from 'zlib';
-import { IntegrationsService } from './integrations.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -114,6 +113,125 @@ function parseCustomHeaders(rawHeaders = '') {
             if (key && value) headers[key] = value;
             return headers;
         }, {});
+}
+
+function parseLinkHeader(rawHeader = '') {
+    const result = { next: '', prev: '' };
+    if (!rawHeader) return result;
+
+    const headerValue = Array.isArray(rawHeader) ? rawHeader.join(',') : String(rawHeader);
+    const segments = headerValue.split(',');
+    for (const segment of segments) {
+        const match = segment.match(/<([^>]+)>\s*;\s*rel="?([^";,]+)"?/i);
+        if (!match) continue;
+        const [, href, rel] = match;
+        if (rel === 'next' && !result.next) result.next = href;
+        if (rel === 'prev' && !result.prev) result.prev = href;
+    }
+
+    return result;
+}
+
+function classifyFunnelStage(page = {}) {
+    const corpus = [
+        page.url || '',
+        page.title || '',
+        page.metaDesc || '',
+        page.h1_1 || '',
+        page.searchIntent || ''
+    ].join(' ').toLowerCase();
+
+    if (/(checkout|buy|pricing|price|request-demo|book-demo|demo|trial|signup|sign-up|register|contact-sales|quote)/.test(corpus)) {
+        return 'Transactional';
+    }
+    if (/(compare|comparison|best|top|review|reviews|vs\b|versus|alternative|alternatives|services|solution|solutions)/.test(corpus)) {
+        return 'Commercial';
+    }
+    if (/(case-study|success-story|customer-story|webinar|template|download|calculator|benchmark)/.test(corpus)) {
+        return 'Consideration';
+    }
+    return 'Informational';
+}
+
+function resolveRedirectType(statusCode) {
+    if (statusCode === 301 || statusCode === 308) return 'Permanent';
+    if (statusCode === 302 || statusCode === 307) return 'Temporary';
+    return '';
+}
+
+function computeCarbonMetrics(totalTransferred = 0) {
+    const bytes = Math.max(0, Number(totalTransferred) || 0);
+    const co2Mg = Number(((bytes / 1024) * 0.2).toFixed(2));
+
+    let carbonRating = 'A';
+    if (co2Mg > 2000) carbonRating = 'E';
+    else if (co2Mg > 1000) carbonRating = 'D';
+    else if (co2Mg > 500) carbonRating = 'C';
+    else if (co2Mg > 200) carbonRating = 'B';
+
+    return { co2Mg, carbonRating };
+}
+
+function extractHtmlLinkSets(html = '', currentUrl, baseHostname, options = {}) {
+    const $ = cheerio.load(html);
+    const internal = new Set();
+    const external = new Set();
+    const baseHostNoWww = String(baseHostname || '').replace(/^www\./, '').toLowerCase();
+
+    $('a[href]').each((_, el) => {
+        const href = $(el).attr('href');
+        if (!href || href.startsWith('javascript:') || href.startsWith('mailto:') || href.startsWith('tel:')) return;
+
+        const absoluteHref = normalizeUrl(href, currentUrl, options);
+        if (!absoluteHref) return;
+
+        try {
+            const host = new URL(absoluteHref).hostname.replace(/^www\./, '').toLowerCase();
+            if (host === baseHostNoWww) internal.add(absoluteHref);
+            else external.add(absoluteHref);
+        } catch {}
+    });
+
+    return { internal, external };
+}
+
+function tokenizeSemanticText(text = '') {
+    const stopWords = new Set([
+        'the', 'and', 'for', 'that', 'with', 'from', 'this', 'have', 'will', 'your', 'into', 'about', 'their',
+        'would', 'there', 'which', 'when', 'what', 'where', 'while', 'also', 'were', 'been', 'being', 'over',
+        'under', 'than', 'then', 'them', 'they', 'our', 'you', 'are', 'but', 'not', 'all', 'can', 'use', 'using',
+        'used', 'more', 'most', 'such', 'each', 'per', 'via', 'its', 'his', 'her', 'she', 'him', 'has', 'had',
+        'was', 'who', 'why', 'how', 'may', 'any', 'out', 'off', 'too', 'very'
+    ]);
+
+    const tokens = String(text || '').toLowerCase().match(/[a-z]{3,}/g) || [];
+    return tokens.filter((token) => !stopWords.has(token));
+}
+
+function buildSemanticVector(text = '') {
+    const vector = new Map();
+    const tokens = tokenizeSemanticText(text);
+    for (const token of tokens) {
+        vector.set(token, (vector.get(token) || 0) + 1);
+    }
+    return vector;
+}
+
+function cosineSimilarity(a, b) {
+    if (!a || !b || a.size === 0 || b.size === 0) return 0;
+
+    let dot = 0;
+    let magA = 0;
+    let magB = 0;
+
+    for (const value of a.values()) magA += value * value;
+    for (const value of b.values()) magB += value * value;
+    for (const [token, value] of a.entries()) {
+        dot += value * (b.get(token) || 0);
+    }
+
+    if (magA === 0 || magB === 0) return 0;
+    return dot / (Math.sqrt(magA) * Math.sqrt(magB));
 }
 
 async function readResponseText(body, headers = {}) {
@@ -500,6 +618,8 @@ async function followRedirectChain(url, requestHeaders, maxHops = 10) {
     let currentUrl = url;
     let finalStatusCode = 200;
     let finalHeaders = {};
+    let totalTransferred = 0;
+    let firstStatusCode = 0;
 
     for (let i = 0; i < maxHops; i++) {
         try {
@@ -517,13 +637,15 @@ async function followRedirectChain(url, requestHeaders, maxHops = 10) {
             await body.dump();
 
             finalStatusCode = statusCode;
+            if (!firstStatusCode) firstStatusCode = statusCode;
             finalHeaders = headers;
+            totalTransferred += parseInt(headers['content-length'] || '0', 10) || 0;
 
             if (statusCode >= 300 && statusCode < 400 && headers.location) {
                 const nextUrl = normalizeUrl(headers.location, currentUrl);
                 if (!nextUrl || chain.includes(nextUrl)) {
                     // Redirect loop detected
-                    return { chain, finalUrl: currentUrl, statusCode: finalStatusCode, isLoop: true, headers: finalHeaders };
+                    return { chain, finalUrl: currentUrl, statusCode: finalStatusCode, firstStatusCode, isLoop: true, headers: finalHeaders, totalTransferred };
                 }
                 chain.push(nextUrl);
                 currentUrl = nextUrl;
@@ -539,9 +661,11 @@ async function followRedirectChain(url, requestHeaders, maxHops = 10) {
         chain,
         finalUrl: currentUrl,
         statusCode: finalStatusCode,
+        firstStatusCode,
         isLoop: false,
         chainLength: chain.length - 1,
-        headers: finalHeaders
+        headers: finalHeaders,
+        totalTransferred
     };
 }
 
@@ -652,6 +776,161 @@ async function performAIStrategicAnalysis(pagePayloads, gscDataMap) {
     return results;
 }
 
+/**
+ * ─── Integrations Service (Server-side) ──────────────────────
+ * Handles GSC and GA4 data fetching during post-crawl analysis.
+ */
+const IntegrationsService = {
+    async fetchGscData(accessToken, siteUrl, urls, refreshToken = null) {
+        const results = {};
+        let currentToken = accessToken;
+        let isRefreshed = false;
+
+        const fetchWithRetry = async (pageCursor = 0) => {
+            const end = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+            const start = new Date(end.getTime() - 30 * 24 * 60 * 60 * 1000);
+            const startDate = start.toISOString().split('T')[0];
+            const endDate = end.toISOString().split('T')[0];
+
+            const response = await undiciRequest(
+                `https://www.googleapis.com/webmasters/v3/sites/${encodeURIComponent(siteUrl)}/searchAnalytics/query`,
+                {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${currentToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        startDate,
+                        endDate,
+                        dimensions: ['page'],
+                        rowLimit: 25000,
+                        startRow: pageCursor
+                    })
+                }
+            );
+
+            if (response.statusCode === 401 && refreshToken && !isRefreshed) {
+                // Attempt refresh
+                const refreshRes = await undiciRequest('https://oauth2.googleapis.com/token', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: new URLSearchParams({
+                        client_id: process.env.GOOGLE_CLIENT_ID,
+                        client_secret: process.env.GOOGLE_CLIENT_SECRET,
+                        refresh_token: refreshToken,
+                        grant_type: 'refresh_token'
+                    }).toString()
+                });
+
+                if (refreshRes.statusCode === 200) {
+                    const data = await refreshRes.body.json();
+                    currentToken = data.access_token;
+                    isRefreshed = true;
+                    return fetchWithRetry(pageCursor);
+                }
+            }
+
+            if (response.statusCode !== 200) {
+                await response.body.dump().catch(() => {});
+                return null;
+            }
+
+            return await response.body.json();
+        };
+
+        try {
+            const data = await fetchWithRetry();
+            if (data?.rows) {
+                for (const row of data.rows) {
+                    const url = row.keys[0];
+                    results[url] = {
+                        gscClicks: row.clicks,
+                        gscImpressions: row.impressions,
+                        gscCtr: row.ctr,
+                        gscPosition: row.position
+                    };
+                }
+            }
+            if (isRefreshed) results.__new_token = currentToken;
+        } catch (err) {
+            console.error('GSC Fetch Error:', err);
+        }
+
+        return results;
+    },
+
+    async fetchGa4Data(accessToken, propertyId, urls, refreshToken = null) {
+        const results = {};
+        let currentToken = accessToken;
+        let isRefreshed = false;
+
+        const fetchWithRetry = async () => {
+            const response = await undiciRequest(
+                `https://analyticsdata.googleapis.com/v1beta/properties/${propertyId}:runReport`,
+                {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${currentToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        dateRanges: [{ startDate: '30daysAgo', endDate: 'yesterday' }],
+                        dimensions: [{ name: 'pagePath' }],
+                        metrics: [
+                            { name: 'screenPageViews' },
+                            { name: 'sessions' },
+                            { name: 'bounceRate' },
+                            { name: 'averageSessionDuration' }
+                        ],
+                        limit: 100000
+                    })
+                }
+            );
+
+            if (response.statusCode === 401 && refreshToken && !isRefreshed) {
+                // Simplified refresh check (reuse logic or notify crawler)
+                // For GA4, we usually use the same GSC token refresh path
+                return { isAuthError: true };
+            }
+
+            if (response.statusCode !== 200) {
+                await response.body.dump().catch(() => {});
+                return null;
+            }
+
+            return await response.body.json();
+        };
+
+        try {
+            const data = await fetchWithRetry();
+            if (data?.isAuthError) {
+                // If GA4 fails with 401, we don't try to double-refresh here for simplicity
+                // since GSC usually refreshes first in the flow.
+            } else if (data?.rows) {
+                const rowCount = data.rows.length;
+                console.log(`[GA4] Successfully fetched ${rowCount} rows for property ${propertyId}`);
+                for (const row of data.rows) {
+                    const path = row.dimensionValues[0].value;
+                    const metrics = row.metricValues;
+                    results[path] = {
+                        ga4Views: parseInt(metrics[0]?.value || '0', 10),
+                        ga4Sessions: parseInt(metrics[1]?.value || '0', 10),
+                        ga4BounceRate: parseFloat(metrics[2]?.value || '0'),
+                        ga4AvgDuration: parseFloat(metrics[3]?.value || '0')
+                    };
+                }
+            } else {
+                console.log(`[GA4] No rows returned for property ${propertyId}`);
+            }
+        } catch (err) {
+            console.error('GA4 Fetch Error:', err);
+        }
+
+        return results;
+    }
+};
+
 // ════════════════════════════════════════════════════════════
 //  MAIN CRAWLER
 // ════════════════════════════════════════════════════════════
@@ -696,7 +975,8 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
         authPass = '',
         fetchWebVitals = false,
         viewportWidth = 1920,
-        viewportHeight = 1080
+        viewportHeight = 1080,
+        crawlResources = false
     } = config;
 
     const urlNormalizationOptions = { ignoreQueryParams };
@@ -745,6 +1025,7 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
     const queue = Array.isArray(initialState?.queue) ? [...initialState.queue] : [];
     let queueCursor = Number.isInteger(initialState?.queueCursor) ? initialState.queueCursor : 0;
     const inlinksMap = normalizeLinkMap(initialState?.inlinksMap);
+    const jsInlinksMap = normalizeLinkMap(initialState?.jsInlinksMap);
     const outlinksMap = normalizeLinkMap(initialState?.outlinksMap);
     const pagePayloads = new Map();
     const failedUrls = new Map();
@@ -872,6 +1153,12 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
             uniqueInlinks: inlinksMap[targetUrl]?.size || 0,
             inlinksList: Array.from(inlinksMap[targetUrl] || [])
         });
+    };
+
+    const registerJsInlink = (targetUrl, sourceUrl) => {
+        if (!targetUrl || !sourceUrl) return;
+        if (!jsInlinksMap[targetUrl]) jsInlinksMap[targetUrl] = new Set();
+        jsInlinksMap[targetUrl].add(sourceUrl);
     };
 
     const emitProgress = (stage = 'crawling', force = false) => {
@@ -1019,8 +1306,14 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
                 let redirectChain = [];
                 let redirectChainLength = 0;
                 let isRedirectLoop = false;
+                let redirectType = '';
                 let resHeaders = {};
                 let httpVersion = 'HTTP/1.1';
+                let httpRelNext = '';
+                let httpRelPrev = '';
+                let transferredBytes = 0;
+                let totalTransferred = 0;
+                let staticHtml = '';
                 let webVitals = { lcp: null, cls: null, inp: null };
 
                 if (config.jsRendering && browser) {
@@ -1080,12 +1373,47 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
                         contentType = headers['content-type'] || 'text/html';
                         sizeBytes = parseInt(headers['content-length'] || '0', 10);
                         lastModified = headers['last-modified'] || '';
+                        transferredBytes = sizeBytes;
+                        const linkHeader = headers.link || headers.Link || '';
+                        const parsedLinkHeader = parseLinkHeader(linkHeader);
+                        httpRelNext = parsedLinkHeader.next || '';
+                        httpRelPrev = parsedLinkHeader.prev || '';
                         const pageCookies = await page.context().cookies(currentUrl);
                         cookies = pageCookies.length > 0 ? 'Yes' : 'No';
-                        if (response?.request().redirectedFrom()) {
+                        if (response?.request().redirectedFrom() || (response?.url() && response.url() !== currentUrl)) {
                             redirectUrl = response.url();
                         }
                         html = await page.content();
+                        if (!transferredBytes && html) {
+                            transferredBytes = Buffer.byteLength(html, 'utf8');
+                        }
+                        totalTransferred = transferredBytes;
+                        if (redirectUrl && redirectUrl !== currentUrl) {
+                            const chainResult = await followRedirectChain(currentUrl, requestHeaders);
+                            redirectChain = chainResult.chain;
+                            redirectChainLength = chainResult.chainLength;
+                            isRedirectLoop = chainResult.isLoop;
+                            redirectType = resolveRedirectType(chainResult.firstStatusCode || statusCode);
+                            totalTransferred = chainResult.totalTransferred || transferredBytes;
+                            redirectUrl = chainResult.finalUrl || redirectUrl;
+                        }
+
+                        try {
+                            const staticRes = await fetch(currentUrl, {
+                                headers: requestHeaders,
+                                redirect: 'follow',
+                                signal: requestController.signal
+                            });
+                            const staticType = staticRes.headers.get('content-type') || '';
+                            if (staticType.includes('text/html') || staticType.includes('application/xhtml')) {
+                                staticHtml = await withTimeout(
+                                    staticRes.text(),
+                                    12000,
+                                    `Static HTML snapshot timeout for ${currentUrl}`
+                                );
+                            }
+                        } catch {}
+
                         if (fetchWebVitals) {
                             await page.waitForTimeout(750).catch(() => {});
                             webVitals = await page.evaluate(() => ({
@@ -1124,8 +1452,12 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
                         resHeaders = headers;
                         contentType = headers['content-type'] || '';
                         sizeBytes = parseInt(headers['content-length'] || '0', 10);
+                        transferredBytes = sizeBytes;
                         lastModified = headers['last-modified'] || '';
                         cookies = headers['set-cookie'] ? 'Yes' : 'No';
+                        const parsedLinkHeader = parseLinkHeader(headers.link || headers.Link || '');
+                        httpRelNext = parsedLinkHeader.next || '';
+                        httpRelPrev = parsedLinkHeader.prev || '';
 
                         // Track redirects via header
                         if (statusCode >= 300 && statusCode < 400 && headers.location) {
@@ -1134,6 +1466,8 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
                             redirectChain = chainResult.chain;
                             redirectChainLength = chainResult.chainLength;
                             isRedirectLoop = chainResult.isLoop;
+                            redirectType = resolveRedirectType(chainResult.firstStatusCode || statusCode);
+                            totalTransferred = chainResult.totalTransferred || transferredBytes;
                         }
 
                         // Detect HTTP version
@@ -1145,11 +1479,17 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
                                 12000,
                                 `Response body timeout for ${currentUrl}`
                             );
+                            if (!transferredBytes && html) {
+                                transferredBytes = Buffer.byteLength(html, 'utf8');
+                            }
                             bodyToCleanup = null; // Mark as consumed
                         } else {
                             // Consume body to free connection
                             await body.dump();
                             bodyToCleanup = null; // Mark as consumed
+                        }
+                        if (!totalTransferred) {
+                            totalTransferred = transferredBytes;
                         }
                     } catch (err) {
                         if (bodyToCleanup) {
@@ -1169,15 +1509,33 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
                             resHeaders = Object.fromEntries(res.headers.entries());
                             contentType = res.headers.get('content-type') || '';
                             sizeBytes = parseInt(res.headers.get('content-length') || '0', 10);
+                            transferredBytes = sizeBytes;
                             lastModified = res.headers.get('last-modified') || '';
                             cookies = res.headers.get('set-cookie') ? 'Yes' : 'No';
-                            if (res.redirected) redirectUrl = res.url;
+                            const parsedLinkHeader = parseLinkHeader(res.headers.get('link') || '');
+                            httpRelNext = parsedLinkHeader.next || '';
+                            httpRelPrev = parsedLinkHeader.prev || '';
+                            if (res.redirected) {
+                                redirectUrl = res.url;
+                                const chainResult = await followRedirectChain(currentUrl, requestHeaders);
+                                redirectChain = chainResult.chain;
+                                redirectChainLength = chainResult.chainLength;
+                                isRedirectLoop = chainResult.isLoop;
+                                redirectType = resolveRedirectType(chainResult.firstStatusCode || statusCode);
+                                totalTransferred = chainResult.totalTransferred || transferredBytes;
+                            }
                             if (contentType.includes('text/html')) {
                                 html = await withTimeout(
                                     res.text(),
                                     12000,
                                     `Fetch body timeout for ${currentUrl}`
                                 );
+                                if (!transferredBytes && html) {
+                                    transferredBytes = Buffer.byteLength(html, 'utf8');
+                                }
+                            }
+                            if (!totalTransferred) {
+                                totalTransferred = transferredBytes;
                             }
                         } catch (fetchErr) {
                             statusCode = 0;
@@ -1194,6 +1552,9 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
 
                 // Extract security headers
                 const securityInfo = extractSecurityHeaders(resHeaders);
+                const effectiveTransferredBytes = transferredBytes || sizeBytes || (html ? Buffer.byteLength(html, 'utf8') : 0);
+                const effectiveTotalTransferred = totalTransferred || effectiveTransferredBytes;
+                const carbonMetrics = computeCarbonMetrics(effectiveTotalTransferred);
 
                 if (!contentType.includes('text/html') && !contentType.includes('application/xhtml')) {
                     urlsCrawled++;
@@ -1211,6 +1572,22 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
                         redirectChain,
                         redirectChainLength,
                         isRedirectLoop,
+                        redirectType,
+                        httpRelNext,
+                        httpRelPrev,
+                        transferredBytes: effectiveTransferredBytes,
+                        totalTransferred: effectiveTotalTransferred,
+                        ...carbonMetrics,
+                        uniqueJsInlinks: jsInlinksMap[currentUrl]?.size || 0,
+                        uniqueJsOutlinks: 0,
+                        uniqueExternalJsOutlinks: 0,
+                        closestSemanticAddress: '',
+                        semanticSimilarityScore: 0,
+                        nearDuplicateMatch: '',
+                        noNearDuplicates: 0,
+                        funnelStage: '',
+                        spellingErrors: 0,
+                        grammarErrors: 0,
                         ...securityInfo,
                         // Sitemap data if available
                         sitemapLastmod: sitemapData[currentUrl]?.lastmod || '',
@@ -1252,7 +1629,9 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
                             metaDescLength: data.metaDesc.length,
                             metaDescPixelWidth: data.metaDescPixelWidth,
                             metaKeywords: data.metaKeywords,
+                            metaKeywordsLength: data.metaKeywordsLength,
                             metaRobots1: data.robots,
+                            metaRobots2: data.robotsTags?.[1] || '',
                             xRobots: resHeaders['x-robots-tag'] || '',
                             multipleTitles: data.multipleTitles,
                             multipleMetaDescs: data.multipleMetaDescs,
@@ -1280,26 +1659,33 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
                         externalOutlinks: 0,
                         uniqueExternalOutlinks: 0,
                         images: data.images,
-                        hash: data.contentHash,
-                        loadTime,
-                        lcp: webVitals.lcp,
-                        cls: webVitals.cls !== null && webVitals.cls !== undefined ? Number(Number(webVitals.cls).toFixed(3)) : null,
-                        inp: webVitals.inp,
-                        lastModified,
-                        redirectUrl,
+                            hash: data.contentHash,
+                            textContent: data.textContent,
+                            loadTime,
+                            lcp: webVitals.lcp,
+                            cls: webVitals.cls !== null && webVitals.cls !== undefined ? Number(Number(webVitals.cls).toFixed(3)) : null,
+                            inp: webVitals.inp,
+                            lastModified,
+                            redirectUrl,
                             redirectChain,
                             redirectChainLength,
                             isRedirectLoop,
+                            redirectType,
                             language: data.lang,
                             crawlTimestamp: new Date().toISOString(),
                             cookies,
                             canonical: data.canonical,
                             multipleCanonical: data.multipleCanonical,
                             metaRefresh: data.metaRefresh,
+                            httpRelNext,
+                            httpRelPrev,
                             relNextTag: data.relNext,
                             relPrevTag: data.relPrev,
                             amphtml: data.amphtml,
                             mobileAlt: data.mobileAlt,
+                            transferredBytes: effectiveTransferredBytes,
+                            totalTransferred: effectiveTotalTransferred,
+                            ...carbonMetrics,
                             // ─── New fields from Phase 3 ───
                             // Structured Data
                             schema: data.schema,
@@ -1335,7 +1721,17 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
                             isThinContent: data.isThinContent,
                             hasKeywordStuffing: data.hasKeywordStuffing,
                             mostFrequentWord: data.mostFrequentWord,
+                            spellingErrors: data.spellingErrors,
+                            grammarErrors: data.grammarErrors,
                             folderDepth: Math.max(0, parsed.pathname.split('/').filter(Boolean).length),
+                            uniqueJsInlinks: jsInlinksMap[currentUrl]?.size || 0,
+                            uniqueJsOutlinks: 0,
+                            uniqueExternalJsOutlinks: 0,
+                            closestSemanticAddress: '',
+                            semanticSimilarityScore: 0,
+                            nearDuplicateMatch: '',
+                            noNearDuplicates: 0,
+                            funnelStage: '',
                             linkScore: 0,
                             // Security headers
                             ...securityInfo,
@@ -1364,6 +1760,8 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
                         let externalCount = 0;
                         const uniqueOutlinks = new Set();
                         const uniqueExternalOutlinks = new Set();
+                        const renderedInternalOutlinks = new Set();
+                        const renderedExternalOutlinks = new Set();
                         
                         data.links.forEach((href) => {
                             const absoluteHref = normalizeUrl(href, currentUrl, urlNormalizationOptions);
@@ -1379,6 +1777,7 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
 
                                     if (isInternal) {
                                         internalCount++;
+                                        renderedInternalOutlinks.add(absoluteHref);
                                         if (mode === 'spider' && (maxDepth === null || depth < maxDepth)) {
                                             enqueueUrl(absoluteHref, depth + 1, currentUrl);
                                         } else {
@@ -1386,12 +1785,68 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
                                         }
                                     } else {
                                         externalCount++;
+                                        renderedExternalOutlinks.add(absoluteHref);
                                         uniqueExternalOutlinks.add(absoluteHref);
                                         registerInlink(absoluteHref, currentUrl);
                                     }
                                 } catch (e) {}
                             }
                         });
+
+                        if (config.jsRendering) {
+                            const staticLinkSets = extractHtmlLinkSets(
+                                staticHtml,
+                                currentUrl,
+                                baseHostname,
+                                urlNormalizationOptions
+                            );
+                            const jsInternalOutlinks = new Set(
+                                [...renderedInternalOutlinks].filter((href) => !staticLinkSets.internal.has(href))
+                            );
+                            const jsExternalOutlinks = new Set(
+                                [...renderedExternalOutlinks].filter((href) => !staticLinkSets.external.has(href))
+                            );
+
+                            payload.uniqueJsOutlinks = jsInternalOutlinks.size;
+                            payload.uniqueExternalJsOutlinks = jsExternalOutlinks.size;
+                            for (const targetUrl of jsInternalOutlinks) {
+                                registerJsInlink(targetUrl, currentUrl);
+                            }
+                            payload.uniqueJsInlinks = jsInlinksMap[currentUrl]?.size || 0;
+                        }
+
+                        // Enqueue resources (Images, CSS, JS) if enabled
+                        if (crawlResources && mode === 'spider' && (maxDepth === null || depth < maxDepth)) {
+                            const resourcesToEnqueue = [
+                                ...(data.images || []),
+                                ...(data.resources || [])
+                            ];
+                            
+                            if (resourcesToEnqueue.length > 0) {
+                                console.log(`[Crawler] Found ${resourcesToEnqueue.length} resources on ${currentUrl}. crawlResources: ${crawlResources}`);
+                            }
+                            
+                            resourcesToEnqueue.forEach((src) => {
+                                const absoluteSrc = normalizeUrl(src, currentUrl, urlNormalizationOptions);
+                                if (absoluteSrc) {
+                                    try {
+                                        const srcObj = new URL(absoluteSrc);
+                                        const srcHost = srcObj.hostname.toLowerCase();
+                                        const baseHost = baseHostname.toLowerCase();
+                                        
+                                        // Match domain or subdomain
+                                        if (srcHost === baseHost || srcHost.endsWith('.' + baseHost) || baseHost.endsWith('.' + srcHost)) {
+                                            const enqueued = enqueueUrl(absoluteSrc, depth + 1, currentUrl);
+                                            if (enqueued) {
+                                                console.log(`[Crawler] Enqueued internal resource: ${absoluteSrc}`);
+                                            }
+                                        }
+                                    } catch (e) {
+                                        console.error(`[Crawler] Error enqueuing resource ${src}:`, e.message);
+                                    }
+                                }
+                            });
+                        }
 
                         payload.outlinksList = Array.from(uniqueOutlinks);
                         payload.uniqueOutlinks = uniqueOutlinks.size;
@@ -1656,6 +2111,69 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
         onEvent('LOG', { message: 'Calculating Internal Link Equity (PageRank)...', type: 'info' });
         const internalPageRank = calculateInternalPageRank(pageUrls, inlinksMap, outlinksMap);
 
+        // 2b. Compute semantic similarity and near-duplicate relationships
+        const semanticPages = pageUrls
+            .map((url) => {
+                const payload = pagePayloads.get(url);
+                if (!payload || !String(payload.contentType || '').includes('text/html')) return null;
+                const semanticText = [
+                    payload.title || '',
+                    payload.metaDesc || '',
+                    payload.h1_1 || '',
+                    payload.textContent || ''
+                ].join(' ');
+                return {
+                    url,
+                    vector: buildSemanticVector(semanticText)
+                };
+            })
+            .filter(Boolean);
+
+        const semanticAnalysis = Object.fromEntries(
+            semanticPages.map((page) => [page.url, {
+                closestSemanticAddress: '',
+                semanticSimilarityScore: 0,
+                nearDuplicateMatch: '',
+                noNearDuplicates: 0
+            }])
+        );
+        const nearDuplicateThreshold = 0.85;
+
+        for (let i = 0; i < semanticPages.length; i++) {
+            for (let j = i + 1; j < semanticPages.length; j++) {
+                const left = semanticPages[i];
+                const right = semanticPages[j];
+                const similarity = cosineSimilarity(left.vector, right.vector);
+
+                if (similarity > ((semanticAnalysis[left.url]?.semanticSimilarityScore || 0) / 100)) {
+                    semanticAnalysis[left.url].closestSemanticAddress = right.url;
+                    semanticAnalysis[left.url].semanticSimilarityScore = Number((similarity * 100).toFixed(1));
+                }
+                if (similarity > ((semanticAnalysis[right.url]?.semanticSimilarityScore || 0) / 100)) {
+                    semanticAnalysis[right.url].closestSemanticAddress = left.url;
+                    semanticAnalysis[right.url].semanticSimilarityScore = Number((similarity * 100).toFixed(1));
+                }
+
+                if (similarity >= nearDuplicateThreshold) {
+                    semanticAnalysis[left.url].noNearDuplicates += 1;
+                    semanticAnalysis[right.url].noNearDuplicates += 1;
+
+                    if (
+                        !semanticAnalysis[left.url].nearDuplicateMatch ||
+                        similarity >= ((semanticAnalysis[left.url].semanticSimilarityScore || 0) / 100)
+                    ) {
+                        semanticAnalysis[left.url].nearDuplicateMatch = right.url;
+                    }
+                    if (
+                        !semanticAnalysis[right.url].nearDuplicateMatch ||
+                        similarity >= ((semanticAnalysis[right.url].semanticSimilarityScore || 0) / 100)
+                    ) {
+                        semanticAnalysis[right.url].nearDuplicateMatch = left.url;
+                    }
+                }
+            }
+        }
+
         // 3. Batch process Search Intent & Content Analysis using Gemini
         onEvent('LOG', { message: 'Analyzing Search Intent & Strategic Insights with AI...', type: 'info' });
         const strategicInsights = await performAIStrategicAnalysis(pagePayloads, gscDataMap);
@@ -1665,15 +2183,38 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
             const payload = pagePayloads.get(url);
             if (!payload) continue;
 
+            // GA4 Mapping: try matching full URL then just the path (GA4 standard)
+            let ga4Data = {};
+            try {
+                const urlObj = new URL(url);
+                const pathOnly = urlObj.pathname;
+                const pathWithQuery = urlObj.pathname + (urlObj.search || '');
+                
+                ga4Data = ga4DataMap[url] || 
+                          ga4DataMap[pathWithQuery] || 
+                          ga4DataMap[pathOnly] || 
+                          ga4DataMap[pathOnly + '/'] || {};
+                          
+                // If path is root '/', GA4 sometimes reports it as '(index)' or empty
+                if (pathOnly === '/' && !Object.keys(ga4Data).length) {
+                    ga4Data = ga4DataMap['(index)'] || ga4DataMap['/'] || {};
+                }
+            } catch (e) {
+                ga4Data = ga4DataMap[url] || {};
+            }
+
             const update = {
                 url,
                 ...(gscDataMap[url] || {}),
-                ...(ga4DataMap[url] || {}),
+                ...ga4Data,
                 linkEquity: internalPageRank[url] || 0,
+                uniqueJsInlinks: jsInlinksMap[url]?.size || 0,
+                ...(semanticAnalysis[url] || {}),
                 searchIntent: strategicInsights[url]?.intent || 'Unknown',
                 strategicPriority: strategicInsights[url]?.priority || 'Medium',
                 contentDecay: gscDataMap[url] && (gscDataMap[url].gscClicks < 5 && gscDataMap[url].gscImpressions > 100) ? 'Possible Decay' : 'Stable'
             };
+            update.funnelStage = classifyFunnelStage({ ...payload, ...update });
 
             Object.assign(payload, update);
             onEvent('UPDATE_PAGE', update);
@@ -1723,6 +2264,7 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
                         queue: queue.slice(queueCursor),
                         queueCursor: 0,
                         inlinksMap: Object.fromEntries(Object.entries(inlinksMap).map(([url, links]) => [url, Array.from(links || [])])),
+                        jsInlinksMap: Object.fromEntries(Object.entries(jsInlinksMap).map(([url, links]) => [url, Array.from(links || [])])),
                         outlinksMap: Object.fromEntries(Object.entries(outlinksMap).map(([url, links]) => [url, Array.from(links || [])])),
                         urlsCrawled,
                         maxDepthSeen,

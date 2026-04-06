@@ -7,7 +7,7 @@ import {
 import { useAuth } from '../services/AuthContext';
 import { useOptionalProject } from '../services/ProjectContext';
 import { calculateInternalPageRank, calculatePredictiveScore } from '../services/StrategicIntelligence';
-import { persistCrawlResults, syncCrawlStatus } from '../services/CrawlPersistenceService';
+import { persistCrawlResults, syncCrawlStatus, persistEnrichmentStatus } from '../services/CrawlPersistenceService';
 import { syncFromCrawl } from '../services/DashboardDataService';
 import { 
     CrawlerIntegrationConnection,
@@ -33,6 +33,7 @@ import { GscClientService } from '../services/GscClientService';
 import { Ga4ClientService } from '../services/Ga4ClientService';
 import { BacklinkClientService } from '../services/BacklinkClientService';
 import { PostCrawlEnrichment } from '../services/PostCrawlEnrichment';
+import { refreshGoogleToken } from '../services/GoogleOAuthHelper';
 import { initializeDatabase } from '../services/turso';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { crawlDb } from '../services/CrawlDatabase';
@@ -511,7 +512,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         excludeRules: '', includeRules: '', ignoreQueryParams: false,
         jsRendering: false, extractCss: '', extractRegex: '', viewportWidth: 1920, viewportHeight: 1080,
         generateEmbeddings: false, aiCategorization: true, aiSentiment: false,
-        fetchWebVitals: false,
+        fetchWebVitals: false, crawlResources: false,
         gscApiKey: '', gscSiteUrl: '', ga4PropertyId: '', openAiKey: '', ahrefsToken: '', semrushApiKey: '', bingAccessToken: '',
         customHeaders: '', customCookies: '', authUser: '', authPass: '',
         useProxy: false, proxyUrl: '', proxyPort: '', proxyUser: '', proxyPass: '',
@@ -1337,7 +1338,8 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
                 maxConcurrent: parseInt(String(config.threads), 10) || 5,
                 maxDepth: parseInt(config.maxDepth) || 10,
                 limit: parseInt(config.limit) || 0,
-                userAgent: config.userAgent
+                userAgent: config.userAgent,
+                crawlResources: config.crawlResources
             });
             
             ghostCrawlerRef.current = ghost;
@@ -1461,11 +1463,11 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
             wsRef.current = ws;
 
             ws.onopen = async () => {
-                let currentGsc = config.gscSiteUrl;
-                let currentGa4 = config.ga4PropertyId;
+                const googleConnection = integrationConnections.google;
+                let currentGsc = config.gscSiteUrl || googleConnection?.selection?.siteUrl;
+                let currentGa4 = config.ga4PropertyId || googleConnection?.selection?.propertyId;
 
                 // Auto-detect properties if Google is connected but not configured
-                const googleConnection = integrationConnections.google;
                 const googleSecrets = googleConnection ? getCrawlerIntegrationSecret(integrationSecretScope, 'google') : null;
 
                 const googleAccessToken = googleSecrets?.accessToken || googleSecrets?.access_token;
@@ -1536,6 +1538,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
                         authPass: config.authPass,
                         fetchWebVitals: config.fetchWebVitals,
                         generateEmbeddings: config.generateEmbeddings,
+                        crawlResources: config.crawlResources,
                         
                         // Unified Google & Other Integrations
                         google: {
@@ -2879,7 +2882,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
             sync: connection.sync || { status: 'idle' },
             ...connection,
             credentials: {},
-            hasCredentials: Boolean(connection.credentials && Object.keys(connection.credentials).length > 0)
+            hasCredentials: Boolean(connection.credentials && Object.keys(connection.credentials).length > 0) || (provider === 'google' && !!connection.accountLabel)
         };
 
         setIntegrationConnections((prev) => {
@@ -2918,33 +2921,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         });
     }, [isAuthenticated, integrationProjectId, integrationSecretScope]);
 
-    const refreshGoogleToken = useCallback(async (refreshToken: string) => {
-        try {
-            const resp = await fetch('/api/integrations/google/refresh', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ refreshToken })
-            });
-
-            if (!resp.ok) throw new Error('Refresh failed');
-            const data = await resp.json(); // { access_token, expires_in, ... }
-            
-            if (data.access_token) {
-                // Store back secretly - use both casing just in case
-                await storeCrawlerIntegrationSecret(integrationSecretScope, 'google', { 
-                    access_token: data.access_token, 
-                    accessToken: data.access_token,
-                    refresh_token: refreshToken,
-                    refreshToken: refreshToken
-                });
-                return data.access_token;
-            }
-        } catch (e) {
-            console.error('[Google Refresh] Failed:', e);
-            return null;
-        }
-        return null;
-    }, [integrationSecretScope]);
+    // Legacy refreshGoogleToken removed - Now handled by GoogleOAuthHelper.refreshGoogleToken(email)
 
     const runFullEnrichment = useCallback(async () => {
         if (!currentSessionId) {
@@ -2952,64 +2929,84 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
             return;
         }
 
-        const gscIntegration = integrationConnections.google;
-        const ga4Integration = integrationConnections.google;
+        const googleConnection = integrationConnections.google;
+        const googleEmail = googleConnection?.accountLabel || null;
+        
+        // Providers
         const ahrefsSecrets = getCrawlerIntegrationSecret(integrationSecretScope, 'ahrefs' as any);
         const semrushSecrets = getCrawlerIntegrationSecret(integrationSecretScope, 'semrush' as any);
-        
-        const googleSecrets = gscIntegration?.authType === 'oauth' ? 
-            getCrawlerIntegrationSecret(integrationSecretScope, 'google') : null;
-        
-        const accessToken = googleSecrets?.accessToken || googleSecrets?.access_token || null;
-        const refreshToken = googleSecrets?.refreshToken || googleSecrets?.refresh_token || null;
-
-        // Auto-detect targets
-        const gscSiteUrl = detectedGscSite || config.gscSiteUrl || urlInput;
-        const ga4PropertyId = detectedGa4Property 
-            || config.ga4PropertyId 
-            || ga4Integration?.sync?.propertyId 
-            || ga4Integration?.selection?.propertyId;
-
         const ahrefsToken = ahrefsSecrets?.api_key || null;
         const semrushApiKey = semrushSecrets?.api_key || null;
 
+        // Auto-detect targets / manual overrides
+        let gscSiteUrl = config.gscSiteUrl || googleConnection?.selection?.siteUrl || urlInput;
+        let ga4PropertyId = config.ga4PropertyId 
+            || googleConnection?.sync?.propertyId 
+            || googleConnection?.selection?.propertyId;
+
         try {
-            addLog('Starting Strategic Intelligence Pipeline...', 'info');
-            if (!googleSecrets) {
-                addLog('Google enrichment skipped: no Google OAuth connection is available for this project scope.', 'warn');
-            } else if (!accessToken && !refreshToken) {
-                addLog('Google enrichment skipped: connection metadata exists, but no access or refresh token is stored. Reconnect Google.', 'warn');
-            }
-            if (!gscSiteUrl) {
-                addLog('GSC enrichment skipped: no Search Console property is selected.', 'warn');
-            }
-            if (!ga4PropertyId) {
-                addLog('GA4 enrichment skipped: no Analytics property ID is selected.', 'warn');
-            }
+            addLog('Starting Unified SEO Data Enrichment...', 'info');
             
-            // Always prefer a freshly refreshed access token when available.
-            let currentToken = accessToken;
-            if (refreshToken) {
-                const refreshedToken = await refreshGoogleToken(refreshToken);
-                if (refreshedToken) {
-                    currentToken = refreshedToken;
-                } else if (!currentToken) {
-                    addLog('Google token refresh failed.', 'error');
+            let googleAccessToken: string | undefined;
+            if (googleEmail) {
+                addLog('Verifying Google connection...', 'info');
+                googleAccessToken = await refreshGoogleToken(googleEmail) || undefined;
+                if (!googleAccessToken) {
+                    addLog('Google connection metadata is present, but no stored access token was found. Reconnect Google to sync GSC/GA4.', 'warn');
+                } else {
+                    // Perform proactive auto-detection if IDs are missing
+                    if (!gscSiteUrl || !ga4PropertyId) {
+                        const sampleUrl = pagesRef.current[0]?.url || urlInput;
+                        try {
+                            const detected = await autoDetectGoogleProperties(googleAccessToken, sampleUrl);
+                            if (detected.gscSiteUrl && !gscSiteUrl) {
+                                gscSiteUrl = detected.gscSiteUrl;
+                                addLog(`Auto-detected GSC property for enrichment: ${gscSiteUrl}`, 'success');
+                            }
+                            if (detected.ga4PropertyId && !ga4PropertyId) {
+                                ga4PropertyId = detected.ga4PropertyId;
+                                addLog(`Auto-detected GA4 property for enrichment: ${detected.ga4PropertyName || ga4PropertyId}`, 'success');
+                            }
+                        } catch (e) {
+                            console.warn('Auto-detection during enrichment failed:', e);
+                        }
+                    }
                 }
             }
 
-            await PostCrawlEnrichment.run({
+            if (googleAccessToken && !gscSiteUrl) {
+                addLog('GSC sync will be skipped: no Search Console property found for this domain.', 'warn', { source: 'system' });
+            }
+            if (googleAccessToken && !ga4PropertyId) {
+                addLog('GA4 sync will be skipped: no Analytics property found for this domain.', 'warn', { source: 'system' });
+            }
+
+            await PostCrawlEnrichment.runUnifiedEnrichment({
                 sessionId: currentSessionId,
-                accessToken: currentToken,
-                refreshToken,
-                gscSiteUrl,
-                ga4PropertyId,
+                googleAccessToken,
+                gscSiteUrl: gscSiteUrl || undefined,
+                ga4PropertyId: ga4PropertyId || undefined,
                 ahrefsToken,
-                semrushApiKey
+                semrushApiKey,
+                keywordCsvData: integrationConnections.keywordUpload?.uploadData,
+                backlinkCsvData: integrationConnections.backlinkUpload?.uploadData
             }, (msg) => addLog(msg, 'info', { source: 'enrichment' }));
 
-            if (activeProject?.id && currentSessionId) {
-                const enrichedPages = await crawlDb.pages.where('crawlId').equals(currentSessionId).toArray();
+            // Persistent Sync Coverage Check
+            const enrichedPages = await crawlDb.pages.where('crawlId').equals(currentSessionId).toArray();
+            const gscMatched = enrichedPages.filter(p => p.mainKeywordSource === 'gsc').length;
+            const ga4Matched = enrichedPages.filter(p => p.ga4Sessions !== null && p.ga4Sessions > 0).length;
+            const backlinkMatched = enrichedPages.filter(p => p.referringDomains !== null).length;
+
+            await persistEnrichmentStatus({
+                sessionId: currentSessionId,
+                gsc: { matched: gscMatched, total: enrichedPages.length, status: gscMatched > 0 ? 'success' : 'partial' },
+                ga4: { matched: ga4Matched, total: enrichedPages.length, status: ga4Matched > 0 ? 'success' : 'partial' },
+                backlinks: { matched: backlinkMatched, total: enrichedPages.length, status: backlinkMatched > 0 ? 'success' : 'partial' }
+            });
+
+            // Update local dashboard sync
+            if (activeProject?.id) {
                 await persistCrawlResults({
                     projectId: activeProject.id,
                     sessionId: currentSessionId,
@@ -3024,23 +3021,22 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
                 });
             }
 
-            addLog('All data points successfully enriched & strategic scores updated.', 'success');
+            addLog('Enrichment complete. Strategic opportunities updated.', 'success');
         } catch (error: any) {
             console.error('[Full Enrichment] Failed:', error);
-            addLog(`Enrichment Pipeline failed: ${error.message}`, 'error');
+            addLog(`Pipeline failed: ${error.message}`, 'error');
         }
     }, [
         currentSessionId, 
         integrationConnections, 
         integrationSecretScope, 
         addLog, 
-        refreshGoogleToken, 
         detectedGscSite, 
         detectedGa4Property, 
         config.gscSiteUrl, 
         config.ga4PropertyId, 
         urlInput,
-        integrationProjectId,
+        activeProject?.id,
         crawlingMode,
         crawlRuntime.rate,
         crawlRuntime.maxDepthSeen,

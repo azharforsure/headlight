@@ -734,6 +734,46 @@ export async function persistCrawlResults(params: {
     }
 }
 
+/**
+ * Update a crawl run with final enrichment synchronization status.
+ * This tracks coverage (how many pages matched GSC/GA4/Backlinks).
+ */
+export async function persistEnrichmentStatus(params: {
+    sessionId: string;
+    gsc?: { matched: number; total: number; status: string };
+    ga4?: { matched: number; total: number; status: string };
+    backlinks?: { matched: number; total: number; status: string };
+}): Promise<void> {
+    if (!isCloudSyncEnabled) return;
+    await ensureSchema();
+    const client = turso();
+    const runId = buildRunId(params.sessionId);
+
+    try {
+        const result = await client.execute({
+            sql: 'SELECT summary_json FROM crawl_runs WHERE id = ?',
+            args: [runId]
+        });
+
+        if (result.rows.length === 0) return;
+
+        const summary = safeJsonParse<any>(result.rows[0].summary_json, {});
+        summary.sync_coverage = {
+            gsc: params.gsc || null,
+            ga4: params.ga4 || null,
+            backlinks: params.backlinks || null,
+            unified_at: new Date().toISOString()
+        };
+
+        await client.execute({
+            sql: 'UPDATE crawl_runs SET summary_json = ? WHERE id = ?',
+            args: [JSON.stringify(summary), runId]
+        });
+    } catch (err) {
+        console.error('[CrawlPersistence] Failed to persist enrichment status:', err);
+    }
+}
+
 const mapRunRowToAudit = (row: any): AuditResult => {
     const summary = safeJsonParse<any>(row.summary_json, {});
     return {

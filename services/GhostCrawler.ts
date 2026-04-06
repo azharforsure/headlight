@@ -7,6 +7,7 @@ export interface GhostCrawlConfig {
     limit?: number;
     userAgent?: string;
     aiCategorization?: boolean;
+    crawlResources?: boolean;
 }
 
 type GhostEvent = 'page' | 'progress' | 'complete' | 'error' | 'log';
@@ -152,10 +153,10 @@ export class GhostCrawler {
             const bridgeUrl = (import.meta as any).env?.VITE_GHOST_BRIDGE_URL;
             const targetUrl = bridgeUrl ? `${bridgeUrl}?url=${encodeURIComponent(url)}` : url;
 
-            // Skip non-HTML resources to save Worker requests
+            // Skip non-HTML resources to save Worker requests unless explicitly enabled
             const lowerUrl = url.toLowerCase();
             const skipExtensions = ['.css', '.js', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.ico', '.woff', '.woff2', '.ttf', '.eot', '.mp4', '.mp3', '.pdf', '.zip', '.map'];
-            if (skipExtensions.some(ext => lowerUrl.endsWith(ext) || lowerUrl.includes(ext + '?'))) {
+            if (!this.config.crawlResources && skipExtensions.some(ext => lowerUrl.endsWith(ext) || lowerUrl.includes(ext + '?'))) {
                 // Still record it as a discovered resource, but don't fetch through the proxy
                 this.crawledCount++;
                 this.emit('page', {
@@ -266,6 +267,10 @@ export class GhostCrawler {
 
             if (this.config.maxDepth === undefined || depth < this.config.maxDepth) {
                 this.enqueueLinks(pageData.links, depth + 1);
+                
+                if (this.config.crawlResources && (pageData as any).resources) {
+                    this.enqueueLinks((pageData as any).resources, depth + 1);
+                }
             }
         } catch (error: any) {
             // Don't emit errors for intentional aborts
@@ -325,7 +330,13 @@ export class GhostCrawler {
             imageCount: images.length,
             imagesWithoutAlt,
             indexable: !robots.includes('noindex'),
-            timestamp: Date.now()
+            timestamp: Date.now(),
+            // Pass these up for enqueuing if needed
+            resources: this.config.crawlResources ? [
+                ...Array.from(doc.querySelectorAll('img')).map(img => img.getAttribute('src')),
+                ...Array.from(doc.querySelectorAll('script')).map(s => s.getAttribute('src')),
+                ...Array.from(doc.querySelectorAll('link[rel="stylesheet"]')).map(l => l.getAttribute('href'))
+            ].filter(Boolean).map(src => normalizeUrl(src!, url)).filter(Boolean) as string[] : []
         };
     }
 
@@ -371,6 +382,29 @@ export class GhostCrawler {
         const dbPage: CrawledPage = {
             ...page,
             crawlId: this.currentSessionId,
+            // ── NEW: Source & Volume ──
+            mainKeywordSource: null,
+            bestKeywordSource: null,
+            mainKwSearchVolume: null,
+            bestKwSearchVolume: null,
+            mainKwEstimatedVolume: null,
+            bestKwEstimatedVolume: null,
+            volumeEstimationMethod: null,
+            // ── NEW: Engagement ──
+            sessionsDeltaAbsolute: null,
+            sessionsDeltaPct: null,
+            ga4EngagementTimePerPage: null,
+            ga4EngagementRate: null,
+            // ── NEW: Backlinks ──
+            backlinkSource: null,
+            backlinkUploadOverride: false,
+            // ── NEW: Sync metadata ──
+            gscEnrichedAt: null,
+            ga4EnrichedAt: null,
+            backlinkEnrichedAt: null,
+            // ── NEW: HTML Flag ──
+            isHtmlPage: (page.contentType || '').includes('text/html'),
+            
             gscClicks: null,
             gscImpressions: null,
             gscCtr: null,

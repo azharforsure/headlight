@@ -189,6 +189,15 @@ export default function CrawlerModals() {
                                                         <div className="text-[10px] text-[#666]">Collect real-user LCP, CLS, INP metrics during crawl.</div>
                                                     </div>
                                                 </label>
+                                                <label className="flex items-center gap-3 cursor-pointer group" onClick={() => setConfig({...config, crawlResources: !config?.crawlResources})}>
+                                                    <div className={`w-10 h-5 rounded-full transition-colors relative ${config?.crawlResources ? 'bg-[#F5364E]' : 'bg-[#333]'}`}>
+                                                        <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${config?.crawlResources ? 'right-1' : 'left-1'}`}></div>
+                                                    </div>
+                                                    <div>
+                                                        <div className="text-[12px] text-white font-medium">Crawl All Resources (Images, CSS, JS)</div>
+                                                        <div className="text-[10px] text-[#666]">Fetch and audit every asset found on the page. Essential for dead-link asset detection.</div>
+                                                    </div>
+                                                </label>
                                             </div>
                                         </div>
                                         <div>

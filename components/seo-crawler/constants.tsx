@@ -109,18 +109,23 @@ export const ALL_COLUMNS = [
     { key: 'schemaWarnings', label: 'Schema Warnings', width: '130px', group: 'Advanced' },
     { key: 'crawlTimestamp', label: 'Crawl Timestamp', width: '200px', group: 'Advanced' },
     
-    // Search Performance (GSC)
+    // Search Performance (GSC & Keywords)
     { key: 'gscClicks', label: 'Clicks (30d)', width: '130px', group: 'Search Console' },
     { key: 'gscImpressions', label: 'Impressions (30d)', width: '160px', group: 'Search Console' },
     { key: 'gscCtr', label: 'CTR', width: '100px', group: 'Search Console' },
     { key: 'gscPosition', label: 'Avg Position', width: '140px', group: 'Search Console' },
     { key: 'mainKeyword', label: 'Main Keyword', width: '180px', group: 'Search Console' },
+    { key: 'mainKeywordSource', label: 'Keyword Source', width: '140px', group: 'Search Console' },
+    { key: 'mainKwSearchVolume', label: 'Search Volume', width: '130px', group: 'Search Console' },
+    { key: 'mainKwEstimatedVolume', label: 'Est. Volume (Imp)', width: '150px', group: 'Search Console' },
+
 
 
     // Analytics (GA4)
     { key: 'ga4Views', label: 'Views (30d)', width: '140px', group: 'Analytics' },
     { key: 'ga4Sessions', label: 'Sessions (30d)', width: '150px', group: 'Analytics' },
-    { key: 'sessionsDelta', label: 'Traffic Δ (30d)', width: '140px', group: 'Analytics' },
+    { key: 'sessionsDelta', label: 'Traffic Δ (Abs)', width: '140px', group: 'Analytics' },
+    { key: 'sessionsDeltaPct', label: 'Traffic Δ (%)', width: '120px', group: 'Analytics' },
     { key: 'ga4Users', label: 'Users (30d)', width: '140px', group: 'Analytics' },
     { key: 'ga4BounceRate', label: 'Bounce Rate', width: '140px', group: 'Analytics' },
     { key: 'ga4Conversions', label: 'Conversions', width: '130px', group: 'Analytics' },

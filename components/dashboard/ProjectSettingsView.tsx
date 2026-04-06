@@ -3,9 +3,8 @@ import { Plug, Trash2, CheckCircle2, CreditCard, ExternalLink } from 'lucide-rea
 import { useProject } from '../../services/ProjectContext';
 import { useAuth } from '../../services/AuthContext';
 import { fetchProjectCrawlerIntegrations, upsertProjectCrawlerIntegration } from '../../services/CrawlerIntegrationsService';
-import { storeCrawlerIntegrationSecret } from '../../services/CrawlerSecretVault';
 import { openBillingPortal } from '../../services/BillingService';
-import { exchangeGoogleCode, fetchGoogleEmail, openGoogleOAuthPopup } from '../../services/GoogleOAuthHelper';
+import { exchangeGoogleCode, openGoogleOAuthPopup } from '../../services/GoogleOAuthHelper';
 
 const GoogleIntegrationCard = ({ project }: { project: any }) => {
     const [status, setStatus] = useState<'idle' | 'loading' | 'connected'>('idle');
@@ -41,19 +40,16 @@ const GoogleIntegrationCard = ({ project }: { project: any }) => {
                 return;
             }
 
-            const tokens = await exchangeGoogleCode(result.code, result.redirectUri);
-            if (!tokens?.access_token) {
+            // New metadata-only exchange: returns { email, expiryDate }
+            const meta = await exchangeGoogleCode(result.code, result.redirectUri);
+            if (!meta || !meta.email) {
                 setStatus('idle');
+                alert('Failed to verify Google account metadata.');
                 return;
             }
 
-            const email = tokens.email || await fetchGoogleEmail(tokens.access_token);
-            storeCrawlerIntegrationSecret(project.id, 'google', {
-                accessToken: tokens.access_token,
-                access_token: tokens.access_token,
-                refreshToken: tokens.refresh_token || '',
-                refresh_token: tokens.refresh_token || ''
-            });
+            // CRITICAL: We no longer store tokens in the client-side vault or credentials object.
+            // Server handles it via Turso.
 
             await upsertProjectCrawlerIntegration(project.id, {
                 provider: 'google',
@@ -62,22 +58,20 @@ const GoogleIntegrationCard = ({ project }: { project: any }) => {
                 authType: 'oauth',
                 ownership: 'project',
                 connectedAt: Date.now(),
-                accountLabel: email || 'Connected Account',
+                accountLabel: meta.email,
                 scopes: ['webmasters.readonly', 'analytics.readonly', 'userinfo.email'],
-                credentials: {
-                    accessToken: tokens.access_token,
-                    refreshToken: tokens.refresh_token || ''
-                },
+                credentials: {}, // Empty - tokens are on server
                 selection: {
                     siteUrl
                 },
                 metadata: {
                     siteUrl,
-                    email: email || ''
+                    email: meta.email
                 },
                 sync: {
                     status: 'idle',
-                    lastAttemptedAt: Date.now()
+                    lastAttemptedAt: Date.now(),
+                    expiryDate: meta.expiryDate
                 }
             });
             setStatus('connected');

@@ -1,6 +1,7 @@
 import { parentPort } from 'worker_threads';
 import * as cheerio from 'cheerio';
 import crypto from 'crypto';
+import fs from 'fs';
 
 // ─── Syllable Estimator for Flesch Score ────────────────────
 function countSyllables(word) {
@@ -22,6 +23,109 @@ function estimatePixelWidth(text) {
         else pixels += 6;
     }
     return Math.round(pixels);
+}
+
+function normalizeDictionaryWord(word) {
+    return String(word || '')
+        .toLowerCase()
+        .replace(/^[^a-z]+|[^a-z]+$/g, '');
+}
+
+function loadDictionary() {
+    const fallback = new Set([
+        'about', 'access', 'account', 'action', 'actions', 'add', 'advanced', 'after', 'against', 'all', 'allow',
+        'analytics', 'another', 'api', 'application', 'applications', 'article', 'articles', 'asset', 'assets',
+        'author', 'available', 'average', 'before', 'best', 'between', 'body', 'browser', 'button', 'cache',
+        'canonical', 'category', 'change', 'changes', 'check', 'click', 'content', 'conversion', 'cookie',
+        'crawl', 'crawler', 'crawling', 'custom', 'data', 'description', 'design', 'details', 'device',
+        'download', 'downloads', 'email', 'engine', 'error', 'errors', 'example', 'external', 'fetch',
+        'field', 'fields', 'file', 'files', 'filter', 'follow', 'footer', 'form', 'free', 'from', 'guide',
+        'header', 'headers', 'help', 'home', 'image', 'images', 'index', 'internal', 'javascript', 'json',
+        'keyword', 'keywords', 'language', 'link', 'links', 'list', 'loading', 'local', 'login', 'meta',
+        'metrics', 'mobile', 'network', 'next', 'number', 'page', 'pages', 'performance', 'policy', 'price',
+        'privacy', 'profile', 'project', 'redirect', 'render', 'rendering', 'report', 'resource', 'resources',
+        'response', 'robots', 'schema', 'score', 'search', 'security', 'server', 'settings', 'signup',
+        'site', 'sitemap', 'social', 'source', 'speed', 'status', 'strategy', 'style', 'styles', 'support',
+        'system', 'technical', 'text', 'title', 'tools', 'tracking', 'type', 'types', 'update', 'upload',
+        'url', 'urls', 'user', 'value', 'values', 'version', 'view', 'warning', 'website', 'word', 'words'
+    ]);
+
+    try {
+        const raw = fs.readFileSync('/usr/share/dict/words', 'utf8');
+        const words = raw
+            .split(/\r?\n/)
+            .map(normalizeDictionaryWord)
+            .filter((word) => word.length >= 2);
+        return new Set([...fallback, ...words]);
+    } catch {
+        return fallback;
+    }
+}
+
+const DICTIONARY = loadDictionary();
+const SPELLING_IGNORE = new Set([
+    'api', 'apis', 'seo', 'javascript', 'typescript', 'node', 'nodejs', 'npm', 'json', 'html', 'css', 'svg',
+    'png', 'jpg', 'jpeg', 'gif', 'webp', 'ico', 'woff', 'woff2', 'ttf', 'eot', 'http', 'https', 'www', 'cdn',
+    'utf', 'charset', 'viewport', 'hreflang', 'canonical', 'amphtml', 'robots', 'noindex', 'nofollow',
+    'schema', 'jsonld', 'og', 'twitter', 'linkedin', 'youtube', 'github', 'wordpress', 'woocommerce'
+]);
+
+function maybeBaseForms(word) {
+    const forms = [word];
+    if (word.endsWith('ies') && word.length > 4) forms.push(`${word.slice(0, -3)}y`);
+    if (word.endsWith('es') && word.length > 4) forms.push(word.slice(0, -2));
+    if (word.endsWith('s') && word.length > 3) forms.push(word.slice(0, -1));
+    if (word.endsWith('ing') && word.length > 5) forms.push(word.slice(0, -3), `${word.slice(0, -3)}e`);
+    if (word.endsWith('ed') && word.length > 4) forms.push(word.slice(0, -2), `${word.slice(0, -2)}e`);
+    return forms;
+}
+
+function analyzeTextQuality(text) {
+    const rawTokens = String(text || '').match(/[A-Za-z][A-Za-z'’-]*/g) || [];
+    const normalizedTokens = rawTokens
+        .map(normalizeDictionaryWord)
+        .filter((token) => token.length >= 2);
+
+    const misspelled = new Set();
+    for (const rawToken of rawTokens) {
+        if (rawToken.length < 4) continue;
+        if (/^[A-Z][a-z]+$/.test(rawToken)) continue;
+        if (/[A-Z]{2,}/.test(rawToken)) continue;
+
+        const token = normalizeDictionaryWord(rawToken);
+        if (!token || token.length < 4) continue;
+        if (SPELLING_IGNORE.has(token)) continue;
+        if (maybeBaseForms(token).some((form) => DICTIONARY.has(form))) continue;
+
+        misspelled.add(token);
+    }
+
+    let grammarErrors = 0;
+    for (let i = 1; i < normalizedTokens.length; i++) {
+        if (normalizedTokens[i] && normalizedTokens[i] === normalizedTokens[i - 1]) {
+            grammarErrors++;
+        }
+    }
+
+    const sentenceStarts = String(text || '')
+        .split(/[.!?]+\s+/)
+        .map((sentence) => sentence.trim())
+        .filter(Boolean);
+
+    for (const sentence of sentenceStarts) {
+        const firstLetter = sentence.match(/[A-Za-z]/)?.[0];
+        if (firstLetter && firstLetter === firstLetter.toLowerCase()) {
+            grammarErrors++;
+        }
+    }
+
+    grammarErrors += (String(text || '').match(/\s{2,}/g) || []).length;
+    grammarErrors += (String(text || '').match(/[!?.,;:]{3,}/g) || []).length;
+
+    return {
+        spellingErrors: misspelled.size,
+        grammarErrors
+    };
 }
 
 // ─── Valid ISO language codes (subset for validation) ────────
@@ -50,7 +154,8 @@ parentPort.on('message', (task) => {
         const title = titleTags.first().text() || '';
         const metaDesc = metaDescTags.attr('content') || '';
         const metaKeywords = $('meta[name="keywords"]').attr('content') || '';
-        const robots = $('meta[name="robots"]').attr('content') || '';
+        const metaRobotsTags = $('meta[name="robots"]').map((_, el) => $(el).attr('content') || '').get().filter(Boolean);
+        const robots = metaRobotsTags[0] || '';
         const lang = $('html').attr('lang') || '';
 
         // ─── Headings (ALL levels, not just h1/h2) ──────────
@@ -273,6 +378,7 @@ parentPort.on('message', (task) => {
         
         const keywordStuffingLevel = wordCount > 50 ? (maxFreq / wordCount) : 0;
         const hasKeywordStuffing = keywordStuffingLevel > 0.08; // > 8% density for a single word is very high
+        const { spellingErrors, grammarErrors } = analyzeTextQuality(textContent);
 
         // ─── Extract Resources (CSS/JS) ─────────────────────
         const resources = [];
@@ -291,19 +397,21 @@ parentPort.on('message', (task) => {
             data: {
                 // Core meta
                 title, metaDesc, metaKeywords, robots, lang,
+                metaKeywordsLength: metaKeywords.length,
+                robotsTags: metaRobotsTags,
                 multipleTitles: titleTags.length > 1,
                 multipleMetaDescs: metaDescTags.length > 1,
                 titlePixelWidth, metaDescPixelWidth,
                 // Quality Signals
                 wordCount, sentenceCount, avgWordsPerSentence, flesch, readability, textRatio, contentHash,
-                containsLoremIpsum, isThinContent, hasKeywordStuffing, mostFrequentWord,
+                containsLoremIpsum, isThinContent, hasKeywordStuffing, mostFrequentWord, spellingErrors, grammarErrors,
                 // Headings
                 h1s, h2s, headingHierarchy, incorrectHeadingOrder,
                 // Technical
                 canonical, multipleCanonical, metaRefresh, relNext, relPrev, amphtml, mobileAlt,
                 // Links & resources
                 links, resources,
-                textContent: textContent.substring(0, 1000),
+                textContent: textContent.substring(0, 5000),
                 // Images
                 imageDetails, missingAltImages, longAltImages, totalImages,
                 images: imageDetails.map(i => i.src),

@@ -118,8 +118,6 @@ export class BacklinkClientService {
             const rootDomain = new URL(urls[0]).hostname.replace(/^www\./, '');
             const semrushData = await this.fetchSemrushMetrics(rootDomain, integrations.semrushApiKey);
             
-            // SEMrush domain data applies to the whole session summary / homepage usually
-            // but we can apply it to the homepage for now
             const homepage = urls.find(u => new URL(u).pathname === '/');
             if (homepage) {
                 metricsMap[homepage] = { ...metricsMap[homepage], ...semrushData };
@@ -128,24 +126,33 @@ export class BacklinkClientService {
 
         onProgress?.('Syncing Backlink Data...');
         let enrichedCount = 0;
-        const updates = pages.map(page => {
+        const updates: Array<{ url: string } & Partial<CrawledPage>> = [];
+
+        for (const page of pages) {
+            // Skip if user manually overrode via CSV
+            if (page.backlinkUploadOverride) continue;
+
             const match = metricsMap[page.url] || metricsMap[page.url + '/'];
             if (match) {
                 enrichedCount++;
-                return {
-                    ...page,
+                updates.push({
+                    url: page.url,
                     urlRating: match.urlRating ?? page.urlRating,
                     referringDomains: match.referringDomains ?? page.referringDomains,
                     backlinks: match.backlinks ?? page.backlinks,
                     authorityScore: match.authorityScore ?? page.authorityScore,
-                    lastEnrichedAt: Date.now()
-                };
+                    backlinkSource: integrations.ahrefsToken ? 'ahrefs' : 'semrush',
+                    backlinkEnrichedAt: Date.now()
+                });
             }
-            return page;
-        });
+        }
 
-        if (enrichedCount > 0) {
-            await crawlDb.pages.bulkPut(updates);
+        if (updates.length > 0) {
+            await crawlDb.transaction('rw', crawlDb.pages, async () => {
+                for (const update of updates) {
+                    await crawlDb.pages.update(update.url, update);
+                }
+            });
         }
 
         return { enriched: enrichedCount, total: pages.length };

@@ -21,17 +21,71 @@ export interface CrawledPage {
   outlinksList?: string[];
   externalLinks?: string[];
   inlinks: number;
+  uniqueJsInlinks?: number;
+  uniqueJsOutlinks?: number;
+  uniqueExternalJsOutlinks?: number;
+  nearDuplicateMatch?: string;
+  noNearDuplicates?: number;
+  closestSemanticAddress?: string;
+  semanticSimilarityScore?: number;
+  funnelStage?: string;
+  spellingErrors?: number;
+  grammarErrors?: number;
+  metaKeywordsLength?: number;
+  metaRobots1?: string;
+  metaRobots2?: string;
+  redirectType?: string;
+  httpRelNext?: string;
+  httpRelPrev?: string;
+  transferredBytes?: number;
+  totalTransferred?: number;
+  co2Mg?: number;
+  carbonRating?: string;
+  
+  // ── NEW: Keyword source attribution ──
+  mainKeywordSource: 'gsc' | 'upload' | 'ahrefs' | 'semrush' | 'csv' | null;
+  bestKeywordSource: 'gsc' | 'upload' | 'ahrefs' | 'semrush' | 'csv' | null;
+
+  // ── NEW: Search volume (never from GSC) ──
+  mainKwSearchVolume: number | null;   // from upload/provider ONLY
+  bestKwSearchVolume: number | null;   // from upload/provider ONLY
+
+  // ── NEW: Estimated volume (Tier 2 — impression-based) ──
+  mainKwEstimatedVolume: number | null;
+  bestKwEstimatedVolume: number | null;
+  volumeEstimationMethod: 'impression_share' | 'provider' | 'upload' | null;
+
+  // ── CHANGED: Session delta split ──
+  sessionsDeltaAbsolute: number | null;  // replaces old sessionsDelta
+  sessionsDeltaPct: number | null;       // NEW: percentage change
+
+  // ── NEW: GA4 page-level engagement ──
+  ga4EngagementTimePerPage: number | null;  // seconds
+  ga4EngagementRate: number | null;         // ratio 0-1
+
+  // ── NEW: Backlink source attribution ──
+  backlinkSource: 'ahrefs' | 'semrush' | 'upload' | 'csv' | null;
+  backlinkUploadOverride: boolean;  // true if CSV upload overrode API data
+
+  // ── NEW: Sync coverage metadata ──
+  gscEnrichedAt: number | null;     // timestamp
+  ga4EnrichedAt: number | null;     // timestamp
+  backlinkEnrichedAt: number | null; // timestamp
+
+  // ── NEW: HTML-only flag ──
+  isHtmlPage: boolean;
+
   // GSC data (enriched post-crawl)
   gscClicks: number | null;
   gscImpressions: number | null;
   gscCtr: number | null;
   gscPosition: number | null;
-  // GSC query-level (NEW)
+  // GSC query-level
   mainKeyword: string | null;
-  mainKwVolume: number | null;
+  mainKwVolume: number | null;      // DEPRECATED — keep for compat
   mainKwPosition: number | null;
   bestKeyword: string | null;
-  bestKwVolume: number | null;
+  bestKwVolume: number | null;      // DEPRECATED — keep for compat
   bestKwPosition: number | null;
   // GA4 data (enriched post-crawl)
   ga4Views: number | null;
@@ -39,12 +93,12 @@ export interface CrawledPage {
   ga4Users: number | null;
   ga4BounceRate: number | null;
   ga4AvgSessionDuration: number | null;
-  // GA4 NEW metrics
+  // GA4 metrics
   ga4Conversions: number | null;
   ga4ConversionRate: number | null;
   ga4Revenue: number | null;
-  // Period comparison (NEW)
-  sessionsDelta: number | null;       // % change vs previous period
+  // Period comparison
+  sessionsDelta: number | null;       // DEPRECATED
   isLosingTraffic: boolean | null;
   // Ahrefs / SEMrush (enriched post-crawl)
   urlRating: number | null;
@@ -89,10 +143,40 @@ class CrawlDB extends Dexie {
 
   constructor() {
     super('HeadlightCrawlDB');
+    
     this.version(1).stores({
       pages: 'url, crawlId, statusCode, [crawlId+statusCode]',
       sessions: 'id, projectId, startedAt',
       queries: '++id, [crawlId+pageUrl], [crawlId+query]'
+    });
+
+    // Bump version for new fields
+    this.version(2).stores({
+        pages: 'url, crawlId, isHtmlPage, statusCode, [crawlId+statusCode]',
+    }).upgrade(tx => {
+        // Backfill existing pages
+        return tx.table('pages').toCollection().modify(page => {
+            // Set isHtmlPage based on contentType
+            page.isHtmlPage = (page.contentType || '').includes('text/html');
+            
+            // Initialize new fields
+            page.mainKeywordSource = page.mainKeyword ? 'gsc' : null;
+            page.bestKeywordSource = null;
+            page.mainKwSearchVolume = null;
+            page.bestKwSearchVolume = null;
+            page.mainKwEstimatedVolume = null;
+            page.bestKwEstimatedVolume = null;
+            page.volumeEstimationMethod = null;
+            page.sessionsDeltaAbsolute = page.sessionsDelta || null;
+            page.sessionsDeltaPct = null;
+            page.ga4EngagementTimePerPage = null;
+            page.ga4EngagementRate = null;
+            page.backlinkSource = page.urlRating ? 'ahrefs' : null;
+            page.backlinkUploadOverride = false;
+            page.gscEnrichedAt = null;
+            page.ga4EnrichedAt = null;
+            page.backlinkEnrichedAt = null;
+        });
     });
   }
 }
@@ -113,7 +197,7 @@ export async function getCrawlPages(crawlId: string): Promise<CrawledPage[]> {
 export async function getHtmlPages(crawlId: string): Promise<CrawledPage[]> {
   return crawlDb.pages
     .where('crawlId').equals(crawlId)
-    .filter(p => p.contentType?.includes('html'))
+    .filter(p => p.isHtmlPage === true)
     .toArray();
 }
 

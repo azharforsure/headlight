@@ -1,4 +1,6 @@
 import { crawlDb, type CrawledPage } from './CrawlDatabase';
+import { UrlNormalization } from './UrlNormalization';
+import { VolumeEstimation } from './VolumeEstimation';
 
 export interface GscMetricRow {
     keys: string[];
@@ -19,7 +21,6 @@ export class GscClientService {
      * Get start and end date for GSC API
      */
     private static getDates(days: number = 30) {
-        // GSC data usually lags by 2-3 days
         const end = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
         const start = new Date(end.getTime() - days * 24 * 60 * 60 * 1000);
         
@@ -30,21 +31,21 @@ export class GscClientService {
     }
 
     /**
-     * Internal paginated fetcher for GSC Search Analytics
+     * Paginated fetcher for GSC Search Analytics
      */
     private static async fetchPaginated(
         siteUrl: string,
         accessToken: string,
         dimensions: string[],
         days: number = 30,
-        filters: any[] = []
+        maxRows: number = 1000000
     ): Promise<GscMetricRow[]> {
         const { startDate, endDate } = this.getDates(days);
         const allRows: GscMetricRow[] = [];
         let startRow = 0;
         const rowLimit = 25000;
 
-        while (true) {
+        while (startRow < maxRows) {
             const body: any = {
                 startDate,
                 endDate,
@@ -52,10 +53,6 @@ export class GscClientService {
                 rowLimit,
                 startRow
             };
-
-            if (filters.length > 0) {
-                body.dimensionFilterGroups = [{ filters }];
-            }
 
             const response = await fetch(
                 `${this.API_BASE}/${encodeURIComponent(siteUrl)}/searchAnalytics/query`,
@@ -65,137 +62,131 @@ export class GscClientService {
                         'Authorization': `Bearer ${accessToken}`,
                         'Content-Type': 'application/json'
                     },
-                    signal: AbortSignal.timeout(60000), // 60s timeout for large GSC queries
                     body: JSON.stringify(body)
                 }
             );
 
             if (!response.ok) {
                 const error = await response.json();
-                console.error('[GSC] Paginated Fetch Error:', error);
-                throw new Error(`GSC Fetch Failed at row ${startRow}: ${error.error?.message || response.statusText}`);
+                throw new Error(`GSC Fetch Failed: ${error.error?.message || response.statusText}`);
             }
 
             const data: GscResponse = await response.json();
             if (!data.rows || data.rows.length === 0) break;
 
             allRows.push(...data.rows);
-            
             if (data.rows.length < rowLimit) break;
             startRow += rowLimit;
-            
-            // Safety cap to prevent infinite loops / 1,000,000+ rows (Adjust as needed)
-            if (startRow >= 500000) break; 
         }
 
         return allRows;
     }
 
     /**
-     * Fetch Page-level metrics (Clicks, Impressions, CTR, Position)
+     * Strategic Keyword Scoring
+     * 1. Keywords with Clicks
+     * 2. Highest Impressions
+     * 3. Best Average Position
      */
-    static async fetchPageMetrics(siteUrl: string, accessToken: string, days: number = 30) {
-        return this.fetchPaginated(siteUrl, accessToken, ['page'], days);
+    private static scoreKeyword(row: GscMetricRow): number {
+        return (row.clicks * 1000) + (row.impressions / 10) + (100 - row.position);
     }
 
     /**
-     * Fetch Query-level metrics (Top keyword per page)
-     */
-    static async fetchQueryMetrics(siteUrl: string, accessToken: string, days: number = 30) {
-        return this.fetchPaginated(siteUrl, accessToken, ['page', 'query'], days);
-    }
-
-    /**
-     * Full Enrichment Pipeline for GSC
+     * Unified GSC Enrichment
      */
     static async enrichSession(
         sessionId: string,
         siteUrl: string,
         accessToken: string,
         onProgress?: (msg: string) => void
-    ): Promise<{ enriched: number; total: number }> {
+    ): Promise<{ enriched: number; total: number; rowsCollected: number }> {
         onProgress?.('Fetching GSC Page-level data...');
-        const pageRows = await this.fetchPageMetrics(siteUrl, accessToken);
+        const pageRows = await this.fetchPaginated(siteUrl, accessToken, ['page']);
         
-        onProgress?.('Fetching GSC Query-level intelligence...');
-        const queryRows = await this.fetchQueryMetrics(siteUrl, accessToken);
+        onProgress?.(`Processing ${pageRows.length} landing pages...`);
+        const queryRows = await this.fetchPaginated(siteUrl, accessToken, ['page', 'query']);
 
-        onProgress?.('Processing Search Intelligence...');
-        
         // 1. Map pages to metrics
-        const pageMap = new Map<string, GscMetricRow>();
-        pageRows.forEach(row => pageMap.set(row.keys[0], row));
+        const pageMetricsMap = new Map<string, GscMetricRow>();
+        pageRows.forEach(row => {
+            pageMetricsMap.set(UrlNormalization.toCanonical(row.keys[0]), row);
+        });
 
-        // 2. Map pages to their best keyword (highest clicks, then highest impressions)
-        const bestKeywordMap = new Map<string, { query: string; clicks: number; impressions: number; position: number }>();
+        // 2. Strategic Keyword Mapping
+        // Map: URL -> { mainKeyword, bestKeyword, estimatedVolume }
+        const urlIntelligence = new Map<string, any>();
+
         queryRows.forEach(row => {
             const url = row.keys[0];
             const query = row.keys[1];
-            const currentBest = bestKeywordMap.get(url);
-            
-            if (!currentBest || row.clicks > currentBest.clicks || (row.clicks === currentBest.clicks && row.impressions > currentBest.impressions)) {
-                bestKeywordMap.set(url, {
-                    query,
-                    clicks: row.clicks,
-                    impressions: row.impressions,
-                    position: row.position
-                });
+            const canonical = UrlNormalization.toCanonical(url);
+            const score = this.scoreKeyword(row);
+
+            const existing = urlIntelligence.get(canonical) || { 
+                main: null, 
+                best: null, 
+                mainScore: -1, 
+                bestScore: -1 
+            };
+
+            // Main Keyword logic (Usually highest clicks/impressions)
+            if (score > existing.mainScore) {
+                existing.main = { query, row };
+                existing.mainScore = score;
             }
+
+            urlIntelligence.set(canonical, existing);
         });
 
-        // 3. Update IndexedDB
+        // 3. Sync to IndexedDB
         const pages = await crawlDb.pages.where('crawlId').equals(sessionId).toArray();
         let enrichedCount = 0;
+        const updates: Array<{ url: string } & Partial<CrawledPage>> = [];
 
-        const updates = pages.map(page => {
-            const gscUrl = this.matchUrlToGsc(page.url, Array.from(pageMap.keys()));
-            const metrics = gscUrl ? pageMap.get(gscUrl) : null;
-            const topKw = gscUrl ? bestKeywordMap.get(gscUrl) : null;
+        for (const page of pages) {
+            const canonical = UrlNormalization.toCanonical(page.url);
+            const metrics = pageMetricsMap.get(canonical);
+            const intel = urlIntelligence.get(canonical);
 
-            if (metrics || topKw) {
+            if (metrics || intel) {
                 enrichedCount++;
-                return {
-                    ...page,
-                    gscClicks: metrics?.clicks ?? page.gscClicks,
-                    gscImpressions: metrics?.impressions ?? page.gscImpressions,
-                    gscCtr: metrics?.ctr ?? page.gscCtr,
-                    gscPosition: metrics?.position ?? page.gscPosition,
-                    mainKeyword: topKw?.query ?? page.mainKeyword,
-                    mainKwVolume: topKw?.impressions ?? page.mainKwVolume, 
-                    mainKwPosition: topKw?.position ?? page.mainKwPosition,
-                    lastEnrichedAt: Date.now()
+                const update: Partial<CrawledPage> = {
+                    gscClicks: metrics?.clicks ?? 0,
+                    gscImpressions: metrics?.impressions ?? 0,
+                    gscCtr: metrics?.ctr ?? 0,
+                    gscPosition: metrics?.position ?? 0,
+                    gscEnrichedAt: Date.now()
                 };
-            }
-            return page;
-        });
 
-        if (enrichedCount > 0) {
-            await crawlDb.pages.bulkPut(updates);
+                if (intel?.main) {
+                    update.mainKeyword = intel.main.query;
+                    update.mainKwPosition = intel.main.row.position;
+                    update.mainKeywordSource = 'gsc';
+                    // Estimate volume from GSC impressions (Tier 2)
+                    update.mainKwEstimatedVolume = VolumeEstimation.fromImpressions(
+                        intel.main.row.impressions, 
+                        intel.main.row.position
+                    );
+                    update.volumeEstimationMethod = 'impression_share';
+                }
+
+                updates.push({ url: page.url, ...update });
+            }
         }
 
-        return { enriched: enrichedCount, total: pages.length };
-    }
+        if (updates.length > 0) {
+            await crawlDb.transaction('rw', crawlDb.pages, async () => {
+                for (const update of updates) {
+                    await crawlDb.pages.update(update.url, update);
+                }
+            });
+        }
 
-    /**
-     * Normalized URL matching between Crawler and GSC
-     */
-    private static matchUrlToGsc(crawlerUrl: string, gscUrls: string[]): string | null {
-        // 1. Direct match
-        if (gscUrls.includes(crawlerUrl)) return crawlerUrl;
-        
-        // 2. Normalization Helper
-        const clean = (u: string) => u.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/$/, '').toLowerCase();
-        const crawlerClean = clean(crawlerUrl);
-        
-        // 3. Exact normalized match (Strip protocol, www, and trailing slash)
-        const match = gscUrls.find(u => clean(u) === crawlerClean);
-        if (match) return match;
-
-        // 4. Fallback: Check with/without trailing slash directly
-        const crawlerNoSlash = crawlerUrl.replace(/\/$/, '');
-        if (gscUrls.includes(crawlerNoSlash)) return crawlerNoSlash;
-        if (gscUrls.includes(crawlerNoSlash + '/')) return crawlerNoSlash + '/';
-
-        return null;
+        return { 
+            enriched: enrichedCount, 
+            total: pages.length, 
+            rowsCollected: pageRows.length + queryRows.length 
+        };
     }
 }

@@ -3,9 +3,68 @@ const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
 const SCOPES = [
   'https://www.googleapis.com/auth/webmasters.readonly',
   'https://www.googleapis.com/auth/analytics.readonly',
-  'https://www.googleapis.com/auth/analytics.edit',
-  'https://www.googleapis.com/auth/userinfo.email',
+  'https://www.googleapis.com/auth/userinfo.email', // Reduced to minimum
 ].join(' ');
+
+/**
+ * Metadata-Only Google OAuth Helper
+ * 
+ * Tokens are stored securely on the crawler server. The client
+ * only holds the user's email as a reference key.
+ */
+
+export interface GoogleConnectionStatus {
+    connected: boolean;
+    email?: string;
+    expired?: boolean;
+}
+
+/**
+ * Check if a specific email is connected on the server
+ */
+export async function getGoogleTokenStatus(email: string): Promise<GoogleConnectionStatus> {
+    try {
+        const res = await fetch(`/api/integrations/google/status?email=${encodeURIComponent(email)}`);
+        if (!res.ok) return { connected: false };
+        return await res.json();
+    } catch {
+        return { connected: false };
+    }
+}
+
+/**
+ * Request a transient access token from the server
+ */
+export async function refreshGoogleToken(email: string): Promise<string | null> {
+    try {
+        const res = await fetch('/api/integrations/google/refresh', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email })
+        });
+        if (!res.ok) return null;
+        const data = await res.json();
+        return data.access_token;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Revoke connection on the server
+ */
+export async function revokeGoogleConnection(email: string): Promise<boolean> {
+    try {
+        const res = await fetch('/api/integrations/google/revoke', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email })
+        });
+        return res.ok;
+    } catch {
+        return false;
+    }
+}
 
 /**
  * Opens a popup for Google OAuth consent.
@@ -14,7 +73,6 @@ const SCOPES = [
 export function openGoogleOAuthPopup(): Promise<{ code: string; redirectUri: string } | null> {
   return new Promise((resolve) => {
     const redirectUri = `${window.location.origin}/oauth/google/callback`;
-    console.log('[GoogleOAuth] Initiating popup with redirectUri:', redirectUri);
     const params = new URLSearchParams({
       client_id: GOOGLE_CLIENT_ID,
       redirect_uri: redirectUri,
@@ -37,9 +95,7 @@ export function openGoogleOAuthPopup(): Promise<{ code: string; redirectUri: str
       return;
     }
 
-    // Listen for the callback message from the popup
     const handleMessage = (event: MessageEvent) => {
-      // Standardize origin check for development
       const currentOrigin = window.location.origin.replace(/\/$/, '');
       const eventOrigin = event.origin.replace(/\/$/, '');
       
@@ -47,65 +103,79 @@ export function openGoogleOAuthPopup(): Promise<{ code: string; redirectUri: str
         (currentOrigin.includes('localhost') && eventOrigin.includes('127.0.0.1')) ||
         (currentOrigin.includes('127.0.0.1') && eventOrigin.includes('localhost'));
 
-      if (!isOriginMatch) {
-         console.warn('[GoogleOAuth] Received message from unauthorized origin:', event.origin);
-         return;
-      }
-
-      console.log('[GoogleOAuth] Received message from popup:', event.data);
+      if (!isOriginMatch) return;
 
       if (event.data?.type === 'GOOGLE_OAUTH_CALLBACK' || event.data?.type === 'headlight-oauth-callback') {
-        window.removeEventListener('message', handleMessage);
-        clearInterval(pollTimer);
-        popup.close();
-
+        cleanup();
+        
         if (event.data.error) {
-          console.error('[GoogleOAuth] OAuth Error:', event.data.error);
           resolve(null);
           return;
         }
 
         if (event.data.code) {
-          console.log('[GoogleOAuth] Successfully received auth code.');
           resolve({ code: event.data.code, redirectUri });
         } else {
-          console.warn('[GoogleOAuth] No code in callback data.');
           resolve(null);
         }
       }
     };
-    window.addEventListener('message', handleMessage);
 
-    // Fallback: poll for popup close
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === 'GOOGLE_OAUTH_RESULT') {
+        try {
+          const data = JSON.parse(event.newValue || '{}');
+          if (data.type === 'GOOGLE_OAUTH_CALLBACK') {
+            cleanup();
+            if (data.code) {
+              resolve({ code: data.code, redirectUri });
+            } else {
+              resolve(null);
+            }
+          }
+        } catch (e) {
+          console.error('[GoogleOAuthHelper] Failed to parse storage result', e);
+        }
+      }
+    };
+
+    const cleanup = () => {
+      window.removeEventListener('message', handleMessage);
+      window.removeEventListener('storage', handleStorage);
+      clearInterval(pollTimer);
+      localStorage.removeItem('GOOGLE_OAUTH_RESULT');
+      try {
+        if (popup && !popup.closed) popup.close();
+      } catch (e) {
+        // Access might be blocked by COOP - let the popup close itself if needed
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    window.addEventListener('storage', handleStorage);
+
     const pollTimer = setInterval(() => {
       try {
-        if (popup.closed) {
-          console.log('[GoogleOAuth] Popup was closed by the user.');
-          clearInterval(pollTimer);
-          window.removeEventListener('message', handleMessage);
+        if (!popup || popup.closed) {
+          cleanup();
           resolve(null);
         }
       } catch (e) {
-        // COOP might block access to 'closed' property after Google redirect.
-        // We just ignore the error and keep the timer running until the message arrives.
+        // Access might be blocked by COOP
       }
     }, 1000);
   });
 }
 
 /**
- * Exchange auth code for tokens via your server.
+ * Exchange auth code for server-side token storage.
+ * Returns only the email and expiry (No tokens transferred to client permanently).
  */
 export async function exchangeGoogleCode(
   code: string,
   redirectUri: string
-): Promise<{
-  access_token: string;
-  refresh_token: string;
-  email?: string;
-} | null> {
+): Promise<{ email: string; expiryDate: number } | null> {
   try {
-    console.log('[GoogleOAuth] Exchanging code with server...', { code: code.substring(0, 10) + '...', redirectUri });
     const res = await fetch('/api/integrations/google/exchange', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -113,32 +183,17 @@ export async function exchangeGoogleCode(
     });
     
     if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        console.error('[GoogleOAuth] Server exchange failed:', res.status, errorData);
+        const errorDetails = await res.json().catch(() => ({}));
+        console.error('[GoogleOAuth] Exchange failed:', {
+            status: res.status,
+            statusText: res.statusText,
+            details: errorDetails
+        });
         return null;
     }
-    
-    const tokens = await res.json();
-    console.log('[GoogleOAuth] Successfully received tokens from server.');
-    return tokens;
+    return await res.json();
   } catch (error) {
-    console.error('[GoogleOAuth] Fetch error during exchange:', error);
-    return null;
-  }
-}
-
-/**
- * Fetch the user's Google email from the access token.
- */
-export async function fetchGoogleEmail(accessToken: string): Promise<string | null> {
-  try {
-    const res = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    return data.email || null;
-  } catch {
+    console.error('[GoogleOAuth] Exchange error:', error);
     return null;
   }
 }

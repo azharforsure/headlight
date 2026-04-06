@@ -10,7 +10,7 @@ import {
   CrawlerIntegrationConnection,
   CsvUploadMeta
 } from '../../services/CrawlerIntegrationsService';
-import { openGoogleOAuthPopup, exchangeGoogleCode, fetchGoogleEmail } from '../../services/GoogleOAuthHelper';
+import { openGoogleOAuthPopup, exchangeGoogleCode } from '../../services/GoogleOAuthHelper';
 import { 
   parseBacklinkCsv, 
   parseKeywordCsv
@@ -37,13 +37,13 @@ export function IntegrationsTab() {
       const result = await openGoogleOAuthPopup();
       if (!result) return;
 
-      const tokens = await exchangeGoogleCode(result.code, result.redirectUri);
-      if (!tokens) {
-        addLog('Failed to exchange Google authorization code.', 'error');
+      // New metadata-only exchange: returns { email, expiryDate }
+      const meta = await exchangeGoogleCode(result.code, result.redirectUri);
+      if (!meta || !meta.email) {
+        addLog('Failed to verify Google account metadata.', 'error');
         return;
       }
 
-      const email = tokens.email || await fetchGoogleEmail(tokens.access_token);
       const connection: CrawlerIntegrationConnection = {
         provider: 'google',
         label: 'Google Ads & Search',
@@ -51,18 +51,21 @@ export function IntegrationsTab() {
         authType: 'oauth',
         ownership: 'project',
         connectedAt: Date.now(),
-        accountLabel: email || 'Connected Account',
-        credentials: {
-          accessToken: tokens.access_token,
-          refreshToken: tokens.refresh_token
-        },
+        accountLabel: meta.email,
+        // CRITICAL: We no longer store tokens here. 
+        // They are safe in Turso (server-side).
+        credentials: {}, 
         hasCredentials: true,
-        sync: { status: 'idle' }
+        sync: { 
+          status: 'idle',
+          expiryDate: meta.expiryDate 
+        }
       };
 
       await saveIntegrationConnection('google', connection);
-      addLog(`Connected: ${email}`, 'success');
+      addLog(`Connected: ${meta.email}`, 'success');
     } catch (error) {
+      console.error('[Google Connect Error]', error);
       addLog('Google connection failed.', 'error');
     } finally {
       setLoadingProvider(null);

@@ -29,6 +29,8 @@ export interface CrawlerIntegrationSyncState {
     coverageLabel?: string;
     errorCode?: string;
     errorMessage?: string;
+    expiryDate?: number; // NEW: For OAuth token tracking (Timestamp)
+    email?: string;      // NEW: For identity tracking
     // For migration compatibility
     siteUrl?: string;
     propertyId?: string;
@@ -124,10 +126,17 @@ const sanitizeConnection = (connection: CrawlerIntegrationConnection): CrawlerIn
         nextMetadata.filename = connection.credentials.filename;
     }
 
+    // Special case: Google tokens are now server-managed. 
+    // They won't be in the 'credentials' object on the client.
+    let hasCredentials = Boolean(connection.hasCredentials || (connection.credentials && Object.keys(connection.credentials).length > 0));
+    if (connection.provider === 'google' && connection.accountLabel) {
+        hasCredentials = true;
+    }
+
     return {
         ...connection,
         credentials: {},
-        hasCredentials: Boolean(connection.hasCredentials || (connection.credentials && Object.keys(connection.credentials).length > 0)),
+        hasCredentials,
         metadata: nextMetadata
     };
 };
@@ -234,7 +243,7 @@ const toConnectionMap = (rows: IntegrationRecord[] | null | undefined): Partial<
             accountLabel: row.account_label || undefined,
             scopes: Array.isArray(row.scopes) ? row.scopes : [],
             credentials: {},
-            hasCredentials: Boolean(row.credentials && Object.keys(row.credentials).length > 0),
+            hasCredentials: Boolean(row.credentials && Object.keys(row.credentials).length > 0) || (row.provider === 'google' && !!row.account_label),
             metadata: row.metadata || {},
             selection: row.selection || {},
             sync: row.sync || { status: 'idle' }
