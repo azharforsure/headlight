@@ -1064,7 +1064,8 @@ export default function MainDataView() {
                                             } else if (col.key.startsWith('ga4') && typeof rawVal === 'number') {
                                                 cellClass = 'font-mono text-[11px] text-right pr-4 text-white font-bold';
                                                 if (col.key === 'ga4BounceRate') displayElement = `${(rawVal * 100).toFixed(1)}%`;
-                                                else if (col.key === 'ga4AvgSessionDuration') displayElement = rawVal.toFixed(1);
+                                                else if (col.key === 'ga4ConversionRate') displayElement = `${(rawVal * 100).toFixed(1)}%`;
+                                                else if (col.key === 'ga4AvgSessionDuration' || col.key === 'ga4EngagementTimePerPage') displayElement = rawVal.toFixed(1);
                                                 else displayElement = rawVal.toLocaleString();
                                             } else if (col.key === 'searchIntent') {
                                                 const intentColor = rawVal === 'Transactional' ? 'text-purple-400 bg-purple-400/10' : rawVal === 'Commercial' ? 'text-blue-400 bg-blue-400/10' : 'text-gray-400 bg-gray-400/10';

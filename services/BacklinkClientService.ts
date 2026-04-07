@@ -1,4 +1,5 @@
-import { crawlDb, type CrawledPage } from './CrawlDatabase';
+import { crawlDb, getHtmlPages, type CrawledPage } from './CrawlDatabase';
+import { UrlNormalization } from './UrlNormalization';
 
 export interface BacklinkMetrics {
     urlRating?: number;
@@ -47,12 +48,14 @@ export class BacklinkClientService {
                 
                 const data = await response.json();
                 (data.metrics || []).forEach((item: any) => {
-                    metricsMap[item.target] = {
+                    const metrics = {
                         urlRating: item.url_rating,
                         domainRating: item.domain_rating,
                         referringDomains: item.referring_domains,
                         backlinks: item.backlinks
                     };
+                    metricsMap[item.target] = metrics;
+                    metricsMap[UrlNormalization.toCanonical(item.target)] = metrics;
                 });
             } catch (error) {
                 console.error('[Ahrefs] Chunk fetch failed:', error);
@@ -101,10 +104,18 @@ export class BacklinkClientService {
     static async enrichSession(
         sessionId: string,
         integrations: { ahrefsToken?: string; semrushApiKey?: string },
-        onProgress?: (msg: string) => void
+        onProgress?: (msg: string) => void,
+        options: { targetUrls?: string[] } = {}
     ): Promise<{ enriched: number; total: number }> {
-        const pages = await crawlDb.pages.where('crawlId').equals(sessionId).toArray();
+        const htmlPages = await getHtmlPages(sessionId);
+        const targetCanonicalSet = new Set(
+            (options.targetUrls || htmlPages.map((page) => page.url)).map((url) => UrlNormalization.toCanonical(url))
+        );
+        const pages = htmlPages.filter((page) => targetCanonicalSet.has(UrlNormalization.toCanonical(page.url)));
         const urls = pages.map(p => p.url);
+        if (urls.length === 0) {
+            return { enriched: 0, total: 0 };
+        }
         let metricsMap: Record<string, BacklinkMetrics> = {};
 
         if (integrations.ahrefsToken) {
@@ -120,8 +131,12 @@ export class BacklinkClientService {
             
             const homepage = urls.find(u => new URL(u).pathname === '/');
             if (homepage) {
-                metricsMap[homepage] = { ...metricsMap[homepage], ...semrushData };
-            }
+            metricsMap[homepage] = { ...metricsMap[homepage], ...semrushData };
+            metricsMap[UrlNormalization.toCanonical(homepage)] = {
+                ...metricsMap[UrlNormalization.toCanonical(homepage)],
+                ...semrushData
+            };
+        }
         }
 
         onProgress?.('Syncing Backlink Data...');
@@ -132,7 +147,11 @@ export class BacklinkClientService {
             // Skip if user manually overrode via CSV
             if (page.backlinkUploadOverride) continue;
 
-            const match = metricsMap[page.url] || metricsMap[page.url + '/'];
+            const match =
+                metricsMap[page.url] ||
+                metricsMap[page.url + '/'] ||
+                metricsMap[UrlNormalization.toCanonical(page.url)] ||
+                metricsMap[`${UrlNormalization.toCanonical(page.url)}/`];
             if (match) {
                 enrichedCount++;
                 updates.push({

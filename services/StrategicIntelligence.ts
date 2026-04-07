@@ -221,7 +221,7 @@ export function calculateBusinessValueScore(page: any): number {
     const sessions = Number(page.ga4Sessions || 0);
     const users = Number(page.ga4Users || 0);
     const bounceRate = Number(page.ga4BounceRate || 0); // 0.0 to 1.0
-    const avgDuration = Number(page.ga4AvgSessionDuration || 0); // seconds
+    const avgDuration = Number(page.ga4EngagementTimePerPage || page.ga4AvgSessionDuration || 0); // seconds
     const conversions = Number(page.ga4Conversions || 0);
     
     // Weighted value: Traffic(20%) + Engagement(30%) + Conversions(50%)

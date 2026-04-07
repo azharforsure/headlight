@@ -44,19 +44,47 @@ export async function detectGscProperty(
   }
 }
 
+async function fetchAllPaginated<T>(
+  url: string,
+  accessToken: string,
+  listKey: string,
+  pageSize: number
+): Promise<T[]> {
+  const items: T[] = [];
+  let pageToken: string | undefined;
+
+  do {
+    const requestUrl = new URL(url);
+    requestUrl.searchParams.set('pageSize', String(pageSize));
+    if (pageToken) {
+      requestUrl.searchParams.set('pageToken', pageToken);
+    }
+
+    const response = await fetch(requestUrl.toString(), {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+    if (!response.ok) break;
+
+    const data = await response.json();
+    items.push(...(data[listKey] || []));
+    pageToken = data.nextPageToken || undefined;
+  } while (pageToken);
+
+  return items;
+}
+
 // ─── Auto-detect GA4 property for a domain ──────────
 export async function detectGa4Property(
   accessToken: string,
   crawlDomain: string
 ): Promise<{ propertyId: string; propertyName: string } | null> {
   try {
-    const accountsRes = await fetch(
+    const accounts = await fetchAllPaginated<any>(
       'https://analyticsadmin.googleapis.com/v1beta/accountSummaries',
-      { headers: { Authorization: `Bearer ${accessToken}` } }
+      accessToken,
+      'accountSummaries',
+      200
     );
-    if (!accountsRes.ok) return null;
-    const accountsData = await accountsRes.json();
-    const accounts = accountsData.accountSummaries || [];
 
     const domain = crawlDomain
       .replace(/^https?:\/\//, '')
@@ -67,14 +95,14 @@ export async function detectGa4Property(
       for (const prop of account.propertySummaries || []) {
         const propertyResource = prop.property; // "properties/123456789"
 
-        const streamsRes = await fetch(
+        const streams = await fetchAllPaginated<any>(
           `https://analyticsadmin.googleapis.com/v1beta/${propertyResource}/dataStreams`,
-          { headers: { Authorization: `Bearer ${accessToken}` } }
+          accessToken,
+          'dataStreams',
+          200
         );
-        if (!streamsRes.ok) continue;
-        const streamsData = await streamsRes.json();
 
-        for (const stream of streamsData.dataStreams || []) {
+        for (const stream of streams) {
           if (stream.type !== 'WEB_DATA_STREAM') continue;
           const streamDomain = (stream.webStreamData?.defaultUri || '')
             .replace(/^https?:\/\//, '')

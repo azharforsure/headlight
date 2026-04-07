@@ -116,19 +116,27 @@ export const ALL_COLUMNS = [
     { key: 'gscPosition', label: 'Avg Position', width: '140px', group: 'Search Console' },
     { key: 'mainKeyword', label: 'Main Keyword', width: '180px', group: 'Search Console' },
     { key: 'mainKeywordSource', label: 'Keyword Source', width: '140px', group: 'Search Console' },
+    { key: 'mainKwPosition', label: 'Main KW Position', width: '140px', group: 'Search Console' },
     { key: 'mainKwSearchVolume', label: 'Search Volume', width: '130px', group: 'Search Console' },
     { key: 'mainKwEstimatedVolume', label: 'Est. Volume (Imp)', width: '150px', group: 'Search Console' },
+    { key: 'bestKeyword', label: 'Best Keyword', width: '180px', group: 'Search Console' },
+    { key: 'bestKeywordSource', label: 'Best KW Source', width: '140px', group: 'Search Console' },
+    { key: 'bestKwPosition', label: 'Best KW Position', width: '140px', group: 'Search Console' },
+    { key: 'bestKwSearchVolume', label: 'Best KW Volume', width: '140px', group: 'Search Console' },
+    { key: 'bestKwEstimatedVolume', label: 'Best KW Est. Volume', width: '160px', group: 'Search Console' },
 
 
 
     // Analytics (GA4)
     { key: 'ga4Views', label: 'Views (30d)', width: '140px', group: 'Analytics' },
     { key: 'ga4Sessions', label: 'Sessions (30d)', width: '150px', group: 'Analytics' },
-    { key: 'sessionsDelta', label: 'Traffic Δ (Abs)', width: '140px', group: 'Analytics' },
+    { key: 'sessionsDeltaAbsolute', label: 'Traffic Δ (Abs)', width: '140px', group: 'Analytics' },
     { key: 'sessionsDeltaPct', label: 'Traffic Δ (%)', width: '120px', group: 'Analytics' },
     { key: 'ga4Users', label: 'Users (30d)', width: '140px', group: 'Analytics' },
     { key: 'ga4BounceRate', label: 'Bounce Rate', width: '140px', group: 'Analytics' },
+    { key: 'ga4EngagementTimePerPage', label: 'Avg. Time on Page', width: '160px', group: 'Analytics' },
     { key: 'ga4Conversions', label: 'Conversions', width: '130px', group: 'Analytics' },
+    { key: 'ga4ConversionRate', label: 'Conversion Rate', width: '150px', group: 'Analytics' },
     { key: 'ga4Revenue', label: 'Revenue', width: '120px', group: 'Analytics' },
 
     // Backlinks & Authority
@@ -314,4 +322,3 @@ export const SMART_PRESETS = [
     { id: 'content-review', label: 'Content Review', desc: 'Titles, headings, readability', categories: ['titles', 'meta', 'headings', 'internal'], columns: ['url', 'title', 'titleLength', 'metaDesc', 'metaDescLength', 'h1_1', 'h1_2', 'h2_1', 'wordCount', 'fleschScore', 'readability'] },
     { id: 'link-audit', label: 'Link Audit', desc: 'Link architecture and depth', categories: ['links', 'architecture'], columns: ['url', 'statusCode', 'crawlDepth', 'folderDepth', 'inlinks', 'uniqueInlinks', 'outlinks', 'externalOutlinks', 'linkScore'] },
 ];
-

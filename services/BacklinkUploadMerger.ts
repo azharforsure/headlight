@@ -4,6 +4,8 @@ import { UrlNormalization } from './UrlNormalization';
 export interface BacklinkUploadRow {
   url: string;
   referringDomains: number;
+  backlinks: number;
+  urlRating: number;
 }
 
 export class BacklinkUploadMerger {
@@ -18,20 +20,37 @@ export class BacklinkUploadMerger {
         pageMap.set(UrlNormalization.toCanonical(p.url), p);
     });
 
-    const updates: Array<{ url: string } & Partial<CrawledPage>> = [];
+    const strongestByCanonical = new Map<string, BacklinkUploadRow>();
 
     for (const row of rows) {
-        const canonical = UrlNormalization.toCanonical(row.url);
-        const page = pageMap.get(canonical);
+      const canonical = UrlNormalization.toCanonical(row.url);
+      const existing = strongestByCanonical.get(canonical);
+      if (
+        !existing ||
+        (row.referringDomains || 0) > (existing.referringDomains || 0) ||
+        (row.backlinks || 0) > (existing.backlinks || 0) ||
+        (row.urlRating || 0) > (existing.urlRating || 0)
+      ) {
+        strongestByCanonical.set(canonical, row);
+      }
+    }
 
-        if (page) {
-            updates.push({
-                url: page.url,
-                referringDomains: row.referringDomains,
-                backlinkSource: 'csv',
-                backlinkUploadOverride: true
-            });
-        }
+    const updates: Array<{ url: string } & Partial<CrawledPage>> = [];
+
+    for (const [canonical, row] of strongestByCanonical.entries()) {
+      const page = pageMap.get(canonical);
+
+      if (page) {
+        updates.push({
+          url: page.url,
+          referringDomains: row.referringDomains,
+          backlinks: row.backlinks || null,
+          urlRating: row.urlRating || null,
+          backlinkSource: 'upload',
+          backlinkUploadOverride: true,
+          backlinkEnrichedAt: Date.now()
+        });
+      }
     }
 
     if (updates.length > 0) {

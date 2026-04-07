@@ -1,4 +1,4 @@
-import { crawlDb, type CrawledPage } from './CrawlDatabase';
+import { crawlDb, getHtmlPages, type CrawledPage } from './CrawlDatabase';
 import { UrlNormalization } from './UrlNormalization';
 
 export interface Ga4MetricRow {
@@ -9,6 +9,12 @@ export interface Ga4MetricRow {
 export interface Ga4Response {
     rows?: Ga4MetricRow[];
     rowCount?: number;
+    propertyQuota?: Record<string, unknown>;
+}
+
+export interface Ga4EnrichmentOptions {
+    targetUrls?: string[];
+    maxRows?: number;
 }
 
 export class Ga4ClientService {
@@ -34,12 +40,15 @@ export class Ga4ClientService {
         startDate: string,
         endDate: string,
         maxRows: number = 200000
-    ): Promise<Ga4MetricRow[]> {
+    ): Promise<{ rows: Ga4MetricRow[]; propertyQuota: Record<string, unknown> | null }> {
         const allRows: Ga4MetricRow[] = [];
         let offset = 0;
         const limit = 25000;
+        let propertyQuota: Record<string, unknown> | null = null;
 
         while (offset < maxRows) {
+            const nextLimit = Math.min(limit, maxRows - offset);
+            if (nextLimit <= 0) break;
             const response = await fetch(
                 `${this.API_BASE}/${propertyId}:runReport`,
                 {
@@ -52,8 +61,9 @@ export class Ga4ClientService {
                         dateRanges: [{ startDate, endDate }],
                         dimensions: [{ name: 'pagePath' }],
                         metrics: this.METRICS,
+                        returnPropertyQuota: true,
                         offset: offset.toString(),
-                        limit: limit.toString()
+                        limit: nextLimit.toString()
                     })
                 }
             );
@@ -64,14 +74,15 @@ export class Ga4ClientService {
             }
 
             const data: Ga4Response = await response.json();
+            propertyQuota = data.propertyQuota || propertyQuota;
             if (!data.rows || data.rows.length === 0) break;
 
             allRows.push(...data.rows);
-            if (data.rows.length < limit) break;
-            offset += limit;
+            if (data.rows.length < nextLimit) break;
+            offset += nextLimit;
         }
 
-        return allRows;
+        return { rows: allRows, propertyQuota };
     }
 
     /**
@@ -81,19 +92,29 @@ export class Ga4ClientService {
         sessionId: string,
         propertyId: string,
         accessToken: string,
-        onProgress?: (msg: string) => void
+        onProgress?: (msg: string) => void,
+        options: Ga4EnrichmentOptions = {}
     ): Promise<{ enriched: number; total: number }> {
-        const pages = await crawlDb.pages.where('crawlId').equals(sessionId).toArray();
-        if (pages.length === 0) return { enriched: 0, total: 0 };
+        const htmlPages = await getHtmlPages(sessionId);
+        const targetCanonicalSet = new Set(
+            (options.targetUrls || htmlPages.map((page) => page.url)).map((url) => UrlNormalization.toCanonical(url))
+        );
+        const targetPages = htmlPages.filter((page) => targetCanonicalSet.has(UrlNormalization.toCanonical(page.url)));
+
+        if (targetPages.length === 0) return { enriched: 0, total: 0 };
+        const maxRows = options.maxRows || Math.min(50000, Math.max(25000, targetPages.length * 2));
 
         onProgress?.('Fetching GA4 current period data...');
-        const currentRows = await this.fetchPaginatedGa4(propertyId, accessToken, '30daysAgo', 'today');
+        const currentReport = await this.fetchPaginatedGa4(propertyId, accessToken, '30daysAgo', 'today', maxRows);
         
         onProgress?.('Fetching GA4 comparison period data...');
-        const previousRows = await this.fetchPaginatedGa4(propertyId, accessToken, '60daysAgo', '31daysAgo');
+        const previousReport = await this.fetchPaginatedGa4(propertyId, accessToken, '60daysAgo', '31daysAgo', maxRows);
+        if (currentReport.propertyQuota) {
+            onProgress?.('GA4 quota checked for this enrichment run.');
+        }
 
         // 1. Resolve a base domain for normalization (from first page)
-        const samplePage = pages[0];
+        const samplePage = targetPages[0];
         let baseDomain = '';
         if (samplePage?.url) {
             try {
@@ -124,7 +145,7 @@ export class Ga4ClientService {
             return UrlNormalization.toCanonical(`${baseDomain}${p.startsWith('/') ? '' : '/'}${p}`);
         };
 
-        currentRows.forEach(row => {
+        currentReport.rows.forEach(row => {
             const path = row.dimensionValues[0].value;
             curMap.set(normalizePath(path), parseGa4Row(row));
             // Also map root variations
@@ -133,7 +154,7 @@ export class Ga4ClientService {
             }
         });
         
-        previousRows.forEach(row => {
+        previousReport.rows.forEach(row => {
             const path = row.dimensionValues[0].value;
             prevMap.set(normalizePath(path), parseGa4Row(row));
             if (path === '/' || path === '(index)') {
@@ -145,7 +166,7 @@ export class Ga4ClientService {
         let enrichedCount = 0;
         const updates: Array<{ url: string } & Partial<CrawledPage>> = [];
 
-        for (const page of pages) {
+        for (const page of targetPages) {
             const canonical = UrlNormalization.toCanonical(page.url);
             const cur = curMap.get(canonical);
             const prev = prevMap.get(canonical);
@@ -154,6 +175,8 @@ export class Ga4ClientService {
                 enrichedCount++;
                 const sessionsDeltaAbsolute = cur.sessions - (prev?.sessions || 0);
                 const sessionsDeltaPct = prev?.sessions ? (sessionsDeltaAbsolute / prev.sessions) : null;
+                const engagementTimePerPage = cur.sessions > 0 ? (cur.engagementTime / cur.sessions) : 0;
+                const conversionRate = cur.sessions > 0 ? (cur.conversions / cur.sessions) : 0;
                 
                 updates.push({
                     url: page.url,
@@ -161,12 +184,16 @@ export class Ga4ClientService {
                     ga4Sessions: cur.sessions,
                     ga4Users: cur.users,
                     ga4BounceRate: cur.bounceRate,
-                    ga4EngagementTimePerPage: cur.sessions > 0 ? (cur.engagementTime / cur.sessions) : 0,
+                    ga4EngagementTimePerPage: engagementTimePerPage,
+                    ga4AvgSessionDuration: engagementTimePerPage,
                     ga4EngagementRate: cur.engagementRate,
                     ga4Conversions: cur.conversions,
+                    ga4ConversionRate: conversionRate,
                     ga4Revenue: cur.revenue,
+                    sessionsDelta: sessionsDeltaAbsolute,
                     sessionsDeltaAbsolute,
                     sessionsDeltaPct,
+                    isLosingTraffic: sessionsDeltaAbsolute < 0,
                     ga4EnrichedAt: Date.now()
                 });
             }
@@ -180,6 +207,6 @@ export class Ga4ClientService {
             });
         }
 
-        return { enriched: enrichedCount, total: pages.length };
+        return { enriched: enrichedCount, total: targetPages.length };
     }
 }

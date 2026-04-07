@@ -1,4 +1,10 @@
-import { crawlDb, type CrawledPage } from './CrawlDatabase';
+import {
+    crawlDb,
+    getHtmlPages,
+    storePageQueries,
+    type CrawledPage,
+    type PageQuery
+} from './CrawlDatabase';
 import { UrlNormalization } from './UrlNormalization';
 import { VolumeEstimation } from './VolumeEstimation';
 
@@ -12,6 +18,12 @@ export interface GscMetricRow {
 
 export interface GscResponse {
     rows?: GscMetricRow[];
+}
+
+export interface GscEnrichmentOptions {
+    targetUrls?: string[];
+    maxPageRows?: number;
+    maxQueryRows?: number;
 }
 
 export class GscClientService {
@@ -46,11 +58,13 @@ export class GscClientService {
         const rowLimit = 25000;
 
         while (startRow < maxRows) {
+            const nextLimit = Math.min(rowLimit, maxRows - startRow);
+            if (nextLimit <= 0) break;
             const body: any = {
                 startDate,
                 endDate,
                 dimensions,
-                rowLimit,
+                rowLimit: nextLimit,
                 startRow
             };
 
@@ -75,8 +89,8 @@ export class GscClientService {
             if (!data.rows || data.rows.length === 0) break;
 
             allRows.push(...data.rows);
-            if (data.rows.length < rowLimit) break;
-            startRow += rowLimit;
+            if (data.rows.length < nextLimit) break;
+            startRow += nextLimit;
         }
 
         return allRows;
@@ -89,7 +103,23 @@ export class GscClientService {
      * 3. Best Average Position
      */
     private static scoreKeyword(row: GscMetricRow): number {
-        return (row.clicks * 1000) + (row.impressions / 10) + (100 - row.position);
+        return (
+            (row.clicks * 1000) +
+            (row.impressions * 0.1) +
+            (Math.max(0, 101 - row.position) * 5) +
+            (row.ctr * 1000)
+        );
+    }
+
+    private static isBetterBestKeyword(candidate: GscMetricRow, current: GscMetricRow | null): boolean {
+        if (!current) return true;
+        if (candidate.position !== current.position) {
+            return candidate.position < current.position;
+        }
+        if (candidate.clicks !== current.clicks) {
+            return candidate.clicks > current.clicks;
+        }
+        return candidate.impressions > current.impressions;
     }
 
     /**
@@ -99,55 +129,111 @@ export class GscClientService {
         sessionId: string,
         siteUrl: string,
         accessToken: string,
-        onProgress?: (msg: string) => void
-    ): Promise<{ enriched: number; total: number; rowsCollected: number }> {
+        onProgress?: (msg: string) => void,
+        options: GscEnrichmentOptions = {}
+    ): Promise<{ enriched: number; total: number; rowsCollected: number; queryRowsStored: number }> {
+        const htmlPages = await getHtmlPages(sessionId);
+        const targetCanonicalSet = new Set(
+            (options.targetUrls || htmlPages.map((page) => page.url)).map((url) => UrlNormalization.toCanonical(url))
+        );
+        const targetPages = htmlPages.filter((page) => targetCanonicalSet.has(UrlNormalization.toCanonical(page.url)));
+
+        if (targetPages.length === 0) {
+            return { enriched: 0, total: 0, rowsCollected: 0, queryRowsStored: 0 };
+        }
+
+        const maxPageRows = options.maxPageRows || Math.min(50000, Math.max(25000, targetPages.length * 2));
+        const maxQueryRows = options.maxQueryRows || Math.min(50000, Math.max(25000, targetPages.length * 8));
+
         onProgress?.('Fetching GSC Page-level data...');
-        const pageRows = await this.fetchPaginated(siteUrl, accessToken, ['page']);
+        const pageRows = await this.fetchPaginated(siteUrl, accessToken, ['page'], 30, maxPageRows);
         
         onProgress?.(`Processing ${pageRows.length} landing pages...`);
-        const queryRows = await this.fetchPaginated(siteUrl, accessToken, ['page', 'query']);
+        const queryRows = await this.fetchPaginated(siteUrl, accessToken, ['page', 'query'], 30, maxQueryRows);
 
         // 1. Map pages to metrics
+        const targetPageUrlByCanonical = new Map<string, string>(
+            targetPages.map((page) => [UrlNormalization.toCanonical(page.url), page.url])
+        );
         const pageMetricsMap = new Map<string, GscMetricRow>();
         pageRows.forEach(row => {
-            pageMetricsMap.set(UrlNormalization.toCanonical(row.keys[0]), row);
+            const canonical = UrlNormalization.toCanonical(row.keys[0]);
+            if (targetCanonicalSet.has(canonical)) {
+                pageMetricsMap.set(canonical, row);
+            }
         });
 
         // 2. Strategic Keyword Mapping
         // Map: URL -> { mainKeyword, bestKeyword, estimatedVolume }
         const urlIntelligence = new Map<string, any>();
+        const storedQueries: PageQuery[] = [];
 
         queryRows.forEach(row => {
             const url = row.keys[0];
             const query = row.keys[1];
             const canonical = UrlNormalization.toCanonical(url);
+            if (!targetCanonicalSet.has(canonical) || !query) return;
+
             const score = this.scoreKeyword(row);
 
             const existing = urlIntelligence.get(canonical) || { 
                 main: null, 
                 best: null, 
                 mainScore: -1, 
-                bestScore: -1 
+                bestRow: null
             };
 
-            // Main Keyword logic (Usually highest clicks/impressions)
+            // Main Keyword logic: strategic opportunity on the page.
             if (score > existing.mainScore) {
                 existing.main = { query, row };
                 existing.mainScore = score;
             }
 
+            // Best Keyword logic: strongest currently ranking query.
+            if (this.isBetterBestKeyword(row, existing.bestRow)) {
+                existing.best = { query, row };
+                existing.bestRow = row;
+            }
+
             urlIntelligence.set(canonical, existing);
+
+            storedQueries.push({
+                crawlId: sessionId,
+                pageUrl: targetPageUrlByCanonical.get(canonical) || canonical,
+                query,
+                clicks: row.clicks,
+                impressions: row.impressions,
+                ctr: row.ctr,
+                position: row.position
+            });
         });
 
-        // 3. Sync to IndexedDB
-        const pages = await crawlDb.pages.where('crawlId').equals(sessionId).toArray();
+        // 3. Replace persisted query rows for the target set.
+        await crawlDb.transaction('rw', crawlDb.queries, async () => {
+            for (const page of targetPages) {
+                await crawlDb.queries
+                    .where('[crawlId+pageUrl]')
+                    .equals([sessionId, page.url])
+                    .delete();
+            }
+        });
+        if (storedQueries.length > 0) {
+            await storePageQueries(storedQueries);
+        }
+
+        // 4. Sync page metrics to IndexedDB
         let enrichedCount = 0;
         const updates: Array<{ url: string } & Partial<CrawledPage>> = [];
 
-        for (const page of pages) {
+        for (const page of targetPages) {
             const canonical = UrlNormalization.toCanonical(page.url);
             const metrics = pageMetricsMap.get(canonical);
             const intel = urlIntelligence.get(canonical);
+            const preservePrimaryKeyword = Boolean(
+                page.mainKeyword &&
+                page.mainKeywordSource &&
+                page.mainKeywordSource !== 'gsc'
+            );
 
             if (metrics || intel) {
                 enrichedCount++;
@@ -159,16 +245,28 @@ export class GscClientService {
                     gscEnrichedAt: Date.now()
                 };
 
-                if (intel?.main) {
+                if (!preservePrimaryKeyword && intel?.main) {
                     update.mainKeyword = intel.main.query;
                     update.mainKwPosition = intel.main.row.position;
                     update.mainKeywordSource = 'gsc';
+                    update.mainKwSearchVolume = null;
                     // Estimate volume from GSC impressions (Tier 2)
                     update.mainKwEstimatedVolume = VolumeEstimation.fromImpressions(
                         intel.main.row.impressions, 
                         intel.main.row.position
                     );
                     update.volumeEstimationMethod = 'impression_share';
+                }
+
+                if (intel?.best) {
+                    update.bestKeyword = intel.best.query;
+                    update.bestKwPosition = intel.best.row.position;
+                    update.bestKeywordSource = 'gsc';
+                    update.bestKwSearchVolume = null;
+                    update.bestKwEstimatedVolume = VolumeEstimation.fromImpressions(
+                        intel.best.row.impressions,
+                        intel.best.row.position
+                    );
                 }
 
                 updates.push({ url: page.url, ...update });
@@ -185,8 +283,9 @@ export class GscClientService {
 
         return { 
             enriched: enrichedCount, 
-            total: pages.length, 
-            rowsCollected: pageRows.length + queryRows.length 
+            total: targetPages.length,
+            rowsCollected: pageRows.length + queryRows.length,
+            queryRowsStored: storedQueries.length
         };
     }
 }

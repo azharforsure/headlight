@@ -348,19 +348,22 @@ wss.on('connection', (ws) => {
                 const googleConfig = rawConfig.google || {};
                 const bingConfig = rawConfig.bing || {};
 
-                // ── NEW: Resolve server-managed tokens before runCrawler ──
-                if (googleConfig.email && !googleConfig.accessToken) {
+                const googleAccountEmail = googleConfig.email || googleConfig.accountLabel || null;
+
+                // Resolve server-managed tokens before runCrawler.
+                if (googleAccountEmail && !googleConfig.accessToken) {
                     try {
                         const tokenRes = await turso.execute({
                             sql: 'SELECT access_token, refresh_token, expiry_date FROM google_tokens WHERE email = ?',
-                            args: [googleConfig.email]
+                            args: [googleAccountEmail]
                         });
                         if (tokenRes.rows.length > 0) {
                             const row = tokenRes.rows[0];
                             googleConfig.accessToken = String(row.access_token);
                             googleConfig.refreshToken = String(row.refresh_token || '');
                             googleConfig.expiryDate = Number(row.expiry_date || 0);
-                            console.log(`Resolved server-side tokens for ${googleConfig.email}`);
+                            googleConfig.email = googleAccountEmail;
+                            console.log(`Resolved server-side tokens for ${googleAccountEmail}`);
                         }
                     } catch (err) {
                         console.error('Failed to resolve server-side tokens:', err);
@@ -371,22 +374,22 @@ wss.on('connection', (ws) => {
                     ...rawConfig,
                     gscApiKey: rawConfig.gscApiKey || googleConfig.accessToken || '',
                     gscRefreshToken: rawConfig.gscRefreshToken || googleConfig.refreshToken || '',
-                    gscSiteUrl: rawConfig.gscSiteUrl || googleConfig.gscSiteUrl || '',
+                    gscSiteUrl: rawConfig.gscSiteUrl || googleConfig.gscSiteUrl || googleConfig.selection?.siteUrl || '',
                     ga4AccessToken: rawConfig.ga4AccessToken || googleConfig.accessToken || '',
-                    ga4PropertyId: rawConfig.ga4PropertyId || googleConfig.ga4PropertyId || '',
+                    ga4PropertyId: rawConfig.ga4PropertyId || googleConfig.ga4PropertyId || googleConfig.selection?.propertyId || '',
                     bingAccessToken: rawConfig.bingAccessToken || bingConfig.accessToken || ''
                 };
 
                 crawlerInstance = runCrawler(normalizedConfig, async (event, payload) => {
                     // ── NEW: Handle Token Refreshed from crawler ──
-                    if (event === 'TOKEN_REFRESHED' && payload.provider === 'google' && googleConfig.email) {
+                    if (event === 'TOKEN_REFRESHED' && payload.provider === 'google' && googleAccountEmail) {
                         try {
                             const newExpiry = Date.now() + (3600 * 1000); // Assume 1hr if not specified
                             await turso.execute({
                                 sql: 'UPDATE google_tokens SET access_token = ?, expiry_date = ?, updated_at = CURRENT_TIMESTAMP WHERE email = ?',
-                                args: [payload.accessToken, newExpiry, googleConfig.email]
+                                args: [payload.accessToken, newExpiry, googleAccountEmail]
                             });
-                            console.log(`Updated server-side token in Turso for ${googleConfig.email}`);
+                            console.log(`Updated server-side token in Turso for ${googleAccountEmail}`);
                         } catch (err) {
                             console.error('Failed to update Turso token from crawler event:', err);
                         }

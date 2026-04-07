@@ -310,7 +310,7 @@ const derivePageIntelligence = (page: any) => {
     const sessions = Number(page.ga4Sessions || 0);
     const users = Number(page.ga4Users || 0);
     const bounceRate = Number(page.ga4BounceRate || 0);
-    const avgSessionDuration = Number(page.ga4AvgSessionDuration || 0);
+    const avgSessionDuration = Number(page.ga4EngagementTimePerPage || page.ga4AvgSessionDuration || 0);
     const referringDomains = Number(page.referringDomains || 0);
     const urlRating = Number(page.urlRating || 0);
     const linkEquity = Number(page.linkEquity || 0);
@@ -1036,20 +1036,30 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
                 gscCtr: hasOwn(payload, 'gscCtr') ? payload.gscCtr : existingPage.gscCtr ?? null,
                 gscPosition: hasOwn(payload, 'gscPosition') ? payload.gscPosition : existingPage.gscPosition ?? null,
                 mainKeyword: hasOwn(payload, 'mainKeyword') ? payload.mainKeyword : existingPage.mainKeyword ?? null,
+                mainKeywordSource: hasOwn(payload, 'mainKeywordSource') ? payload.mainKeywordSource : existingPage.mainKeywordSource ?? null,
                 mainKwVolume: hasOwn(payload, 'mainKwVolume') ? payload.mainKwVolume : existingPage.mainKwVolume ?? null,
+                mainKwSearchVolume: hasOwn(payload, 'mainKwSearchVolume') ? payload.mainKwSearchVolume : existingPage.mainKwSearchVolume ?? null,
+                mainKwEstimatedVolume: hasOwn(payload, 'mainKwEstimatedVolume') ? payload.mainKwEstimatedVolume : existingPage.mainKwEstimatedVolume ?? null,
                 mainKwPosition: hasOwn(payload, 'mainKwPosition') ? payload.mainKwPosition : existingPage.mainKwPosition ?? null,
                 bestKeyword: hasOwn(payload, 'bestKeyword') ? payload.bestKeyword : existingPage.bestKeyword ?? null,
+                bestKeywordSource: hasOwn(payload, 'bestKeywordSource') ? payload.bestKeywordSource : existingPage.bestKeywordSource ?? null,
                 bestKwVolume: hasOwn(payload, 'bestKwVolume') ? payload.bestKwVolume : existingPage.bestKwVolume ?? null,
+                bestKwSearchVolume: hasOwn(payload, 'bestKwSearchVolume') ? payload.bestKwSearchVolume : existingPage.bestKwSearchVolume ?? null,
+                bestKwEstimatedVolume: hasOwn(payload, 'bestKwEstimatedVolume') ? payload.bestKwEstimatedVolume : existingPage.bestKwEstimatedVolume ?? null,
                 bestKwPosition: hasOwn(payload, 'bestKwPosition') ? payload.bestKwPosition : existingPage.bestKwPosition ?? null,
                 ga4Views: hasOwn(payload, 'ga4Views') ? payload.ga4Views : existingPage.ga4Views ?? null,
                 ga4Sessions: hasOwn(payload, 'ga4Sessions') ? payload.ga4Sessions : existingPage.ga4Sessions ?? null,
                 ga4Users: hasOwn(payload, 'ga4Users') ? payload.ga4Users : existingPage.ga4Users ?? null,
                 ga4BounceRate: hasOwn(payload, 'ga4BounceRate') ? payload.ga4BounceRate : existingPage.ga4BounceRate ?? null,
+                ga4EngagementTimePerPage: hasOwn(payload, 'ga4EngagementTimePerPage') ? payload.ga4EngagementTimePerPage : existingPage.ga4EngagementTimePerPage ?? null,
+                ga4EngagementRate: hasOwn(payload, 'ga4EngagementRate') ? payload.ga4EngagementRate : existingPage.ga4EngagementRate ?? null,
                 ga4AvgSessionDuration: hasOwn(payload, 'ga4AvgSessionDuration') ? payload.ga4AvgSessionDuration : existingPage.ga4AvgSessionDuration ?? null,
                 ga4Conversions: hasOwn(payload, 'ga4Conversions') ? payload.ga4Conversions : existingPage.ga4Conversions ?? null,
                 ga4ConversionRate: hasOwn(payload, 'ga4ConversionRate') ? payload.ga4ConversionRate : existingPage.ga4ConversionRate ?? null,
                 ga4Revenue: hasOwn(payload, 'ga4Revenue') ? payload.ga4Revenue : existingPage.ga4Revenue ?? null,
                 sessionsDelta: hasOwn(payload, 'sessionsDelta') ? payload.sessionsDelta : existingPage.sessionsDelta ?? null,
+                sessionsDeltaAbsolute: hasOwn(payload, 'sessionsDeltaAbsolute') ? payload.sessionsDeltaAbsolute : existingPage.sessionsDeltaAbsolute ?? null,
+                sessionsDeltaPct: hasOwn(payload, 'sessionsDeltaPct') ? payload.sessionsDeltaPct : existingPage.sessionsDeltaPct ?? null,
                 isLosingTraffic: hasOwn(payload, 'isLosingTraffic') ? payload.isLosingTraffic : existingPage.isLosingTraffic ?? null,
                 urlRating: hasOwn(payload, 'urlRating') ? payload.urlRating : existingPage.urlRating ?? null,
                 referringDomains: hasOwn(payload, 'referringDomains') ? payload.referringDomains : existingPage.referringDomains ?? null,
@@ -1464,17 +1474,21 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
 
             ws.onopen = async () => {
                 const googleConnection = integrationConnections.google;
+                const googleEmail = googleConnection?.accountLabel;
                 let currentGsc = config.gscSiteUrl || googleConnection?.selection?.siteUrl;
                 let currentGa4 = config.ga4PropertyId || googleConnection?.selection?.propertyId;
 
-                // Auto-detect properties if Google is connected but not configured
+                // Auto-detect properties if Google is connected but not configured.
                 const googleSecrets = googleConnection ? getCrawlerIntegrationSecret(integrationSecretScope, 'google') : null;
-
-                const googleAccessToken = googleSecrets?.accessToken || googleSecrets?.access_token;
+                let googleAccessToken = googleSecrets?.accessToken || googleSecrets?.access_token;
                 const googleRefreshToken = googleSecrets?.refreshToken || googleSecrets?.refresh_token;
 
-                if (googleConnection && !googleAccessToken) {
-                    addLog('Google connection metadata is present, but no stored access token was found. Reconnect Google to sync GSC/GA4.', 'warn', { source: 'system' });
+                if (!googleAccessToken && googleEmail) {
+                    googleAccessToken = await refreshGoogleToken(googleEmail) || undefined;
+                }
+
+                if (googleConnection && !googleAccessToken && !googleEmail) {
+                    addLog('Google connection metadata is incomplete. Reconnect Google to sync GSC/GA4.', 'warn', { source: 'system' });
                 }
 
                 if (googleAccessToken && (!currentGsc || !currentGa4)) {
@@ -1542,10 +1556,16 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
                         
                         // Unified Google & Other Integrations
                         google: {
+                            email: googleEmail,
+                            accountLabel: googleEmail,
                             accessToken: googleAccessToken || config.gscApiKey,
                             refreshToken: googleRefreshToken || config.gscRefreshToken,
                             gscSiteUrl: currentGsc,
-                            ga4PropertyId: currentGa4
+                            ga4PropertyId: currentGa4,
+                            selection: {
+                                siteUrl: currentGsc,
+                                propertyId: currentGa4
+                            }
                         },
                         bing: {
                             accessToken: getCrawlerIntegrationSecret(integrationSecretScope, 'bingWebmaster').accessToken || config.bingAccessToken
@@ -1641,7 +1661,9 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
                 else if (data.type === 'TOKEN_REFRESHED') {
                     const { provider, accessToken } = data.payload;
                     addLog(`${provider} access token refreshed.`, 'info', { source: 'system' });
-                    mergeCrawlerIntegrationSecret(integrationSecretScope, provider as CrawlerIntegrationProvider, { accessToken });
+                    if (provider !== 'google') {
+                        mergeCrawlerIntegrationSecret(integrationSecretScope, provider as CrawlerIntegrationProvider, { accessToken });
+                    }
                     setConfig((prev: any) => {
                         if (provider === 'google') return { ...prev, gscApiKey: accessToken };
                         if (provider === 'bingWebmaster') return { ...prev, bingAccessToken: accessToken };
@@ -2994,15 +3016,20 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
 
             // Persistent Sync Coverage Check
             const enrichedPages = await crawlDb.pages.where('crawlId').equals(currentSessionId).toArray();
-            const gscMatched = enrichedPages.filter(p => p.mainKeywordSource === 'gsc').length;
-            const ga4Matched = enrichedPages.filter(p => p.ga4Sessions !== null && p.ga4Sessions > 0).length;
-            const backlinkMatched = enrichedPages.filter(p => p.referringDomains !== null).length;
+            const htmlPages = enrichedPages.filter((page) => page.isHtmlPage);
+            const gscMatched = htmlPages.filter((page) => page.gscEnrichedAt !== null).length;
+            const ga4Matched = htmlPages.filter((page) => page.ga4EnrichedAt !== null).length;
+            const backlinkMatched = htmlPages.filter((page) =>
+                page.backlinkEnrichedAt !== null ||
+                page.backlinkUploadOverride ||
+                page.backlinkSource === 'upload'
+            ).length;
 
             await persistEnrichmentStatus({
                 sessionId: currentSessionId,
-                gsc: { matched: gscMatched, total: enrichedPages.length, status: gscMatched > 0 ? 'success' : 'partial' },
-                ga4: { matched: ga4Matched, total: enrichedPages.length, status: ga4Matched > 0 ? 'success' : 'partial' },
-                backlinks: { matched: backlinkMatched, total: enrichedPages.length, status: backlinkMatched > 0 ? 'success' : 'partial' }
+                gsc: { matched: gscMatched, total: htmlPages.length, status: gscMatched > 0 ? 'success' : 'partial' },
+                ga4: { matched: ga4Matched, total: htmlPages.length, status: ga4Matched > 0 ? 'success' : 'partial' },
+                backlinks: { matched: backlinkMatched, total: htmlPages.length, status: backlinkMatched > 0 ? 'success' : 'partial' }
             });
 
             // Update local dashboard sync
