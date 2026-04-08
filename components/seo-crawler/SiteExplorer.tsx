@@ -1,7 +1,14 @@
-import React from 'react';
-import { Search, ChevronDown, ChevronRight, Wand2, ArrowUpDown } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Search, ChevronDown, ChevronRight, Wand2 } from 'lucide-react';
 import { useSeoCrawler } from '../../contexts/SeoCrawlerContext';
-import { CATEGORIES, SMART_PRESETS } from './constants';
+import { ALL_COLUMNS, AI_INSIGHTS_CATEGORY, CATEGORIES, SMART_PRESETS, matchesCategoryFilter } from './constants';
+
+type CategoryMenuState = {
+    x: number;
+    y: number;
+    group: string;
+    sub: string;
+};
 
 export default function SiteExplorer() {
     const {
@@ -12,10 +19,123 @@ export default function SiteExplorer() {
         setVisibleColumns, setActiveMacro,
         dynamicClusters, categoryCounts,
         pages, toggleCategory,
-        activeCategory, setActiveCategory,
+        activeCategories, setActiveCategories,
         prioritizedCategories, prioritizeByIssues, setPrioritizeByIssues,
-        stats
+        addLog
     } = useSeoCrawler();
+
+    const [contextMenu, setContextMenu] = useState<CategoryMenuState | null>(null);
+
+    const rootHostname = useMemo(() => {
+        try {
+            return pages[0]?.url ? new URL(pages[0].url).hostname : '';
+        } catch {
+            return '';
+        }
+    }, [pages]);
+
+    const hasAiInsights = useMemo(() => {
+        return pages.some((page) =>
+            Boolean(
+                page?.strategicPriority ||
+                page?.opportunityScore ||
+                page?.techHealthScore ||
+                page?.isCannibalized ||
+                page?.hasContentGap ||
+                page?.contentDecay
+            )
+        );
+    }, [pages]);
+
+    const allCategories = useMemo(() => {
+        const baseCategories = prioritizeByIssues && pages.length > 0 ? prioritizedCategories : CATEGORIES;
+        return [
+            ...baseCategories,
+            ...(hasAiInsights ? [AI_INSIGHTS_CATEGORY] : []),
+            ...(dynamicClusters.length > 0
+                ? [{ id: 'ai-clusters', label: 'AI Topic Clusters', icon: <Wand2 size={14} />, sub: ['All', ...dynamicClusters] }]
+                : [])
+        ];
+    }, [prioritizeByIssues, pages.length, prioritizedCategories, hasAiInsights, dynamicClusters]);
+
+    const allCategoryIds = useMemo(() => allCategories.map((category) => category.id), [allCategories]);
+
+    const filteredCategories = useMemo(() => {
+        if (!categorySearch) return allCategories;
+        const normalized = categorySearch.toLowerCase();
+        return allCategories.filter((category) =>
+            category.label.toLowerCase().includes(normalized) ||
+            category.sub.some((item: string) => item.toLowerCase().includes(normalized))
+        );
+    }, [allCategories, categorySearch]);
+
+    const exportSubset = useCallback((group: string, sub: string) => {
+        const subset = pages.filter((page) => matchesCategoryFilter(group, sub, page, { rootHostname }));
+        if (subset.length === 0) {
+            addLog(`No pages found for ${group} → ${sub}.`, 'warn', { source: 'system' });
+            return;
+        }
+
+        const headers = ALL_COLUMNS.map((column) => column.label).join(',');
+        const rows = subset.map((page) =>
+            ALL_COLUMNS.map((column) => {
+                const value = page[column.key];
+                const normalizedValue = value === null || value === undefined ? '' : value;
+                const output = typeof normalizedValue === 'object' ? JSON.stringify(normalizedValue) : String(normalizedValue);
+                return `"${output.replace(/"/g, '""')}"`;
+            }).join(',')
+        );
+
+        const blob = new Blob([headers + '\n', ...rows.map((row) => row + '\n')], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = `headlight_subset_${group}_${sub.replace(/\s+/g, '_').toLowerCase()}_${new Date().toISOString().split('T')[0]}.csv`;
+        document.body.appendChild(anchor);
+        anchor.click();
+        document.body.removeChild(anchor);
+        URL.revokeObjectURL(url);
+
+        addLog(`Exported ${subset.length} rows for ${group} → ${sub}.`, 'success', { source: 'system' });
+    }, [pages, rootHostname, addLog]);
+
+    useEffect(() => {
+        if (!contextMenu) return;
+
+        const handleClose = () => setContextMenu(null);
+        const handleEscape = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') setContextMenu(null);
+        };
+
+        window.addEventListener('click', handleClose);
+        window.addEventListener('contextmenu', handleClose);
+        window.addEventListener('keydown', handleEscape);
+
+        return () => {
+            window.removeEventListener('click', handleClose);
+            window.removeEventListener('contextmenu', handleClose);
+            window.removeEventListener('keydown', handleEscape);
+        };
+    }, [contextMenu]);
+
+    const handleCategorySelect = useCallback((event: React.MouseEvent, group: string, sub: string) => {
+        setActiveMacro(null);
+
+        if (event.shiftKey) {
+            setActiveCategories((previous) => {
+                const withoutDefault = previous.filter((entry) => !(entry.group === 'internal' && entry.sub === 'All'));
+                const exists = withoutDefault.some((entry) => entry.group === group && entry.sub === sub);
+                if (exists) {
+                    const next = withoutDefault.filter((entry) => !(entry.group === group && entry.sub === sub));
+                    return next.length > 0 ? next : [{ group: 'internal', sub: 'All' }];
+                }
+                return [...withoutDefault, { group, sub }];
+            });
+            return;
+        }
+
+        setActiveCategories([{ group, sub }]);
+    }, [setActiveMacro, setActiveCategories]);
 
     return (
         <aside style={{ width: leftSidebarWidth }} className="border-r border-[#222] bg-[#111] flex flex-col shrink-0 overflow-hidden relative">
@@ -59,12 +179,13 @@ export default function SiteExplorer() {
                             onClick={() => {
                                 if (leftSidebarPreset === preset.id) {
                                     setLeftSidebarPreset(null);
-                                    setOpenCategories(CATEGORIES.map(c => c.id));
+                                    setOpenCategories(allCategoryIds);
                                 } else {
                                     setLeftSidebarPreset(preset.id);
                                     setOpenCategories(preset.categories);
                                     setVisibleColumns(preset.columns);
                                     setActiveMacro(null);
+                                    setActiveCategories([{ group: 'internal', sub: 'All' }]);
                                 }
                             }}
                             title={preset.desc}
@@ -80,28 +201,37 @@ export default function SiteExplorer() {
                 </div>
             </div>
 
+            <div className="px-2 py-1 border-b border-[#1a1a1a] shrink-0">
+                <div className="flex items-center justify-between px-1">
+                    <span className="text-[9px] text-[#555] uppercase tracking-widest font-bold">Categories</span>
+                    <div className="flex items-center gap-1 text-[9px]">
+                        <button
+                            onClick={() => setOpenCategories(allCategoryIds)}
+                            className="text-[#666] hover:text-[#ccc] transition-colors"
+                        >
+                            Expand All
+                        </button>
+                        <span className="text-[#333]">|</span>
+                        <button
+                            onClick={() => setOpenCategories([])}
+                            className="text-[#666] hover:text-[#ccc] transition-colors"
+                        >
+                            Collapse All
+                        </button>
+                    </div>
+                </div>
+            </div>
 
             {/* Category Tree */}
             <div className="flex-1 overflow-y-auto custom-scrollbar py-1 px-1">
-                {(() => {
-                    // Use prioritized categories when smart sort is on
-                    const baseCats = prioritizeByIssues && pages.length > 0 ? prioritizedCategories : CATEGORIES;
-                    const allCats = [
-                        ...baseCats,
-                        ...(dynamicClusters.length > 0 ? [{ id: 'ai-clusters', label: 'AI Topic Clusters', icon: <Wand2 size={14}/>, sub: ['All', ...dynamicClusters] }] : [])
-                    ];
-                    const filtered = categorySearch
-                        ? allCats.filter(c =>
-                            c.label.toLowerCase().includes(categorySearch.toLowerCase()) ||
-                            c.sub.some((s: string) => s.toLowerCase().includes(categorySearch.toLowerCase()))
-                        )
-                        : allCats;
-
-                    return filtered.map(category => {
+                {filteredCategories.map((category) => {
                         const isOpen = openCategories.includes(category.id);
                         const catCounts = (categoryCounts[category.id] || {}) as Record<string, number>;
-                        const totalCatCount = (Object.values(catCounts) as number[]).reduce((a, b) => a + b, 0);
-                        const hasProblems = category.id !== 'internal' && category.id !== 'ai-clusters' && totalCatCount > 0 && pages.length > 0;
+                        const totalCatCount = typeof catCounts.All === 'number'
+                            ? catCounts.All
+                            : (Object.entries(catCounts)
+                                .filter(([sub]) => sub !== 'All')
+                                .reduce((sum, [, value]) => sum + Number(value || 0), 0));
 
                         // Filter subs
                         const visibleSubs = categorySearch
@@ -137,15 +267,22 @@ export default function SiteExplorer() {
                                     <div className="overflow-hidden">
                                         <div className="ml-[18px] pl-3 my-1 space-y-0.5 border-l border-[#222]">
                                             {displaySubs.map((subItem: string) => {
-                                                const isActive = activeCategory.group === category.id && activeCategory.sub === subItem;
+                                                const isActive = activeCategories.some((selection) => selection.group === category.id && selection.sub === subItem);
                                                 const subCount = catCounts[subItem] || 0;
-                                                const isWarning = subCount > 0 && ['Missing', 'Broken', 'Missing HSTS', 'Mixed Content', 'Insecure Forms',
-                                                    'Client Error (4xx)', 'Server Error (5xx)', 'Orphan Pages', 'Non-Indexable', 'Noindex',
-                                                    'Slow Pages', 'Poor LCP', 'Poor CLS', 'Hreflang Errors', 'Depth 5+'].includes(subItem);
+                                                const isWarning = subCount > 0 && /(missing|broken|error|poor|no |noindex|non-indexable|insecure|http pages|timeout|blocked|orphan|deep|thin|duplicate|decay|exposed|small|large dom|render blocking|session id|soft 404|viewport issue|tap too small)/i.test(subItem);
                                                 return (
                                                     <button
                                                         key={subItem}
-                                                        onClick={() => { setActiveCategory({ group: category.id, sub: subItem }); setActiveMacro(null); }}
+                                                        onClick={(event) => handleCategorySelect(event, category.id, subItem)}
+                                                        onContextMenu={(event) => {
+                                                            event.preventDefault();
+                                                            setContextMenu({
+                                                                x: event.clientX,
+                                                                y: event.clientY,
+                                                                group: category.id,
+                                                                sub: subItem
+                                                            });
+                                                        }}
                                                         className={`w-full text-left px-2.5 py-1 text-[12px] rounded-sm transition-all flex items-center justify-between gap-1 relative group ${
                                                             isActive 
                                                                 ? 'bg-gradient-to-r from-[#F5364E]/10 to-transparent text-[#F5364E] font-medium' 
@@ -172,9 +309,44 @@ export default function SiteExplorer() {
                                 </div>
                             </div>
                         );
-                    });
-                })()}
+                    })}
             </div>
+
+            {contextMenu && (
+                <div
+                    style={{ position: 'fixed', left: contextMenu.x, top: contextMenu.y, zIndex: 90 }}
+                    className="min-w-[180px] bg-[#161616] border border-[#333] rounded-lg shadow-xl overflow-hidden"
+                    onClick={(event) => event.stopPropagation()}
+                >
+                    <button
+                        onClick={() => {
+                            exportSubset(contextMenu.group, contextMenu.sub);
+                            setContextMenu(null);
+                        }}
+                        className="w-full px-3 py-2 text-[11px] text-left text-[#ddd] hover:bg-[#222] transition-colors"
+                    >
+                        Export this subset
+                    </button>
+                    <button
+                        onClick={() => {
+                            addLog(`Task stub created for ${contextMenu.group} → ${contextMenu.sub}.`, 'info', { source: 'system' });
+                            setContextMenu(null);
+                        }}
+                        className="w-full px-3 py-2 text-[11px] text-left text-[#ddd] hover:bg-[#222] transition-colors"
+                    >
+                        Create task for all
+                    </button>
+                    <button
+                        onClick={() => {
+                            addLog(`Bulk AI analysis queued for ${contextMenu.group} → ${contextMenu.sub}.`, 'info', { source: 'system' });
+                            setContextMenu(null);
+                        }}
+                        className="w-full px-3 py-2 text-[11px] text-left text-[#ddd] hover:bg-[#222] transition-colors"
+                    >
+                        Bulk AI analyze
+                    </button>
+                </div>
+            )}
         </aside>
     );
 }

@@ -1,5 +1,21 @@
 import React from 'react';
-import { Database, Globe, Server, Compass, Code, Box, LinkIcon, FastForward, MapIcon, Search } from 'lucide-react';
+import {
+    Globe,
+    Eye,
+    Server,
+    FileText,
+    Code,
+    Zap,
+    LinkIcon,
+    ImageIcon,
+    Smartphone,
+    Shield,
+    Languages,
+    ListOrdered,
+    GitFork,
+    Search,
+    Sparkles
+} from 'lucide-react';
 
 export const formatBytes = (bytes: number) => {
     if (bytes === 0) return '0 B';
@@ -447,29 +463,267 @@ export const SEO_ISSUES_TAXONOMY = [
     }
 ];
 
+export type CategoryFilterContext = {
+    rootHostname?: string;
+};
+
+export type CategoryFilterFn = (page: any, context: CategoryFilterContext) => boolean;
+
+const normalizeHostname = (hostname: string | null | undefined) => String(hostname || '').replace(/^www\./i, '').toLowerCase();
+
+const extractHostname = (url: string | null | undefined) => {
+    try {
+        return normalizeHostname(new URL(String(url || '')).hostname);
+    } catch {
+        return '';
+    }
+};
+
+const containsSchemaType = (page: any, expectedTypes: string[]) => {
+    const normalizedExpected = expectedTypes.map((type) => type.toLowerCase());
+    const schemaTypes: string[] = Array.isArray(page?.schemaTypes) ? page.schemaTypes : [];
+    return schemaTypes.some((type) => normalizedExpected.includes(String(type || '').toLowerCase()));
+};
+
+export const CATEGORY_FILTERS: Record<string, Record<string, CategoryFilterFn>> = {
+    internal: {
+        All: () => true,
+        HTML: (page) => Boolean(page?.isHtmlPage || page?.contentType?.includes('html') || page?.contentType?.includes('xhtml')),
+        JavaScript: (page) => page?.contentType?.includes('javascript') || page?.contentType?.includes('ecmascript'),
+        CSS: (page) => page?.contentType?.includes('css'),
+        Images: (page) => String(page?.contentType || '').startsWith('image/'),
+        PDF: (page) => page?.contentType?.includes('pdf'),
+        Other: (page) => {
+            const contentType = String(page?.contentType || '').toLowerCase();
+            if (!contentType) return false;
+            return !(
+                contentType.includes('html') ||
+                contentType.includes('javascript') ||
+                contentType.includes('ecmascript') ||
+                contentType.includes('css') ||
+                contentType.startsWith('image/') ||
+                contentType.includes('pdf')
+            );
+        }
+    },
+    indexability: {
+        All: () => true,
+        Indexable: (page) => page?.indexable !== false && Number(page?.statusCode || 0) === 200,
+        'Non-Indexable': (page) => page?.indexable === false,
+        Noindex: (page) => String(page?.metaRobots1 || '').toLowerCase().includes('noindex') || page?.xRobotsNoindex === true,
+        Canonicalized: (page) => Boolean(page?.canonical) && String(page?.canonical).trim() !== String(page?.url || '').trim(),
+        'Blocked by Robots': (page) => page?.status === 'Blocked by Robots.txt',
+        'Orphan Pages': (page) => Number(page?.inlinks || 0) === 0 && Number(page?.crawlDepth || 0) > 0
+    },
+    codes: {
+        All: () => true,
+        '200 OK': (page) => Number(page?.statusCode || 0) === 200,
+        '301 Redirect': (page) => Number(page?.statusCode || 0) === 301,
+        '302 Temporary': (page) => Number(page?.statusCode || 0) === 302,
+        '404 Not Found': (page) => Number(page?.statusCode || 0) === 404,
+        '410 Gone': (page) => Number(page?.statusCode || 0) === 410,
+        '500 Server Error': (page) => Number(page?.statusCode || 0) >= 500,
+        Timeout: (page) => String(page?.status || '').toLowerCase().includes('timeout'),
+        Blocked: (page) => page?.status === 'Blocked by Robots.txt'
+    },
+    content: {
+        All: () => true,
+        'Thin < 300w': (page) => Number(page?.wordCount || 0) > 0 && Number(page?.wordCount || 0) < 300,
+        Duplicate: (page) => page?.exactDuplicate === true || page?.isDuplicateTitle === true || page?.isDuplicateMetaDesc === true,
+        'Near-Duplicate': (page) => Number(page?.noNearDuplicates || 0) > 0 || Boolean(page?.nearDuplicateMatch),
+        'Missing Title': (page) => !String(page?.title || '').trim(),
+        'Missing Meta': (page) => !String(page?.metaDesc || '').trim(),
+        'Missing H1': (page) => !String(page?.h1_1 || '').trim(),
+        'Multiple H1': (page) => page?.multipleH1s === true || Boolean(String(page?.h1_2 || '').trim()),
+        'Keyword Stuffing': (page) => page?.keywordStuffing === true,
+        Decaying: (page) => page?.contentDecay === 'Possible Decay',
+        'Lorem Ipsum': (page) => page?.containsLoremIpsum === true
+    },
+    schema: {
+        All: () => true,
+        'Has Schema': (page) => (Array.isArray(page?.schema) && page.schema.length > 0) || (Array.isArray(page?.schemaTypes) && page.schemaTypes.length > 0),
+        'No Schema': (page) => !((Array.isArray(page?.schema) && page.schema.length > 0) || (Array.isArray(page?.schemaTypes) && page.schemaTypes.length > 0)),
+        Product: (page) => containsSchemaType(page, ['Product']),
+        Article: (page) => containsSchemaType(page, ['Article', 'BlogPosting', 'NewsArticle']),
+        LocalBusiness: (page) => containsSchemaType(page, ['LocalBusiness']),
+        FAQ: (page) => containsSchemaType(page, ['FAQPage']),
+        HowTo: (page) => containsSchemaType(page, ['HowTo']),
+        BreadcrumbList: (page) => containsSchemaType(page, ['BreadcrumbList']),
+        VideoObject: (page) => containsSchemaType(page, ['VideoObject']),
+        Event: (page) => containsSchemaType(page, ['Event']),
+        Errors: (page) => Number(page?.schemaErrors || 0) > 0
+    },
+    performance: {
+        All: () => true,
+        'Good LCP': (page) => Number(page?.lcp || 0) > 0 && Number(page?.lcp || 0) <= 2500,
+        'Needs Work LCP': (page) => Number(page?.lcp || 0) > 2500 && Number(page?.lcp || 0) <= 4000,
+        'Poor LCP': (page) => Number(page?.lcp || 0) > 4000,
+        'CLS Issues': (page) => Number(page?.cls || 0) > 0.1,
+        'INP Issues': (page) => Number(page?.inp || 0) > 200,
+        'TTFB Slow': (page) => Number(page?.loadTime || 0) > 600,
+        'Large DOM': (page) => Number(page?.domNodeCount || 0) > 1500,
+        'Render Blocking': (page) => Number(page?.renderBlockingCss || 0) + Number(page?.renderBlockingJs || 0) > 0
+    },
+    links: {
+        All: () => true,
+        'Broken Internal': (page) => Number(page?.brokenInternalLinks || 0) > 0,
+        'Broken External': (page) => Number(page?.brokenExternalLinks || 0) > 0,
+        'Orphan Pages': (page) => Number(page?.inlinks || 0) === 0 && Number(page?.crawlDepth || 0) > 0,
+        'Redirect Chains': (page) => Number(page?.redirectChainLength || 0) > 1,
+        'Nofollow Internal': (page) => Number(page?.nofollowInternalLinks || 0) > 0,
+        'Deep Pages > 5': (page) => Number(page?.crawlDepth || 0) > 5
+    },
+    images: {
+        All: () => true,
+        'No Alt Text': (page) => Number(page?.missingAltImages || 0) > 0,
+        Oversized: (page) => Number(page?.oversizedImages || 0) > 0 || Number(page?.imagesOver200kb || 0) > 0,
+        'No Srcset': (page) => Number(page?.imagesWithoutSrcset || 0) > 0,
+        'No Lazy Load': (page) => Number(page?.imagesWithoutLazy || 0) > 0,
+        'Broken Images': (page) => Number(page?.brokenImages || 0) > 0,
+        'No Next-Gen Format': (page) => Number(page?.legacyFormatImages || 0) > 0 && Number(page?.modernFormatImages || 0) === 0
+    },
+    mobile: {
+        All: () => true,
+        'Not Responsive': (page) => page?.hasViewportMeta === false,
+        'Tap Too Small': (page) => Number(page?.smallTapTargets || 0) > 0,
+        'Viewport Issue': (page) => page?.viewportNoScale === true || page?.viewportWidth === false,
+        'Small Fonts': (page) => Number(page?.smallFontCount || 0) > 0,
+        'AMP Pages': (page) => Boolean(page?.amphtml),
+        'AMP Errors': (page) => Number(page?.ampErrors || 0) > 0
+    },
+    security: {
+        All: () => true,
+        'HTTP Pages': (page) => String(page?.url || '').startsWith('http://'),
+        'Mixed Content': (page) => page?.mixedContent === true,
+        'No HSTS': (page) => page?.hasHsts === false || page?.hstsMissing === true,
+        'Missing CSP': (page) => page?.hasCsp === false,
+        'No Permissions Policy': (page) => page?.hasPermissionsPolicy === false,
+        'Insecure Cookies': (page) => Number(page?.insecureCookies || 0) > 0,
+        'Exposed Keys': (page) => Number(page?.exposedApiKeys || 0) > 0,
+        'No Privacy Page': (page) => page?.privacyPageLinked === false
+    },
+    international: {
+        All: () => true,
+        'Hreflang OK': (page) => Array.isArray(page?.hreflang) && page.hreflang.length > 0 && !page?.hreflangErrors && !page?.hreflangNoSelf && !page?.hreflangInvalid && !page?.hreflangBroken,
+        'Hreflang Missing': (page) => !Array.isArray(page?.hreflang) || page.hreflang.length === 0,
+        'Hreflang Errors': (page) => page?.hreflangErrors === true || page?.hreflangNoSelf === true || page?.hreflangInvalid === true || page?.hreflangBroken === true,
+        'Lang Mismatch': (page) => page?.langMismatch === true,
+        'Multi-Language': (page) => Array.isArray(page?.hreflang) && page.hreflang.length > 1
+    },
+    pagination: {
+        All: () => true,
+        'Rel Next/Prev': (page) => Boolean(page?.relNextTag || page?.relPrevTag || page?.httpRelNext || page?.httpRelPrev),
+        'Missing Rel': (page) => page?.isPaginated === true && !(page?.relNextTag || page?.relPrevTag || page?.httpRelNext || page?.httpRelPrev),
+        Paginated: (page) => Boolean(page?.relNextTag || page?.relPrevTag || page?.httpRelNext || page?.httpRelPrev || page?.isPaginated === true)
+    },
+    architecture: {
+        All: () => true,
+        'Depth 0-1': (page) => Number(page?.crawlDepth || 0) <= 1,
+        'Depth 2-3': (page) => Number(page?.crawlDepth || 0) >= 2 && Number(page?.crawlDepth || 0) <= 3,
+        'Depth 4-5': (page) => Number(page?.crawlDepth || 0) >= 4 && Number(page?.crawlDepth || 0) <= 5,
+        'Depth 6+': (page) => Number(page?.crawlDepth || 0) >= 6
+    },
+    'custom-extract': {
+        All: () => true,
+        'Prices Found': (page) => Number(page?.extractedPricesCount || 0) > 0,
+        'Emails Found': (page) => Number(page?.extractedEmailsCount || 0) > 0 || (Array.isArray(page?.exposedEmails) && page.exposedEmails.length > 0),
+        'Phone Numbers': (page) => Number(page?.extractedPhoneNumbersCount || 0) > 0,
+        'Custom Regex': (page) => Number(page?.customRegexMatches || 0) > 0 || (Array.isArray(page?.customExtraction) && page.customExtraction.length > 0)
+    },
+    'ai-insights': {
+        All: () => true,
+        'High Priority': (page) => String(page?.strategicPriority || '').toLowerCase() === 'high',
+        'Quick Wins': (page) => Number(page?.opportunityScore || 0) >= 70 && Number(page?.techHealthScore || 0) >= 60,
+        Cannibalization: (page) => page?.isCannibalized === true,
+        'Gap Opportunities': (page) => page?.hasContentGap === true,
+        'Decay Risk': (page) => String(page?.contentDecay || '').toLowerCase().includes('decay')
+    }
+};
+
+export const matchesCategoryFilter = (
+    group: string,
+    sub: string,
+    page: any,
+    context: CategoryFilterContext = {}
+) => {
+    if (group === 'ai-clusters') {
+        if (sub === 'All') return Boolean(page?.topicCluster);
+        return String(page?.topicCluster || '') === sub;
+    }
+
+    if (group === 'external') {
+        const rootHost = normalizeHostname(context.rootHostname);
+        const pageHost = extractHostname(page?.url);
+        if (!rootHost || !pageHost) return false;
+        if (sub === 'All') return pageHost !== rootHost;
+        return pageHost !== rootHost;
+    }
+
+    const groupFilters = CATEGORY_FILTERS[group];
+    if (!groupFilters) return true;
+    const filter = groupFilters[sub] || groupFilters.All;
+    if (!filter) return true;
+    return filter(page, context);
+};
+
 export const CATEGORIES = [
-    { id: 'internal', label: 'Internal', icon: <Database size={14}/>, sub: ['All', 'HTML', 'JavaScript', 'CSS', 'Images', 'PDF'] },
-    { id: 'external', label: 'External', icon: <Globe size={14}/>, sub: ['All', 'HTML', 'Images'] },
-    { id: 'security', label: 'Security', icon: <Server size={14}/>, sub: ['Mixed Content', 'Insecure Forms', 'Missing HSTS', 'Missing CSP', 'Invalid SSL', 'Insecure Cookies'] },
-    { id: 'codes', label: 'Response Codes', icon: <Server size={14}/>, sub: ['Success (2xx)', 'Redirection (3xx)', 'Client Error (4xx)', 'Server Error (5xx)'] },
-    { id: 'indexability', label: 'Indexability', icon: <Compass size={14}/>, sub: ['Indexable', 'Non-Indexable', 'Canonicalized', 'Noindex'] },
-    { id: 'titles', label: 'Page Titles', icon: <Code size={14}/>, sub: ['Missing', 'Duplicate', 'Over 60 Characters', 'Below 30 Characters'] },
-    { id: 'meta', label: 'Meta Description', icon: <Box size={14}/>, sub: ['Missing', 'Duplicate', 'Over 155 Characters', 'Below 70 Characters'] },
-    { id: 'headings', label: 'Headings', icon: <Code size={14}/>, sub: ['Missing H1', 'Multiple H1', 'Missing H2', 'Incorrect Order'] },
-    { id: 'links', label: 'Links', icon: <LinkIcon size={14}/>, sub: ['Internal', 'External', 'Broken', 'Redirects'] },
-    { id: 'images', label: 'Images', icon: <Box size={14}/>, sub: ['Missing Alt', 'Long Alt', 'Has Images'] },
-    { id: 'performance', label: 'Performance', icon: <FastForward size={14}/>, sub: ['Slow Pages', 'Large Pages', 'Poor LCP', 'Poor CLS'] },
-    { id: 'international', label: 'International', icon: <Globe size={14}/>, sub: ['Missing Hreflang', 'Hreflang Errors'] },
-    { id: 'structured', label: 'Structured Data', icon: <Database size={14}/>, sub: ['Missing Schema', 'Schema Errors', 'Schema Warnings'] },
-    { id: 'mobile', label: 'Mobile & AMP', icon: <Globe size={14}/>, sub: ['Missing AMP', 'Missing Mobile Alternate'] },
-    { id: 'pagination', label: 'Pagination', icon: <LinkIcon size={14}/>, sub: ['Missing rel=next', 'Missing rel=prev', 'Paginated Noindex'] },
-    { id: 'architecture', label: 'Site Architecture', icon: <MapIcon size={14}/>, sub: ['Depth 0-2', 'Depth 3-4', 'Depth 5+', 'Orphan Pages'] },
-    { id: 'custom', label: 'Custom Extraction', icon: <Search size={14}/>, sub: ['Has Extraction', 'Missing Extraction'] }
+    { id: 'internal', label: 'All Pages', icon: <Globe size={14} />, sub: ['All', 'HTML', 'JavaScript', 'CSS', 'Images', 'PDF', 'Other'] },
+    { id: 'indexability', label: 'Indexability', icon: <Eye size={14} />, sub: ['All', 'Indexable', 'Non-Indexable', 'Noindex', 'Canonicalized', 'Blocked by Robots', 'Orphan Pages'] },
+    { id: 'codes', label: 'Crawlability', icon: <Server size={14} />, sub: ['All', '200 OK', '301 Redirect', '302 Temporary', '404 Not Found', '410 Gone', '500 Server Error', 'Timeout', 'Blocked'] },
+    { id: 'content', label: 'Content', icon: <FileText size={14} />, sub: ['All', 'Thin < 300w', 'Duplicate', 'Near-Duplicate', 'Missing Title', 'Missing Meta', 'Missing H1', 'Multiple H1', 'Keyword Stuffing', 'Decaying', 'Lorem Ipsum'] },
+    { id: 'schema', label: 'Structured Data', icon: <Code size={14} />, sub: ['All', 'Has Schema', 'No Schema', 'Product', 'Article', 'LocalBusiness', 'FAQ', 'HowTo', 'BreadcrumbList', 'VideoObject', 'Event', 'Errors'] },
+    { id: 'performance', label: 'Performance', icon: <Zap size={14} />, sub: ['All', 'Good LCP', 'Needs Work LCP', 'Poor LCP', 'CLS Issues', 'INP Issues', 'TTFB Slow', 'Large DOM', 'Render Blocking'] },
+    { id: 'links', label: 'Links', icon: <LinkIcon size={14} />, sub: ['All', 'Broken Internal', 'Broken External', 'Orphan Pages', 'Redirect Chains', 'Nofollow Internal', 'Deep Pages > 5'] },
+    { id: 'images', label: 'Images', icon: <ImageIcon size={14} />, sub: ['All', 'No Alt Text', 'Oversized', 'No Srcset', 'No Lazy Load', 'Broken Images', 'No Next-Gen Format'] },
+    { id: 'mobile', label: 'Mobile', icon: <Smartphone size={14} />, sub: ['All', 'Not Responsive', 'Tap Too Small', 'Viewport Issue', 'Small Fonts', 'AMP Pages', 'AMP Errors'] },
+    { id: 'security', label: 'Security', icon: <Shield size={14} />, sub: ['All', 'HTTP Pages', 'Mixed Content', 'No HSTS', 'Missing CSP', 'No Permissions Policy', 'Insecure Cookies', 'Exposed Keys', 'No Privacy Page'] },
+    { id: 'international', label: 'International', icon: <Languages size={14} />, sub: ['All', 'Hreflang OK', 'Hreflang Missing', 'Hreflang Errors', 'Lang Mismatch', 'Multi-Language'] },
+    { id: 'pagination', label: 'Pagination', icon: <ListOrdered size={14} />, sub: ['All', 'Rel Next/Prev', 'Missing Rel', 'Paginated'] },
+    { id: 'architecture', label: 'Architecture', icon: <GitFork size={14} />, sub: ['All', 'Depth 0-1', 'Depth 2-3', 'Depth 4-5', 'Depth 6+'] },
+    { id: 'custom-extract', label: 'Custom Extract', icon: <Search size={14} />, sub: ['All', 'Prices Found', 'Emails Found', 'Phone Numbers', 'Custom Regex'] }
 ];
 
 export const SMART_PRESETS = [
-    { id: 'quick-audit', label: 'Quick Audit', desc: 'Errors, missing titles, broken links', categories: ['codes', 'titles', 'links'], columns: ['url', 'statusCode', 'title', 'titleLength', 'metaDesc', 'inlinks', 'outlinks', 'loadTime'] },
-    { id: 'full-technical', label: 'Full Technical', desc: 'All technical SEO signals', categories: ['internal', 'codes', 'indexability', 'security', 'performance'], columns: ['url', 'statusCode', 'indexable', 'canonical', 'metaRobots1', 'httpVersion', 'sizeBytes', 'loadTime', 'lcp', 'cls', 'crawlDepth'] },
-    { id: 'content-review', label: 'Content Review', desc: 'Titles, headings, readability', categories: ['titles', 'meta', 'headings', 'internal'], columns: ['url', 'title', 'titleLength', 'metaDesc', 'metaDescLength', 'h1_1', 'h1_2', 'h2_1', 'wordCount', 'fleschScore', 'readability'] },
-    { id: 'link-audit', label: 'Link Audit', desc: 'Link architecture and depth', categories: ['links', 'architecture'], columns: ['url', 'statusCode', 'crawlDepth', 'folderDepth', 'inlinks', 'uniqueInlinks', 'outlinks', 'externalOutlinks', 'linkScore'] },
+    {
+        id: 'full',
+        label: 'Full Audit',
+        desc: 'All checks and categories',
+        categories: CATEGORIES.map((category) => category.id),
+        columns: ALL_COLUMNS.map((column) => column.key)
+    },
+    {
+        id: 'technical',
+        label: 'Technical',
+        desc: 'Crawlability, indexing, speed, security',
+        categories: ['codes', 'indexability', 'performance', 'security', 'links', 'mobile'],
+        columns: ['url', 'statusCode', 'indexabilityStatus', 'canonical', 'metaRobots1', 'httpVersion', 'loadTime', 'lcp', 'cls', 'inp', 'domNodeCount', 'hasHsts', 'hasCsp', 'sslValid']
+    },
+    {
+        id: 'content',
+        label: 'Content',
+        desc: 'Quality, duplication, and content structure',
+        categories: ['content', 'schema', 'images'],
+        columns: ['url', 'title', 'titleLength', 'metaDesc', 'metaDescLength', 'h1_1', 'h2_1', 'wordCount', 'fleschScore', 'readability', 'schemaErrors', 'missingAltImages']
+    },
+    {
+        id: 'performance',
+        label: 'Performance',
+        desc: 'Core web vitals and rendering bottlenecks',
+        categories: ['performance', 'images', 'mobile'],
+        columns: ['url', 'statusCode', 'loadTime', 'lcp', 'cls', 'inp', 'domNodeCount', 'renderBlockingCss', 'renderBlockingJs', 'imagesWithoutLazy', 'imagesWithoutSrcset', 'smallTapTargets']
+    },
+    {
+        id: 'security',
+        label: 'Security',
+        desc: 'Headers, TLS, cookies, and exposed keys',
+        categories: ['security', 'indexability'],
+        columns: ['url', 'statusCode', 'hasHsts', 'hstsMaxAge', 'hasCsp', 'cspHasUnsafeInline', 'hasXFrameOptions', 'hasPermissionsPolicy', 'sslValid', 'sslProtocol', 'insecureCookies', 'exposedApiKeys']
+    }
 ];
+
+export const AI_INSIGHTS_CATEGORY = {
+    id: 'ai-insights',
+    label: 'AI Insights',
+    icon: <Sparkles size={14} />,
+    sub: ['All', 'High Priority', 'Quick Wins', 'Cannibalization', 'Gap Opportunities', 'Decay Risk']
+};

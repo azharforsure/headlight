@@ -1,5 +1,11 @@
 import React, { createContext, useContext, useState, useRef, useMemo, useEffect, useCallback, useDeferredValue, startTransition, ReactNode } from 'react';
-import { CATEGORIES, ALL_COLUMNS, SEO_ISSUES_TAXONOMY } from '../components/seo-crawler/constants';
+import {
+    CATEGORIES,
+    ALL_COLUMNS,
+    SEO_ISSUES_TAXONOMY,
+    matchesCategoryFilter,
+    AI_INSIGHTS_CATEGORY
+} from '../components/seo-crawler/constants';
 import { 
     saveSession, getSessions, getPages, getSession, deleteSession, 
     generateSessionId, diffSessions, CrawlSession, upsertPages
@@ -57,6 +63,8 @@ export interface CrawlerContextType {
     setLogs: (l: any[]) => void;
     crawlStartTime: number | null;
     setCrawlStartTime: (t: number | null) => void;
+    activeCategories: Array<{ group: string; sub: string }>;
+    setActiveCategories: React.Dispatch<React.SetStateAction<Array<{ group: string; sub: string }>>>;
     activeCategory: { group: string; sub: string };
     setActiveCategory: (c: { group: string; sub: string }) => void;
     openCategories: string[];
@@ -511,8 +519,14 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
     const [crawlStartTime, setCrawlStartTime] = useState<number | null>(null);
     
     // UI states
-    const [activeCategory, setActiveCategory] = useState({ group: 'internal', sub: 'All' });
-    const [openCategories, setOpenCategories] = useState<string[]>([]);
+    const [activeCategories, setActiveCategories] = useState<Array<{ group: string; sub: string }>>([
+        { group: 'internal', sub: 'All' }
+    ]);
+    const activeCategory = activeCategories[0] || { group: 'internal', sub: 'All' };
+    const setActiveCategory = useCallback((category: { group: string; sub: string }) => {
+        setActiveCategories([category]);
+    }, []);
+    const [openCategories, setOpenCategories] = useState<string[]>(() => CATEGORIES.map((category) => category.id));
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedPage, setSelectedPage] = useState<any | null>(null);
     const [activeTab, setActiveTab] = useState('details'); // used by PageDetails
@@ -2169,107 +2183,49 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         });
     }, [analysisPages, duplicateTitleSet, duplicateMetaDescSet]);
 
+    const hasAiInsights = useMemo(() => {
+        return pagesWithDerivedSignals.some((page) =>
+            Boolean(
+                page?.strategicPriority ||
+                page?.opportunityScore ||
+                page?.techHealthScore ||
+                page?.isCannibalized ||
+                page?.hasContentGap ||
+                page?.contentDecay
+            )
+        );
+    }, [pagesWithDerivedSignals]);
+
     const categoryCounts = useMemo(() => {
-        if (analysisPages.length === 0) return {} as Record<string, Record<string, number>>;
+        if (pagesWithDerivedSignals.length === 0) return {} as Record<string, Record<string, number>>;
         const counts: Record<string, Record<string, number>> = {};
-        
+
         const allCats = [
             ...CATEGORIES,
-            ...(dynamicClusters.length > 0 ? [{ id: 'ai-clusters', label: 'AI Topic Clusters', icon: null, sub: ['All', ...dynamicClusters] }] : [])
+            ...(hasAiInsights ? [AI_INSIGHTS_CATEGORY] : []),
+            ...(dynamicClusters.length > 0
+                ? [{ id: 'ai-clusters', label: 'AI Topic Clusters', icon: null, sub: ['All', ...dynamicClusters] }]
+                : [])
         ];
 
-        for (const cat of allCats) {
-            counts[cat.id] = {};
-            for (const sub of cat.sub) {
-                let c = 0;
-                for (const p of analysisPages) {
-                    if (cat.id === 'internal') {
-                        if (sub === 'All') { c = analysisPages.length; break; }
-                        if (sub === 'HTML' && p.contentType?.includes('html')) c++;
-                        else if (sub === 'JavaScript' && p.contentType?.includes('javascript')) c++;
-                        else if (sub === 'CSS' && p.contentType?.includes('css')) c++;
-                        else if (sub === 'Images' && p.contentType?.includes('image')) c++;
-                        else if (sub === 'PDF' && p.contentType?.includes('pdf')) c++;
-                    } else if (cat.id === 'external') {
-                        if (sub === 'All' && rootHostname && !p.url.includes(rootHostname)) c++;
-                    } else if (cat.id === 'security') {
-                        if (sub === 'Mixed Content' && p.mixedContent === true) c++;
-                        else if (sub === 'Insecure Forms' && p.insecureForms === true) c++;
-                        else if (sub === 'Missing HSTS' && p.hstsMissing === true) c++;
-                        else if (sub === 'Missing CSP' && p.hasCsp === false && p.isHtmlPage) c++;
-                        else if (sub === 'Invalid SSL' && p.url?.startsWith('https://') && p.sslValid === false) c++;
-                        else if (sub === 'Insecure Cookies' && Number(p.insecureCookies || 0) > 0) c++;
-                    } else if (cat.id === 'codes') {
-                        if (sub === 'Success (2xx)' && p.statusCode >= 200 && p.statusCode < 300) c++;
-                        else if (sub === 'Redirection (3xx)' && p.statusCode >= 300 && p.statusCode < 400) c++;
-                        else if (sub === 'Client Error (4xx)' && p.statusCode >= 400 && p.statusCode < 500) c++;
-                        else if (sub === 'Server Error (5xx)' && p.statusCode >= 500) c++;
-                    } else if (cat.id === 'indexability') {
-                        if (sub === 'Indexable' && p.indexable === true) c++;
-                        else if (sub === 'Non-Indexable' && p.indexable === false) c++;
-                        else if (sub === 'Canonicalized' && p.canonical && p.canonical !== p.url) c++;
-                        else if (sub === 'Noindex' && p.metaRobots1?.toLowerCase().includes('noindex')) c++;
-                    } else if (cat.id === 'titles') {
-                        if (sub === 'Missing' && (!p.title || p.title.trim() === '')) c++;
-                        else if (sub === 'Duplicate' && duplicateTitleSet.has(normalizeComparableText(p.title))) c++;
-                        else if (sub === 'Over 60 Characters' && p.titleLength > 60) c++;
-                        else if (sub === 'Below 30 Characters' && p.titleLength > 0 && p.titleLength < 30) c++;
-                    } else if (cat.id === 'meta') {
-                        if (sub === 'Missing' && (!p.metaDesc || p.metaDesc.trim() === '')) c++;
-                        else if (sub === 'Duplicate' && duplicateMetaDescSet.has(normalizeComparableText(p.metaDesc))) c++;
-                        else if (sub === 'Over 155 Characters' && p.metaDescLength > 155) c++;
-                        else if (sub === 'Below 70 Characters' && p.metaDescLength > 0 && p.metaDescLength < 70) c++;
-                    } else if (cat.id === 'headings') {
-                        if (sub === 'Missing H1' && (!p.h1_1 || p.h1_1.trim() === '')) c++;
-                        else if (sub === 'Multiple H1' && p.multipleH1s === true) c++;
-                        else if (sub === 'Missing H2' && (!p.h2_1 || p.h2_1.trim() === '')) c++;
-                        else if (sub === 'Incorrect Order' && p.incorrectHeadingOrder === true) c++;
-                    } else if (cat.id === 'links') {
-                        if (sub === 'Internal' && p.inlinks > 0) c++;
-                        else if (sub === 'External' && (p.externalOutlinks > 0 || p.uniqueExternalOutlinks > 0)) c++;
-                        else if (sub === 'Broken' && p.statusCode >= 400) c++;
-                        else if (sub === 'Redirects' && p.statusCode >= 300 && p.statusCode < 400) c++;
-                    } else if (cat.id === 'images') {
-                        if (sub === 'Missing Alt' && p.missingAltImages > 0) c++;
-                        else if (sub === 'Long Alt' && p.longAltImages > 0) c++;
-                        else if (sub === 'Has Images' && p.totalImages > 0) c++;
-                    } else if (cat.id === 'performance') {
-                        if (sub === 'Slow Pages' && p.loadTime > 1500) c++;
-                        else if (sub === 'Large Pages' && p.sizeBytes > 2 * 1024 * 1024) c++;
-                        else if (sub === 'Poor LCP' && p.lcp > 2500) c++;
-                        else if (sub === 'Poor CLS' && p.cls > 0.1) c++;
-                    } else if (cat.id === 'international') {
-                        if (sub === 'Missing Hreflang' && (!Array.isArray(p.hreflang) || p.hreflang.length === 0)) c++;
-                        else if (sub === 'Hreflang Errors' && (p.hreflangErrors === true || p.hreflangNoSelf === true || p.hreflangInvalid === true)) c++;
-                    } else if (cat.id === 'structured') {
-                        if (sub === 'Missing Schema' && (!p.schema || (Array.isArray(p.schema) && p.schema.length === 0))) c++;
-                        else if (sub === 'Schema Errors' && p.schemaErrors > 0) c++;
-                        else if (sub === 'Schema Warnings' && p.schemaWarnings > 0) c++;
-                    } else if (cat.id === 'mobile') {
-                        if (sub === 'Missing AMP' && !p.amphtml) c++;
-                        else if (sub === 'Missing Mobile Alternate' && !p.mobileAlt) c++;
-                    } else if (cat.id === 'pagination') {
-                        if (sub === 'Missing rel=next' && !p.relNextTag) c++;
-                        else if (sub === 'Missing rel=prev' && !p.relPrevTag) c++;
-                        else if (sub === 'Paginated Noindex' && (p.relNextTag || p.relPrevTag) && p.metaRobots1?.toLowerCase().includes('noindex')) c++;
-                    } else if (cat.id === 'architecture') {
-                        if (sub === 'Depth 0-2' && p.crawlDepth <= 2) c++;
-                        else if (sub === 'Depth 3-4' && (p.crawlDepth === 3 || p.crawlDepth === 4)) c++;
-                        else if (sub === 'Depth 5+' && p.crawlDepth >= 5) c++;
-                        else if (sub === 'Orphan Pages' && p.inlinks === 0 && p.crawlDepth > 0) c++;
-                    } else if (cat.id === 'custom') {
-                        if (sub === 'Has Extraction' && p.customExtraction?.length > 0) c++;
-                        else if (sub === 'Missing Extraction' && (!p.customExtraction || p.customExtraction.length === 0)) c++;
-                    } else if (cat.id === 'ai-clusters') {
-                        if (sub === 'All' && !!p.topicCluster) c++;
-                        else if (p.topicCluster === sub) c++;
-                    }
+        for (const category of allCats) {
+            counts[category.id] = {};
+            for (const sub of category.sub) {
+                if (category.id === 'ai-clusters') {
+                    counts[category.id][sub] = pagesWithDerivedSignals.filter((page) =>
+                        sub === 'All' ? Boolean(page?.topicCluster) : page?.topicCluster === sub
+                    ).length;
+                    continue;
                 }
-                counts[cat.id][sub] = c;
+
+                counts[category.id][sub] = pagesWithDerivedSignals.filter((page) =>
+                    matchesCategoryFilter(category.id, sub, page, { rootHostname })
+                ).length;
             }
         }
+
         return counts;
-    }, [analysisPages, dynamicClusters, rootHostname, duplicateTitleSet, duplicateMetaDescSet]);
+    }, [pagesWithDerivedSignals, dynamicClusters, hasAiInsights, rootHostname]);
 
     // Stats are now handled by the statsWorker useEffect above
 
@@ -2286,178 +2242,53 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
     const filteredPages = useMemo(() => {
         let list = pagesWithDerivedSignals;
 
-        // Exclude ignored URLs
         if (ignoredUrls.size > 0) {
-            list = list.filter(p => !ignoredUrls.has(p.url));
+            list = list.filter((page) => !ignoredUrls.has(page.url));
         }
 
-        // Global search — checks URL, title, meta description, H1
         if (deferredSearchQuery) {
-            const q = deferredSearchQuery.toLowerCase();
-            list = list.filter(p => 
-                p.url.toLowerCase().includes(q) || 
-                (p.title && p.title.toLowerCase().includes(q)) ||
-                (p.metaDesc && p.metaDesc.toLowerCase().includes(q)) ||
-                (p.h1_1 && p.h1_1.toLowerCase().includes(q))
+            const query = deferredSearchQuery.toLowerCase();
+            list = list.filter((page) =>
+                page.url.toLowerCase().includes(query) ||
+                String(page.title || '').toLowerCase().includes(query) ||
+                String(page.metaDesc || '').toLowerCase().includes(query) ||
+                String(page.h1_1 || '').toLowerCase().includes(query)
             );
         }
+
         if (activeMacro) {
-            if (activeMacro === 'all') {
-                // If 'all' is explicitly set, we've already done search filtering above, 
-                // so we just proceed to return 'list' at the end or sort if needed.
-            } else if (MACRO_FILTERS[activeMacro]) {
+            if (activeMacro !== 'all' && MACRO_FILTERS[activeMacro]) {
                 list = list.filter(MACRO_FILTERS[activeMacro]);
-                if (sortConfig) {
-                    list = [...list].sort((a, b) => {
-                        const aVal = a[sortConfig.key];
-                        const bVal = b[sortConfig.key];
-                        if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
-                        if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
-                        return 0;
-                    });
+            } else if (activeMacro !== 'all') {
+                let issueCondition: ((page: any) => boolean) | null = null;
+                for (const issueGroup of SEO_ISSUES_TAXONOMY) {
+                    const issue = issueGroup.issues.find((entry) => entry.id === activeMacro);
+                    if (issue) {
+                        issueCondition = issue.condition;
+                        break;
+                    }
                 }
-                return list;
-            }
-            let foundIssue: any = null;
-            for (const group of SEO_ISSUES_TAXONOMY) {
-                const issue = group.issues.find(i => i.id === activeMacro);
-                if (issue) { foundIssue = issue; break; }
-            }
-            if (foundIssue) {
-                list = list.filter(foundIssue.condition);
-                if (sortConfig) {
-                    list = [...list].sort((a, b) => {
-                        const aVal = a[sortConfig.key];
-                        const bVal = b[sortConfig.key];
-                        if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
-                        if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
-                        return 0;
-                    });
+                if (issueCondition) {
+                    list = list.filter(issueCondition);
                 }
-                return list;
             }
         }
-        list = list.filter(p => {
-            const group = activeCategory.group;
-            const sub = activeCategory.sub;
-            if (group === 'internal') {
-                if (sub === 'All') return true;
-                if (sub === 'HTML') return p.contentType?.includes('html');
-                if (sub === 'Images') return p.contentType?.includes('image');
-                if (sub === 'JavaScript') return p.contentType?.includes('javascript');
-                if (sub === 'CSS') return p.contentType?.includes('css');
-                if (sub === 'PDF') return p.contentType?.includes('pdf');
-                return true;
-            }
-            if (group === 'external') {
-                if (sub === 'All') return rootHostname ? !p.url.includes(rootHostname) : false;
-                return false;
-            }
-            if (group === 'security') {
-                if (sub === 'Mixed Content') return p.mixedContent === true;
-                if (sub === 'Insecure Forms') return p.insecureForms === true;
-                if (sub === 'Missing HSTS') return p.hstsMissing === true;
-                if (sub === 'Missing CSP') return p.hasCsp === false && p.isHtmlPage;
-                if (sub === 'Invalid SSL') return p.url?.startsWith('https://') && p.sslValid === false;
-                if (sub === 'Insecure Cookies') return Number(p.insecureCookies || 0) > 0;
-                return true;
-            }
-            if (group === 'indexability') {
-                if (sub === 'Indexable') return p.indexable === true;
-                if (sub === 'Non-Indexable') return p.indexable === false;
-                if (sub === 'Canonicalized') return p.canonical && p.canonical !== p.url;
-                if (sub === 'Noindex') return p.metaRobots1?.toLowerCase().includes('noindex');
-                return true;
-            }
-            if (group === 'codes') {
-                if (sub === 'Success (2xx)') return p.statusCode >= 200 && p.statusCode < 300;
-                if (sub === 'Redirection (3xx)') return p.statusCode >= 300 && p.statusCode < 400;
-                if (sub === 'Client Error (4xx)') return p.statusCode >= 400 && p.statusCode < 500;
-                if (sub === 'Server Error (5xx)') return p.statusCode >= 500;
-                return true;
-            }
-            if (group === 'titles') {
-                if (sub === 'Missing') return !p.title || p.title.trim() === '';
-                if (sub === 'Duplicate') return duplicateTitleSet.has(normalizeComparableText(p.title));
-                if (sub === 'Over 60 Characters') return p.titleLength > 60;
-                if (sub === 'Below 30 Characters') return p.titleLength > 0 && p.titleLength < 30;
-                return true;
-            }
-            if (group === 'meta') {
-                if (sub === 'Missing') return !p.metaDesc || p.metaDesc.trim() === '';
-                if (sub === 'Duplicate') return duplicateMetaDescSet.has(normalizeComparableText(p.metaDesc));
-                if (sub === 'Over 155 Characters') return p.metaDescLength > 155;
-                if (sub === 'Below 70 Characters') return p.metaDescLength > 0 && p.metaDescLength < 70;
-                return true;
-            }
-            if (group === 'headings') {
-                if (sub === 'Missing H1') return !p.h1_1 || p.h1_1.trim() === '';
-                if (sub === 'Multiple H1') return p.multipleH1s === true;
-                if (sub === 'Missing H2') return !p.h2_1 || p.h2_1.trim() === '';
-                if (sub === 'Incorrect Order') return p.incorrectHeadingOrder === true;
-                return true;
-            }
-            if (group === 'links') {
-                if (sub === 'Internal') return p.inlinks > 0;
-                if (sub === 'External') return p.externalOutlinks > 0 || p.uniqueExternalOutlinks > 0;
-                if (sub === 'Broken') return p.statusCode >= 400;
-                if (sub === 'Redirects') return p.statusCode >= 300 && p.statusCode < 400;
-                return true;
-            }
-            if (group === 'images') {
-                if (sub === 'Missing Alt') return p.missingAltImages > 0;
-                if (sub === 'Long Alt') return p.longAltImages > 0;
-                if (sub === 'Has Images') return p.totalImages > 0;
-                return true;
-            }
-            if (group === 'performance') {
-                if (sub === 'Slow Pages') return p.loadTime > 1500;
-                if (sub === 'Large Pages') return p.sizeBytes > 2 * 1024 * 1024;
-                if (sub === 'Poor LCP') return p.lcp > 2500;
-                if (sub === 'Poor CLS') return p.cls > 0.1;
-                return true;
-            }
-            if (group === 'international') {
-                if (sub === 'Missing Hreflang') return !Array.isArray(p.hreflang) || p.hreflang.length === 0;
-                if (sub === 'Hreflang Errors') return p.hreflangErrors === true || p.hreflangNoSelf === true || p.hreflangInvalid === true;
-                return true;
-            }
-            if (group === 'structured') {
-                if (sub === 'Missing Schema') return !p.schema || (Array.isArray(p.schema) && p.schema.length === 0);
-                if (sub === 'Schema Errors') return p.schemaErrors > 0;
-                if (sub === 'Schema Warnings') return p.schemaWarnings > 0;
-                return true;
-            }
-            if (group === 'mobile') {
-                if (sub === 'Missing AMP') return !p.amphtml;
-                if (sub === 'Missing Mobile Alternate') return !p.mobileAlt;
-                return true;
-            }
-            if (group === 'pagination') {
-                if (sub === 'Missing rel=next') return !p.relNextTag;
-                if (sub === 'Missing rel=prev') return !p.relPrevTag;
-                if (sub === 'Paginated Noindex') return (p.relNextTag || p.relPrevTag) && p.metaRobots1?.toLowerCase().includes('noindex');
-                return true;
-            }
-            if (group === 'architecture') {
-                if (sub === 'Depth 0-2') return p.crawlDepth <= 2;
-                if (sub === 'Depth 3-4') return p.crawlDepth === 3 || p.crawlDepth === 4;
-                if (sub === 'Depth 5+') return p.crawlDepth >= 5;
-                if (sub === 'Orphan Pages') return p.inlinks === 0 && p.crawlDepth > 0;
-                return true;
-            }
-            if (group === 'custom') {
-                if (sub === 'Has Extraction') return p.customExtraction && p.customExtraction.length > 0;
-                if (sub === 'Missing Extraction') return !p.customExtraction || p.customExtraction.length === 0;
-                return true;
-            }
-            if (group === 'ai-clusters') {
-                if (sub === 'All') return !!p.topicCluster;
-                return p.topicCluster === sub;
-            }
-            return true;
-        });
 
+        const sanitizedSelections = activeCategories
+            .filter((selection) => selection?.group && selection?.sub)
+            .filter((selection, index, arr) => arr.findIndex((entry) => entry.group === selection.group && entry.sub === selection.sub) === index);
+
+        const hasEffectiveSelection = sanitizedSelections.some(
+            (selection) => !(selection.group === 'internal' && selection.sub === 'All')
+        );
+
+        if (hasEffectiveSelection) {
+            list = list.filter((page) =>
+                sanitizedSelections.some((selection) =>
+                    matchesCategoryFilter(selection.group, selection.sub, page, { rootHostname })
+                )
+            );
+        }
 
         if (sortConfig) {
             list = [...list].sort((a, b) => {
@@ -2468,8 +2299,9 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
                 return 0;
             });
         }
+
         return list;
-    }, [pagesWithDerivedSignals, activeCategory, deferredSearchQuery, activeMacro, sortConfig, MACRO_FILTERS, ignoredUrls, rootHostname, duplicateTitleSet, duplicateMetaDescSet]);
+    }, [pagesWithDerivedSignals, activeCategories, deferredSearchQuery, activeMacro, sortConfig, MACRO_FILTERS, ignoredUrls, rootHostname]);
 
     const handleImport = async (file: File) => {
         try {
@@ -2925,9 +2757,11 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         
         const catScores = CATEGORIES.map(cat => {
             const counts = categoryCounts[cat.id] || {};
-            const totalIssues = (Object.values(counts) as number[]).reduce((a, b) => a + b, 0);
+            const totalIssues = (Object.entries(counts) as Array<[string, number]>)
+                .filter(([sub]) => sub !== 'All')
+                .reduce((sum, [, value]) => sum + Number(value || 0), 0);
             // Weight "problem" categories higher
-            const isProblematic = ['security', 'codes', 'titles', 'meta', 'performance'].includes(cat.id);
+            const isProblematic = ['security', 'codes', 'indexability', 'performance', 'content', 'mobile'].includes(cat.id);
             return { ...cat, score: isProblematic && totalIssues > 0 ? totalIssues * 10 : totalIssues };
         });
         
@@ -3409,6 +3243,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         crawlingMode, setCrawlingMode, urlInput, setUrlInput, listUrls, setListUrls, showListModal, setShowListModal,
         isCrawling, setIsCrawling, pages: pagesWithDerivedSignals, logs, setLogs, crawlStartTime, setCrawlStartTime,
         crawlDb,
+        activeCategories, setActiveCategories,
         activeCategory, setActiveCategory, openCategories, setOpenCategories, searchQuery, setSearchQuery,
         selectedPage, setSelectedPage, activeTab, setActiveTab, showAuditSidebar, setShowAuditSidebar,
         activeAuditTab, setActiveAuditTab, showSettings, setShowSettings, activeMacro, setActiveMacro,
