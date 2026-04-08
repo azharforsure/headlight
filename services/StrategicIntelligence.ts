@@ -241,6 +241,7 @@ export function calculateOpportunityScore(page: any): number {
     const impressions = Number(page.gscImpressions || 0);
     const position = Number(page.gscPosition || 0);
     const ctr = Number(page.gscCtr || 0);
+    const isLosing = page.isLosingTraffic === true;
     
     // High opportunity: High impressions + Position between 4 and 20 + Low CTR
     let score = Math.min(40, Math.log10(impressions + 1) * 8); // Impressions base (up to 40pts)
@@ -251,11 +252,24 @@ export function calculateOpportunityScore(page: any): number {
     
     // Low CTR bonus (Optimization potential)
     if (ctr < 0.03 && impressions > 500) score += 20;
+
+    // Traffic Loss Urgency (New signal)
+    if (isLosing) score += 15;
     
     // Technical penalties (from existing logic)
     const techPenalty = page.statusCode >= 400 ? 50 : page.loadTime > 2000 ? 15 : 0;
     
     return Math.max(0, Math.min(100, Math.round(score - techPenalty)));
+}
+
+/**
+ * Traffic Performance Trend
+ */
+export function getTrafficPerformanceStatus(page: any): 'growing' | 'losing' | 'steady' {
+    const deltaPct = page.sessionsDeltaPct || 0;
+    if (deltaPct > 0.15) return 'growing'; // +15%
+    if (deltaPct < -0.15) return 'losing';  // -15%
+    return 'steady';
 }
 
 function clamp(value: number, min = 0, max = 100): number {
@@ -438,11 +452,14 @@ export function getRecommendedAction(page: any): ActionResult {
     const engagement = scoreEngagement(page);
     const authority = scoreAuthority(page);
     const business = scoreBusinessValue(page);
+    
     const impressions = Number(page.gscImpressions || 0);
     const ctr = Number(page.gscCtr || 0);
     const position = Number(page.gscPosition || 0);
     const sessions = Number(page.ga4Sessions || 0);
     const bounceRate = Number(page.ga4BounceRate || 0);
+    const isLosing = page.isLosingTraffic === true;
+    const deltaPct = page.sessionsDeltaPct || 0;
 
     if (page.statusCode >= 400) {
         return {
@@ -452,11 +469,29 @@ export function getRecommendedAction(page: any): ActionResult {
         };
     }
 
+    // New: Recover Losing Traffic
+    if (isLosing && visibility > 20) {
+        return {
+            action: 'Recover Traffic',
+            reason: `Traffic has dropped by ${Math.abs(Math.round(deltaPct * 100))}% recently. Audit for keyword shifts or content decay.`,
+            factors: ['significant traffic drop', 'established visibility']
+        };
+    }
+
     if (engagement > 50 && business > 40 && tech < 55) {
         return {
             action: 'Protect High-Value Page',
             reason: 'This page drives traffic and conversions but has technical problems that could hurt it.',
             factors: ['high engagement', 'business value', 'technical issues']
+        };
+    }
+
+    // High traffic, low conversion
+    if (sessions > 100 && business < 20 && engagement > 40) {
+        return {
+            action: 'Optimize Conversion Path',
+            reason: 'Users are engaging with the content but not converting. Review CTAs and offer relevance.',
+            factors: ['high traffic', 'good engagement', 'low business value']
         };
     }
 

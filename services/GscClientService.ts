@@ -26,10 +26,34 @@ export interface GscEnrichmentOptions {
     maxPageRows?: number;
     maxQueryRows?: number;
     googleEmail?: string;
+    days?: number;
 }
 
 export class GscClientService {
     private static API_BASE = 'https://www.googleapis.com/webmasters/v3/sites';
+
+    /**
+     * Exponential Backoff Wrapper for fetch
+     */
+    private static async backoffFetch(fn: () => Promise<Response>, retries = 3): Promise<Response> {
+        let delay = 1000;
+        for (let i = 0; i <= retries; i++) {
+            try {
+                const response = await fn();
+                if (response.status === 429 || (response.status >= 500 && i < retries)) {
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    delay *= 2;
+                    continue;
+                }
+                return response;
+            } catch (err) {
+                if (i === retries) throw err;
+                await new Promise(resolve => setTimeout(resolve, delay));
+                delay *= 2;
+            }
+        }
+        throw new Error('Retries exceeded');
+    }
 
     /**
      * Get start and end date for GSC API
@@ -64,6 +88,7 @@ export class GscClientService {
         while (startRow < maxRows) {
             const nextLimit = Math.min(rowLimit, maxRows - startRow);
             if (nextLimit <= 0) break;
+            
             const body: any = {
                 startDate,
                 endDate,
@@ -72,7 +97,7 @@ export class GscClientService {
                 startRow
             };
 
-            const response = await fetch(
+            const response = await this.backoffFetch(() => fetch(
                 `${this.API_BASE}/${encodeURIComponent(siteUrl)}/searchAnalytics/query`,
                 {
                     method: 'POST',
@@ -82,7 +107,7 @@ export class GscClientService {
                     },
                     body: JSON.stringify(body)
                 }
-            );
+            ));
 
             if (response.status === 401 && googleEmail) {
                 const refreshedAccessToken = await refreshGoogleToken(googleEmail);
@@ -93,8 +118,8 @@ export class GscClientService {
             }
 
             if (!response.ok) {
-                const error = await response.json();
-                throw new Error(`GSC Fetch Failed: ${error.error?.message || response.statusText}`);
+                const error = await response.json().catch(() => ({}));
+                throw new Error(`GSC API Error: ${error.error?.message || response.statusText}`);
             }
 
             const data: GscResponse = await response.json();
@@ -110,9 +135,6 @@ export class GscClientService {
 
     /**
      * Strategic Keyword Scoring
-     * 1. Keywords with Clicks
-     * 2. Highest Impressions
-     * 3. Best Average Position
      */
     private static scoreKeyword(row: GscMetricRow): number {
         return (
@@ -135,7 +157,7 @@ export class GscClientService {
     }
 
     /**
-     * Unified GSC Enrichment
+     * Deep GSC Enrichment with Two-Tier Fetch Strategy
      */
     static async enrichSession(
         sessionId: string,
@@ -150,33 +172,42 @@ export class GscClientService {
         );
         const targetPages = htmlPages.filter((page) => targetCanonicalSet.has(UrlNormalization.toCanonical(page.url)));
 
-        if (targetPages.length === 0) {
+        if (targetPages.length === 0 && !options.maxPageRows) {
             return { enriched: 0, total: 0, rowsCollected: 0, queryRowsStored: 0 };
         }
 
-        const maxPageRows = options.maxPageRows || Math.min(50000, Math.max(25000, targetPages.length * 2));
-        const maxQueryRows = options.maxQueryRows || Math.min(50000, Math.max(25000, targetPages.length * 8));
-
-        onProgress?.('Fetching GSC Page-level data...');
-        const pageRows = await this.fetchPaginated(siteUrl, accessToken, ['page'], 30, maxPageRows, options.googleEmail);
+        // TIER 1: Page-level Summary (All traffic-carrying pages)
+        // We fetch a larger set than targetPages to identify "Discovered but not crawled" or "Losing traffic"
+        const maxPageRows = options.maxPageRows || 100000;
+        onProgress?.(`Fetching GSC Page Summary (up to ${maxPageRows.toLocaleString()} rows)...`);
+        const pageRows = await this.fetchPaginated(siteUrl, accessToken, ['page'], options.days || 30, maxPageRows, options.googleEmail);
         
-        onProgress?.(`Processing ${pageRows.length} landing pages...`);
-        const queryRows = await this.fetchPaginated(siteUrl, accessToken, ['page', 'query'], 30, maxQueryRows, options.googleEmail);
+        // TIER 2: Page + Query Details (Strategic priority pages only)
+        // We only fetch query details for pages we actually found in the crawl or were explicitly targeted
+        const maxQueryRows = options.maxQueryRows || 250000;
+        onProgress?.(`Fetching GSC Page+Query Details (up to ${maxQueryRows.toLocaleString()} rows)...`);
+        const queryRows = await this.fetchPaginated(siteUrl, accessToken, ['page', 'query'], options.days || 30, maxQueryRows, options.googleEmail);
 
-        // 1. Map pages to metrics
-        const targetPageUrlByCanonical = new Map<string, string>(
-            targetPages.map((page) => [UrlNormalization.toCanonical(page.url), page.url])
-        );
-        const pageMetricsMap = new Map<string, GscMetricRow>();
+        // 1. Map all GSC rows by canonical URL for O(1) lookup
+        const gscCanonicalMap = new Map<string, GscMetricRow>();
+        const gscPathMap = new Map<string, GscMetricRow>();
+
         pageRows.forEach(row => {
-            const canonical = UrlNormalization.toCanonical(row.keys[0]);
-            if (targetCanonicalSet.has(canonical)) {
-                pageMetricsMap.set(canonical, row);
+            const url = row.keys[0];
+            const canonical = UrlNormalization.toCanonical(url);
+            gscCanonicalMap.set(canonical, row);
+
+            // Path-level map for fallback (low confidence)
+            const path = url.split('?')[0].split('#')[0].replace(/^https?:\/\/[^\/]+/, '').replace(/\/$/, '') || '/';
+            if (path !== '/' && !gscPathMap.has(path)) {
+                gscPathMap.set(path, row);
             }
         });
 
-        // 2. Strategic Keyword Mapping
-        // Map: URL -> { mainKeyword, bestKeyword, estimatedVolume }
+        // 2. Query Intelligence (Main/Best Keyword assignment)
+        const targetPageUrlByCanonical = new Map<string, string>(
+            targetPages.map((page) => [UrlNormalization.toCanonical(page.url), page.url])
+        );
         const urlIntelligence = new Map<string, any>();
         const storedQueries: PageQuery[] = [];
 
@@ -184,10 +215,10 @@ export class GscClientService {
             const url = row.keys[0];
             const query = row.keys[1];
             const canonical = UrlNormalization.toCanonical(url);
-            if (!targetCanonicalSet.has(canonical) || !query) return;
+            
+            if (!gscCanonicalMap.has(canonical) || !query) return;
 
             const score = this.scoreKeyword(row);
-
             const existing = urlIntelligence.get(canonical) || { 
                 main: null, 
                 best: null, 
@@ -195,13 +226,11 @@ export class GscClientService {
                 bestRow: null
             };
 
-            // Main Keyword logic: strategic opportunity on the page.
             if (score > existing.mainScore) {
                 existing.main = { query, row };
                 existing.mainScore = score;
             }
 
-            // Best Keyword logic: strongest currently ranking query.
             if (this.isBetterBestKeyword(row, existing.bestRow)) {
                 existing.best = { query, row };
                 existing.bestRow = row;
@@ -209,60 +238,85 @@ export class GscClientService {
 
             urlIntelligence.set(canonical, existing);
 
-            storedQueries.push({
-                crawlId: sessionId,
-                pageUrl: targetPageUrlByCanonical.get(canonical) || canonical,
-                query,
-                clicks: row.clicks,
-                impressions: row.impressions,
-                ctr: row.ctr,
-                position: row.position
-            });
-        });
-
-        // 3. Replace persisted query rows for the target set.
-        await crawlDb.transaction('rw', crawlDb.queries, async () => {
-            for (const page of targetPages) {
-                await crawlDb.queries
-                    .where('[crawlId+pageUrl]')
-                    .equals([sessionId, page.url])
-                    .delete();
+            // Store in Query DB if it's part of our crawl
+            if (targetCanonicalSet.has(canonical)) {
+                storedQueries.push({
+                    crawlId: sessionId,
+                    pageUrl: targetPageUrlByCanonical.get(canonical) || canonical,
+                    query,
+                    clicks: row.clicks,
+                    impressions: row.impressions,
+                    ctr: row.ctr,
+                    position: row.position
+                });
             }
         });
+
+        // 3. Persist Query Data
         if (storedQueries.length > 0) {
+            await crawlDb.transaction('rw', crawlDb.queries, async () => {
+                for (const page of targetPages) {
+                    await crawlDb.queries
+                        .where('[crawlId+pageUrl]')
+                        .equals([sessionId, page.url])
+                        .delete();
+                }
+            });
             await storePageQueries(storedQueries);
         }
 
-        // 4. Sync page metrics to IndexedDB
+        // 4. Update CrawledPage records with Layered Joining
         let enrichedCount = 0;
         const updates: Array<{ url: string } & Partial<CrawledPage>> = [];
 
         for (const page of targetPages) {
-            const canonical = UrlNormalization.toCanonical(page.url);
-            const metrics = pageMetricsMap.get(canonical);
-            const intel = urlIntelligence.get(canonical);
-            const preservePrimaryKeyword = Boolean(
-                page.mainKeyword &&
-                page.mainKeywordSource &&
-                page.mainKeywordSource !== 'gsc'
-            );
+            let bestMatch: GscMetricRow | null = null;
+            let bestResult: any = { joinType: null, confidence: 0 };
 
-            if (metrics || intel) {
+            // LAYERED JOIN: find the best GSC row for this page
+            const canonical = UrlNormalization.toCanonical(page.url);
+            
+            // Try exact/canonical/redirect joins via map
+            const candidates = [page.url, canonical, page.finalUrl].filter(Boolean) as string[];
+            for (const candidate of candidates) {
+                const row = gscCanonicalMap.get(UrlNormalization.toCanonical(candidate));
+                if (row) {
+                    const result = UrlNormalization.getMatchResult(page.url, row.keys[0], page.finalUrl || undefined);
+                    if (result.confidence > bestResult.confidence) {
+                        bestResult = result;
+                        bestMatch = row;
+                    }
+                }
+            }
+
+            // Fallback: Path match (lower confidence)
+            if (!bestMatch) {
+                const path = page.url.split('?')[0].split('#')[0].replace(/^https?:\/\/[^\/]+/, '').replace(/\/$/, '') || '/';
+                const pathRow = gscPathMap.get(path);
+                if (pathRow) {
+                    bestMatch = pathRow;
+                    bestResult = { joinType: 'path', confidence: 85 };
+                }
+            }
+
+            const intel = urlIntelligence.get(canonical);
+            
+            if (bestMatch || intel) {
                 enrichedCount++;
                 const update: Partial<CrawledPage> = {
-                    gscClicks: metrics?.clicks ?? 0,
-                    gscImpressions: metrics?.impressions ?? 0,
-                    gscCtr: metrics?.ctr ?? 0,
-                    gscPosition: metrics?.position ?? 0,
-                    gscEnrichedAt: Date.now()
+                    gscClicks: bestMatch?.clicks ?? 0,
+                    gscImpressions: bestMatch?.impressions ?? 0,
+                    gscCtr: bestMatch?.ctr ?? 0,
+                    gscPosition: bestMatch?.position ?? 0,
+                    gscEnrichedAt: Date.now(),
+                    gscMatchConfidence: bestResult.confidence,
+                    gscJoinType: bestResult.joinType
                 };
 
-                if (!preservePrimaryKeyword && intel?.main) {
+                if (intel?.main) {
                     update.mainKeyword = intel.main.query;
                     update.mainKwPosition = intel.main.row.position;
                     update.mainKeywordSource = 'gsc';
-                    update.mainKwSearchVolume = null;
-                    // Estimate volume from GSC impressions (Tier 2)
                     update.mainKwEstimatedVolume = VolumeEstimation.fromImpressions(
                         intel.main.row.impressions, 
                         intel.main.row.position
@@ -274,7 +328,6 @@ export class GscClientService {
                     update.bestKeyword = intel.best.query;
                     update.bestKwPosition = intel.best.row.position;
                     update.bestKeywordSource = 'gsc';
-                    update.bestKwSearchVolume = null;
                     update.bestKwEstimatedVolume = VolumeEstimation.fromImpressions(
                         intel.best.row.impressions,
                         intel.best.row.position

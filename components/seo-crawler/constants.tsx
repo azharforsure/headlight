@@ -119,15 +119,11 @@ export const ALL_COLUMNS = [
     { key: 'gscCtr', label: 'CTR', width: '100px', group: 'Search Console' },
     { key: 'gscPosition', label: 'Avg Position', width: '140px', group: 'Search Console' },
     { key: 'mainKeyword', label: 'Main Keyword', width: '180px', group: 'Search Console' },
-    { key: 'mainKeywordSource', label: 'Keyword Source', width: '140px', group: 'Search Console' },
     { key: 'mainKwPosition', label: 'Main KW Position', width: '140px', group: 'Search Console' },
-    { key: 'mainKwSearchVolume', label: 'Search Volume', width: '130px', group: 'Search Console' },
-    { key: 'mainKwEstimatedVolume', label: 'Est. Volume (Imp)', width: '150px', group: 'Search Console' },
+    { key: 'mainKwVolume', label: 'Search Volume', width: '130px', group: 'Search Console' },
     { key: 'bestKeyword', label: 'Best Keyword', width: '180px', group: 'Search Console' },
-    { key: 'bestKeywordSource', label: 'Best KW Source', width: '140px', group: 'Search Console' },
     { key: 'bestKwPosition', label: 'Best KW Position', width: '140px', group: 'Search Console' },
-    { key: 'bestKwSearchVolume', label: 'Best KW Volume', width: '140px', group: 'Search Console' },
-    { key: 'bestKwEstimatedVolume', label: 'Best KW Est. Volume', width: '160px', group: 'Search Console' },
+    { key: 'bestKwVolume', label: 'Best KW Volume', width: '140px', group: 'Search Console' },
 
 
 

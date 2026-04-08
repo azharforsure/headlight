@@ -846,171 +846,6 @@ async function performAIStrategicAnalysis(pagePayloads, gscDataMap) {
     return results;
 }
 
-/**
- * ─── Integrations Service (Server-side) ──────────────────────
- * Handles GSC and GA4 data fetching during post-crawl analysis.
- */
-const IntegrationsService = {
-    async refreshGoogleAccessToken(refreshToken) {
-        const refreshRes = await undiciRequest('https://oauth2.googleapis.com/token', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: new URLSearchParams({
-                client_id: process.env.GOOGLE_CLIENT_ID,
-                client_secret: process.env.GOOGLE_CLIENT_SECRET,
-                refresh_token: refreshToken,
-                grant_type: 'refresh_token'
-            }).toString()
-        });
-
-        if (refreshRes.statusCode !== 200) {
-            await refreshRes.body.dump().catch(() => {});
-            return null;
-        }
-
-        const data = await refreshRes.body.json();
-        return data.access_token || null;
-    },
-
-    async fetchGscData(accessToken, siteUrl, urls, refreshToken = null) {
-        const results = {};
-        let currentToken = accessToken;
-        let isRefreshed = false;
-
-        const fetchWithRetry = async (pageCursor = 0) => {
-            const end = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
-            const start = new Date(end.getTime() - 30 * 24 * 60 * 60 * 1000);
-            const startDate = start.toISOString().split('T')[0];
-            const endDate = end.toISOString().split('T')[0];
-
-            const response = await undiciRequest(
-                `https://www.googleapis.com/webmasters/v3/sites/${encodeURIComponent(siteUrl)}/searchAnalytics/query`,
-                {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${currentToken}`,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        startDate,
-                        endDate,
-                        dimensions: ['page'],
-                        rowLimit: 25000,
-                        startRow: pageCursor
-                    })
-                }
-            );
-
-            if (response.statusCode === 401 && refreshToken && !isRefreshed) {
-                const refreshedToken = await this.refreshGoogleAccessToken(refreshToken);
-                if (refreshedToken) {
-                    currentToken = refreshedToken;
-                    isRefreshed = true;
-                    return fetchWithRetry(pageCursor);
-                }
-            }
-
-            if (response.statusCode !== 200) {
-                await response.body.dump().catch(() => {});
-                return null;
-            }
-
-            return await response.body.json();
-        };
-
-        try {
-            const data = await fetchWithRetry();
-            if (data?.rows) {
-                for (const row of data.rows) {
-                    const url = row.keys[0];
-                    results[url] = {
-                        gscClicks: row.clicks,
-                        gscImpressions: row.impressions,
-                        gscCtr: row.ctr,
-                        gscPosition: row.position
-                    };
-                }
-            }
-            if (isRefreshed) results.__new_token = currentToken;
-        } catch (err) {
-            console.error('GSC Fetch Error:', err);
-        }
-
-        return results;
-    },
-
-    async fetchGa4Data(accessToken, propertyId, urls, refreshToken = null) {
-        const results = {};
-        let currentToken = accessToken;
-        let isRefreshed = false;
-
-        const fetchWithRetry = async () => {
-            const response = await undiciRequest(
-                `https://analyticsdata.googleapis.com/v1beta/properties/${propertyId}:runReport`,
-                {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${currentToken}`,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        dateRanges: [{ startDate: '30daysAgo', endDate: 'yesterday' }],
-                        dimensions: [{ name: 'pagePath' }],
-                        metrics: [
-                            { name: 'screenPageViews' },
-                            { name: 'sessions' },
-                            { name: 'bounceRate' },
-                            { name: 'averageSessionDuration' }
-                        ],
-                        limit: 100000
-                    })
-                }
-            );
-
-            if (response.statusCode === 401 && refreshToken && !isRefreshed) {
-                const refreshedToken = await this.refreshGoogleAccessToken(refreshToken);
-                if (refreshedToken) {
-                    currentToken = refreshedToken;
-                    isRefreshed = true;
-                    return fetchWithRetry();
-                }
-            }
-
-            if (response.statusCode !== 200) {
-                await response.body.dump().catch(() => {});
-                return null;
-            }
-
-            return await response.body.json();
-        };
-
-        try {
-            const data = await fetchWithRetry();
-            if (data?.rows) {
-                const rowCount = data.rows.length;
-                console.log(`[GA4] Successfully fetched ${rowCount} rows for property ${propertyId}`);
-                for (const row of data.rows) {
-                    const path = row.dimensionValues[0].value;
-                    const metrics = row.metricValues;
-                    results[path] = {
-                        ga4Views: parseInt(metrics[0]?.value || '0', 10),
-                        ga4Sessions: parseInt(metrics[1]?.value || '0', 10),
-                        ga4BounceRate: parseFloat(metrics[2]?.value || '0'),
-                        ga4AvgDuration: parseFloat(metrics[3]?.value || '0')
-                    };
-                }
-            } else {
-                console.log(`[GA4] No rows returned for property ${propertyId}`);
-            }
-            if (isRefreshed) results.__new_token = currentToken;
-        } catch (err) {
-            console.error('GA4 Fetch Error:', err);
-        }
-
-        return results;
-    }
-};
-
 // ════════════════════════════════════════════════════════════
 //  MAIN CRAWLER
 // ════════════════════════════════════════════════════════════
@@ -2190,49 +2025,7 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
         onEvent('LOG', { message: 'Starting Strategic SEO Analysis & Data Integration...', type: 'info' });
         
         const pageUrls = Array.from(visited);
-        let gscDataMap = {};
-        let ga4DataMap = {};
-        
-        // 1. Fetch Google Search Console data if connected
-        if (config.gscApiKey && config.gscSiteUrl) {
-            onEvent('LOG', { message: 'Fetching Google Search Console performance data...', type: 'info' });
-            gscDataMap = await IntegrationsService.fetchGscData(
-                config.gscApiKey,
-                config.gscSiteUrl,
-                pageUrls,
-                config.gscRefreshToken
-            );
-            
-            if (gscDataMap.__new_token) {
-                onEvent('TOKEN_REFRESHED', { provider: 'google', accessToken: gscDataMap.__new_token });
-                config.gscApiKey = gscDataMap.__new_token; // Update local config for GA4 fetch if needed
-                delete gscDataMap.__new_token;
-            }
-        } else if (config.gscSiteUrl && !config.gscApiKey) {
-            onEvent('LOG', { message: 'Skipping Google Search Console fetch: property is selected but no Google access token is available.', type: 'warn' });
-        } else if (config.gscApiKey && !config.gscSiteUrl) {
-            onEvent('LOG', { message: 'Skipping Google Search Console fetch: no Search Console property is selected.', type: 'warn' });
-        }
-
-        // 1b. Fetch Google Analytics 4 data if connected
-        if ((config.gscApiKey || config.ga4AccessToken) && config.ga4PropertyId) {
-            onEvent('LOG', { message: 'Fetching Google Analytics 4 page metrics...', type: 'info' });
-            ga4DataMap = await IntegrationsService.fetchGa4Data(
-                config.ga4AccessToken || config.gscApiKey,
-                config.ga4PropertyId,
-                pageUrls,
-                config.gscRefreshToken // GA4 usually uses the same Google refresh token
-            );
-
-            if (ga4DataMap.__new_token) {
-                onEvent('TOKEN_REFRESHED', { provider: 'google', accessToken: ga4DataMap.__new_token });
-                delete ga4DataMap.__new_token;
-            }
-        } else if (config.ga4PropertyId && !(config.gscApiKey || config.ga4AccessToken)) {
-            onEvent('LOG', { message: 'Skipping Google Analytics 4 fetch: property is selected but no Google access token is available.', type: 'warn' });
-        } else if ((config.gscApiKey || config.ga4AccessToken) && !config.ga4PropertyId) {
-            onEvent('LOG', { message: 'Skipping Google Analytics 4 fetch: no Analytics property ID is selected.', type: 'warn' });
-        }
+        const gscDataMap = {}; // Legacy map, kept empty as enrichment moved to client
 
 
         // 2. Perform Internal PageRank calculation (Link Equity)
@@ -2311,36 +2104,13 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
             const payload = pagePayloads.get(url);
             if (!payload) continue;
 
-            // GA4 Mapping: try matching full URL then just the path (GA4 standard)
-            let ga4Data = {};
-            try {
-                const urlObj = new URL(url);
-                const pathOnly = urlObj.pathname;
-                const pathWithQuery = urlObj.pathname + (urlObj.search || '');
-                
-                ga4Data = ga4DataMap[url] || 
-                          ga4DataMap[pathWithQuery] || 
-                          ga4DataMap[pathOnly] || 
-                          ga4DataMap[pathOnly + '/'] || {};
-                          
-                // If path is root '/', GA4 sometimes reports it as '(index)' or empty
-                if (pathOnly === '/' && !Object.keys(ga4Data).length) {
-                    ga4Data = ga4DataMap['(index)'] || ga4DataMap['/'] || {};
-                }
-            } catch (e) {
-                ga4Data = ga4DataMap[url] || {};
-            }
-
             const update = {
                 url,
-                ...(gscDataMap[url] || {}),
-                ...ga4Data,
                 linkEquity: internalPageRank[url] || 0,
                 uniqueJsInlinks: jsInlinksMap[url]?.size || 0,
                 ...(semanticAnalysis[url] || {}),
                 searchIntent: strategicInsights[url]?.intent || 'Unknown',
-                strategicPriority: strategicInsights[url]?.priority || 'Medium',
-                contentDecay: gscDataMap[url] && (gscDataMap[url].gscClicks < 5 && gscDataMap[url].gscImpressions > 100) ? 'Possible Decay' : 'Stable'
+                strategicPriority: strategicInsights[url]?.priority || 'Medium'
             };
             update.funnelStage = classifyFunnelStage({ ...payload, ...update });
 

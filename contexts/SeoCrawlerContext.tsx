@@ -37,7 +37,7 @@ import { refreshGoogleToken } from '../services/GoogleOAuthHelper';
 import { initializeDatabase } from '../services/turso';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { crawlDb } from '../services/CrawlDatabase';
-import { autoDetectGoogleProperties } from '../services/GoogleAutoDetect';
+import { GoogleSelectionResolver, EffectiveGoogleSelection } from '../services/googleSelectionResolver';
 import { UrlNormalization } from '../services/UrlNormalization';
 
 export interface CrawlerContextType {
@@ -359,7 +359,15 @@ const normalizeCrawlerPage = (page: any) => {
         headingHierarchy: Array.isArray(page.headingHierarchy) ? page.headingHierarchy : [],
         schemaTypes: Array.isArray(page.schemaTypes) ? page.schemaTypes : [],
         responseHeaders: page.responseHeaders && typeof page.responseHeaders === 'object' ? page.responseHeaders : null,
-        recommendedActionFactors
+        recommendedActionFactors,
+
+        // Consolidated Volume Metrics (Main)
+        mainKwVolume: Number(page.mainKwSearchVolume || page.mainKwEstimatedVolume || 0),
+        mainKwVolumeSource: page.mainKwSearchVolume ? 'db' : (page.mainKwEstimatedVolume ? 'gsc' : 'none'),
+
+        // Consolidated Volume Metrics (Best)
+        bestKwVolume: Number(page.bestKwSearchVolume || page.bestKwEstimatedVolume || 0),
+        bestKwVolumeSource: page.bestKwSearchVolume ? 'db' : (page.bestKwEstimatedVolume ? 'gsc' : 'none'),
     };
 };
 
@@ -1139,6 +1147,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
                 referringDomains: hasOwn(payload, 'referringDomains') ? payload.referringDomains : existingPage.referringDomains ?? null,
                 backlinks: hasOwn(payload, 'backlinks') ? payload.backlinks : existingPage.backlinks ?? null,
                 opportunityScore: calculatePredictiveScore({ ...existingPage, ...payload }),
+                isHtmlPage: hasOwn(payload, 'isHtmlPage') ? payload.isHtmlPage : existingPage.isHtmlPage ?? false,
                 timestamp: Date.now()
             };
 
@@ -1327,6 +1336,63 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
             setDiffResult(null); // Clear any old diff
         } else if (!sessionEntrySignatureRef.current) {
             sessionEntrySignatureRef.current = requestedSignature;
+        }
+
+        // --- Phase 1: Google Property Resolution (Pre-flight) ---
+        const googleConn = integrationConnections.google;
+        const gscToken = config.gscApiKey; // Confusingly named, but holds the access token
+        
+        if (googleConn && gscToken && !isResume) {
+            addLog(`Resolving Google properties for ${urlsToScan[0]}...`, 'info', { source: 'system' });
+            
+            GoogleSelectionResolver.resolveEffectiveGoogleSelection({
+                accessToken: gscToken,
+                crawlUrl: urlsToScan[0],
+                existingSelection: googleConn.selection as any,
+                // history can be added here once we have a way to track it
+            }).then(resolution => {
+                if (resolution.siteUrl || resolution.propertyId) {
+                    const updates: any = {
+                        selection: {
+                            ...googleConn.selection,
+                            siteUrl: resolution.siteUrl || googleConn.selection?.siteUrl,
+                            propertyId: resolution.propertyId || googleConn.selection?.propertyId,
+                            gscConfidence: resolution.gscConfidence,
+                            ga4Confidence: resolution.ga4Confidence,
+                            source: resolution.source
+                        }
+                    };
+                    
+                    // If we found something new or more confident, log it
+                    if (resolution.siteUrl !== googleConn.selection?.siteUrl && resolution.siteUrl) {
+                        addLog(`Auto-detected GSC property: ${resolution.siteUrl} (Confidence: ${resolution.gscConfidence}%)`, 'success', { source: 'system' });
+                        setDetectedGscSite(resolution.siteUrl);
+                    }
+                    if (resolution.propertyId !== googleConn.selection?.propertyId && resolution.propertyId) {
+                        addLog(`Auto-detected GA4 property: ${resolution.propertyId} (Confidence: ${resolution.ga4Confidence}%)`, 'success', { source: 'system' });
+                        setDetectedGa4Property(resolution.propertyId);
+                    }
+                    
+                    // Persist to project/account
+                    if (targetProjectId) {
+                        upsertProjectCrawlerIntegration(targetProjectId, { ...googleConn, ...updates });
+                    } else {
+                        saveAnonymousCrawlerIntegrations({ 
+                            ...integrationConnections, 
+                            google: { ...googleConn, ...updates } 
+                        });
+                    }
+                    
+                    // Update state to trigger re-render in IntegrationsTab
+                    setIntegrationConnections(prev => ({
+                        ...prev,
+                        google: { ...prev.google!, ...updates }
+                    }));
+                }
+            }).catch(err => {
+                console.error('[GoogleResolver] Failed to resolve properties:', err);
+                addLog('Google property resolution failed. Crawl will continue without search data.', 'warn', { source: 'system' });
+            });
         }
 
         setIsCrawling(true);
@@ -1576,39 +1642,47 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
 
             ws.onopen = async () => {
                 const googleConnection = integrationConnections.google;
-                const googleEmail = googleConnection?.accountLabel;
+                
+                // Helper to get a fresh token, optionally refreshing if needed
+                const getOrRefreshGoogleToken = async () => {
+                    const email = googleConnection?.accountLabel || googleConnection?.providerEmail || (googleConnection?.metadata?.email as string);
+                    const secrets = googleConnection ? getCrawlerIntegrationSecret(integrationSecretScope, 'google') : null;
+                    let token = secrets?.accessToken || secrets?.access_token;
+                    const refreshToken = secrets?.refreshToken || secrets?.refresh_token;
+
+                    if (!token && email) {
+                        addLog('Refreshing Google access token...', 'info', { source: 'system' });
+                        token = await refreshGoogleToken(email) || undefined;
+                    }
+                    return { token, email, refreshToken };
+                };
+
+                const { token: googleAccessToken, email: googleEmail, refreshToken: googleRefreshToken } = await getOrRefreshGoogleToken();
                 let currentGsc = config.gscSiteUrl || googleConnection?.selection?.siteUrl;
                 let currentGa4 = config.ga4PropertyId || googleConnection?.selection?.propertyId;
 
-                // Auto-detect properties if Google is connected but not configured.
-                const googleSecrets = googleConnection ? getCrawlerIntegrationSecret(integrationSecretScope, 'google') : null;
-                let googleAccessToken = googleSecrets?.accessToken || googleSecrets?.access_token;
-                const googleRefreshToken = googleSecrets?.refreshToken || googleSecrets?.refresh_token;
-
-                if (!googleAccessToken && googleEmail) {
-                    googleAccessToken = await refreshGoogleToken(googleEmail) || undefined;
-                }
-
                 if (googleConnection && !googleAccessToken && !googleEmail) {
-                    addLog('Google connection metadata is incomplete. Reconnect Google to sync GSC/GA4.', 'warn', { source: 'system' });
+                    addLog('Google connection metadata is incomplete. Please reconnect Google in the Integrations tab.', 'warn', { source: 'system' });
                 }
 
                 if (googleAccessToken && (!currentGsc || !currentGa4)) {
                     addLog('Auto-detecting Google properties for this domain...', 'info');
-                    const detected = await autoDetectGoogleProperties(googleAccessToken, urlsToScan[0]);
-                    if (detected.gscSiteUrl && !currentGsc) {
-                        currentGsc = detected.gscSiteUrl;
+                    const resolution = await GoogleSelectionResolver.resolveEffectiveGoogleSelection({
+                        accessToken: googleAccessToken,
+                        crawlUrl: urlsToScan[0]
+                    });
+                    if (resolution.siteUrl && !currentGsc) {
+                        currentGsc = resolution.siteUrl;
                         setDetectedGscSite(currentGsc);
-                        addLog(`Auto-detected GSC property: ${currentGsc}`, 'success');
+                        addLog(`Auto-detected GSC property: ${currentGsc} (Confidence: ${resolution.gscConfidence}%)`, 'success');
                     }
-                    if (detected.ga4PropertyId && !currentGa4) {
-                        currentGa4 = detected.ga4PropertyId;
+                    if (resolution.propertyId && !currentGa4) {
+                        currentGa4 = resolution.propertyId;
                         setDetectedGa4Property(currentGa4);
-                        addLog(`Auto-detected GA4 property: ${detected.ga4PropertyName || currentGa4}`, 'success');
+                        addLog(`Auto-detected GA4 property: ${currentGa4} (Confidence: ${resolution.ga4Confidence}%)`, 'success');
                     }
 
-                    // PERSIST the selection so it remains visible in the Integrations tab
-                    if ((detected.gscSiteUrl && !config.gscSiteUrl) || (detected.ga4PropertyId && !config.ga4PropertyId)) {
+                    if ((resolution.siteUrl && !config.gscSiteUrl) || (resolution.propertyId && !config.ga4PropertyId)) {
                         saveIntegrationConnection('google', {
                             label: 'Google (GSC/GA4)',
                             status: 'connected',
@@ -1622,10 +1696,10 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
                 }
 
                 if (googleAccessToken && !currentGsc) {
-                    addLog('GSC sync will be skipped because no Search Console property is selected.', 'warn', { source: 'system' });
+                    addLog('GSC sync will be skipped: No Search Console property selected.', 'warn', { source: 'system' });
                 }
                 if (googleAccessToken && !currentGa4) {
-                    addLog('GA4 sync will be skipped because no Analytics property ID is selected.', 'warn', { source: 'system' });
+                    addLog('GA4 sync will be skipped: No Analytics property ID selected.', 'warn', { source: 'system' });
                 }
 
                 addLog("Connected. Starting scan...", 'success', { source: 'system' });
@@ -1809,13 +1883,15 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
                     const successCount = Number(data.payload?.successfulPages ?? data.payload?.payloadPages ?? pagesRef.current.length);
                     const foundCount = Number(data.payload?.totalPages ?? successCount);
                     const failedCount = Number(data.payload?.failedPages ?? Math.max(0, foundCount - successCount));
-                    addLog(`Scan complete. Found ${foundCount} URLs; captured crawl data for ${successCount}; failed ${failedCount}.`, 'success', { source: 'crawler' }); 
+                    addLog(`Scan complete. Found ${foundCount} URLs; captured ${successCount}; failed ${failedCount}.`, 'success', { source: 'crawler' }); 
+                    
                     if (Array.isArray(data.payload?.failedUrlSamples)) {
                         data.payload.failedUrlSamples.forEach((entry: any) => {
                             if (!entry?.url || !entry?.message) return;
                             addLog(`Failed ${entry.url}: ${entry.message}`, 'error', { source: 'crawler', url: entry.url, detail: entry.message });
                         });
                     }
+                    
                     setIsCrawling(false); 
                     setCrawlStartTime(null); 
                     setCrawlRuntime(prev => ({ ...prev, stage: 'completed', queued: 0, activeWorkers: 0, workerUtilization: 0 }));
@@ -1832,7 +1908,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
                     }
                     
                     // PHASE 3: STRATEGIC INTELLIGENCE - Run PageRank & Scoring
-                    const completedPages = pagesRef.current;
+                    const completedPages = [...pagesRef.current];
                     if (completedPages.length > 0) {
                         addLog('Calculating Strategic PageRank & Health Scores...', 'info', { source: 'analysis' });
                         const ranks = calculateInternalPageRank(completedPages);
@@ -1842,59 +1918,92 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
                             return { ...updatedPage, healthScore: calculatePredictiveScore(updatedPage) };
                         });
                         
-                        // Final Persistence Pass to Dexie
-                        if (currentSessionIdRef.current) {
-                            crawlDb.pages.bulkPut(updated).catch(err => {
-                                console.error('[CrawlDB] Failed to save PageRank updates:', err);
-                            });
-                        }
-                        addLog('Strategic analysis complete.', 'success', { source: 'analysis' });
-                    }
+                        // Final Persistence Pass to Dexie -> Enrichment -> Dashboard
+                        const runPostCrawlFlow = async () => {
+                            if (currentSessionIdRef.current) {
+                                try {
+                                    // 1. Save analyzed pages to local DB
+                                    await crawlDb.pages.bulkPut(updated);
+                                    addLog('Strategic analysis complete.', 'success', { source: 'analysis' });
 
-                    // Auto-save completed session
-                    window.setTimeout(() => {
-                        saveCrawlSession('completed');
-                    }, 500);
+                                    // 2. Enrichment
+                                    const googleConn = integrationConnections.google;
+                                    const effectiveSelection = googleConn?.selection as any;
 
-                    // Persist crawl results to Supabase for Dashboard consumption
-                    if (activeProject?.id && completedPages.length > 0) {
-                        const crawlDuration = crawlStartTime ? Date.now() - crawlStartTime : 0;
-                        persistCrawlResults({
-                            projectId: activeProject.id,
-                            sessionId: currentSessionIdRef.current || '',
-                            urlCrawled: pagesRef.current[0]?.url || urlInput,
-                            pages: pagesRef.current,
-                            crawlMode: crawlingMode,
-                            crawlDuration,
-                            crawlRate: data.payload?.rate || crawlRuntime.rate || 0,
-                            maxDepthSeen: data.payload?.maxDepthSeen || crawlRuntime.maxDepthSeen || 0,
-                            strategicSummary: data.payload?.strategicSummary || {},
-                            sitemapCoverage: data.payload?.sitemapCoverage || null,
-                            robotsTxt: data.payload?.robotsTxt || robotsTxt?.raw || ''
-                        }).then(result => {
-                            if (result) {
-                                addLog(`Dashboard synced — Health Score: ${result.score}/100, ${result.issues.length} issues detected.`, 'success', { source: 'system' });
-                                // Auto-update project record with latest crawl data
-                                if (updateProject && activeProject?.id) {
-                                    const grade = result.score >= 90 ? 'A' : result.score >= 80 ? 'B' : result.score >= 65 ? 'C' : result.score >= 50 ? 'D' : 'F';
-                                    updateProject(activeProject.id, {
-                                        last_crawl_at: new Date().toISOString(),
-                                        last_crawl_score: result.score,
-                                        last_crawl_grade: grade,
-                                        crawl_count: (activeProject.crawl_count || 0) + 1
-                                    });
-                                }
-                                // Auto-populate Dashboard: keywords, competitors, mentions
-                                syncFromCrawl(activeProject!.id, pagesRef.current, activeProject!.name).then(sync => {
-                                    if (sync.keywordsImported > 0 || sync.competitorsFound > 0) {
-                                        addLog(`Auto-discovered: ${sync.keywordsImported} keywords, ${sync.competitorsFound} competitors.`, 'info', { source: 'analysis' });
+                                    if (googleConn && effectiveSelection) {
+                                        const email = googleConn.accountLabel || googleConn.providerEmail || (googleConn.metadata?.email as string);
+                                        if (email) {
+                                            addLog('Refreshing Google credentials for enrichment...', 'info', { source: 'system' });
+                                            const freshToken = await refreshGoogleToken(email);
+                                            
+                                            if (freshToken) {
+                                                addLog('Starting batch data enrichment (GSC/GA4)...', 'info', { source: 'system' });
+                                                await PostCrawlEnrichment.runUnifiedEnrichment({
+                                                    sessionId: currentSessionIdRef.current || '',
+                                                    googleAccessToken: freshToken,
+                                                    googleEmail: email,
+                                                    gscSiteUrl: effectiveSelection.siteUrl,
+                                                    ga4PropertyId: effectiveSelection.propertyId
+                                                }, (msg) => addLog(msg, 'info', { source: 'system' }));
+                                                
+                                                addLog('Data enrichment complete.', 'success', { source: 'system' });
+                                            } else {
+                                                addLog('Enrichment skipped: Could not refresh Google access token.', 'warn', { source: 'system' });
+                                            }
+                                        } else {
+                                            addLog('Enrichment skipped: No email associated with Google connection.', 'warn', { source: 'system' });
+                                        }
                                     }
-                                }).catch(() => {});
+
+                                    // 3. UI Hydration & Dashboard Sync
+                                    const freshPages = await crawlDb.pages.where('crawlId').equals(currentSessionIdRef.current).toArray();
+                                    
+                                    // Refresh table
+                                    const normalized = freshPages.map(normalizeCrawlerPage).filter(Boolean) as any[];
+                                    setAnalysisPages(normalized);
+
+                                    if (activeProject?.id && freshPages.length > 0) {
+                                        const crawlDuration = crawlStartTime ? Date.now() - crawlStartTime : 0;
+                                        const result = await persistCrawlResults({
+                                            projectId: activeProject.id,
+                                            sessionId: currentSessionIdRef.current || '',
+                                            urlCrawled: freshPages[0]?.url || urlInput,
+                                            pages: freshPages,
+                                            crawlMode: crawlingMode,
+                                            crawlDuration,
+                                            crawlRate: crawlRuntime.rate || 0,
+                                            maxDepthSeen: crawlRuntime.maxDepthSeen || 0,
+                                            strategicSummary: {},
+                                            sitemapCoverage: null,
+                                            robotsTxt: robotsTxt?.raw || ''
+                                        });
+
+                                        if (result) {
+                                            addLog(`Dashboard synced — Health Score: ${result.score}/100`, 'success', { source: 'system' });
+                                            if (updateProject && activeProject?.id) {
+                                                const grade = result.score >= 90 ? 'A' : result.score >= 80 ? 'B' : result.score >= 65 ? 'C' : result.score >= 50 ? 'D' : 'F';
+                                                updateProject(activeProject.id, {
+                                                    last_crawl_at: new Date().toISOString(),
+                                                    last_crawl_score: result.score,
+                                                    last_crawl_grade: grade,
+                                                    crawl_count: (activeProject.crawl_count || 0) + 1
+                                                });
+                                            }
+                                            await syncFromCrawl(activeProject!.id, freshPages, activeProject!.name);
+                                        }
+                                    }
+                                    
+                                    // 4. Save session status
+                                    saveCrawlSession('completed');
+
+                                } catch (err: any) {
+                                    console.error('[PostCrawl] Processing failed:', err);
+                                    addLog(`Post-crawl processing error: ${err.message}`, 'error', { source: 'system' });
+                                }
                             }
-                        }).catch(err => {
-                            console.error('[CrawlPersistence] Failed to sync to dashboard:', err);
-                            addLog('Dashboard sync failed (results saved locally).', 'error', { source: 'system' });
-                        });
+                        };
+                        
+                        runPostCrawlFlow();
                     }
                 }
             };
@@ -3104,14 +3213,17 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
                     if (!gscSiteUrl || !ga4PropertyId) {
                         const sampleUrl = pagesRef.current[0]?.url || urlInput;
                         try {
-                            const detected = await autoDetectGoogleProperties(googleAccessToken, sampleUrl);
-                            if (detected.gscSiteUrl && !gscSiteUrl) {
-                                gscSiteUrl = detected.gscSiteUrl;
-                                addLog(`Auto-detected GSC property for enrichment: ${gscSiteUrl}`, 'success');
+                            const resolution = await GoogleSelectionResolver.resolveEffectiveGoogleSelection({
+                                accessToken: googleAccessToken,
+                                crawlUrl: sampleUrl
+                            });
+                            if (resolution.siteUrl && !gscSiteUrl) {
+                                gscSiteUrl = resolution.siteUrl;
+                                addLog(`Auto-detected GSC property for enrichment: ${gscSiteUrl} (Confidence: ${resolution.gscConfidence}%)`, 'success');
                             }
-                            if (detected.ga4PropertyId && !ga4PropertyId) {
-                                ga4PropertyId = detected.ga4PropertyId;
-                                addLog(`Auto-detected GA4 property for enrichment: ${detected.ga4PropertyName || ga4PropertyId}`, 'success');
+                            if (resolution.propertyId && !ga4PropertyId) {
+                                ga4PropertyId = resolution.propertyId;
+                                addLog(`Auto-detected GA4 property for enrichment: ${ga4PropertyId} (Confidence: ${resolution.ga4Confidence}%)`, 'success');
                             }
                         } catch (e) {
                             console.warn('Auto-detection during enrichment failed:', e);

@@ -19,6 +19,9 @@ export interface CrawlerIntegrationSelection {
     siteUrl?: string;
     propertyId?: string;
     profileId?: string;
+    gscConfidence?: number;
+    ga4Confidence?: number;
+    source?: 'saved' | 'detected' | 'manual' | 'fallback';
 }
 
 export interface CrawlerIntegrationSyncState {
@@ -48,6 +51,8 @@ export interface GoogleDetectedProperties {
     gscSiteUrl?: string;
     ga4PropertyId?: string;
     ga4PropertyName?: string;
+    gscConfidence?: number;
+    ga4Confidence?: number;
     detectedAt?: number;
     email?: string;
 }

@@ -7,11 +7,17 @@ import AuditSidebar from '../components/seo-crawler/AuditSidebar';
 import StatusBar from '../components/seo-crawler/StatusBar';
 import CrawlerModals from '../components/seo-crawler/CrawlerModals';
 
-class SeoCrawlerErrorBoundary extends React.Component<
-    { children: React.ReactNode },
-    { hasError: boolean; errorMessage: string }
-> {
-    constructor(props: { children: React.ReactNode }) {
+interface ErrorBoundaryProps {
+    children: React.ReactNode;
+}
+
+interface ErrorBoundaryState {
+    hasError: boolean;
+    errorMessage: string;
+}
+
+class SeoCrawlerErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+    constructor(props: ErrorBoundaryProps) {
         super(props);
         this.state = { hasError: false, errorMessage: '' };
     }

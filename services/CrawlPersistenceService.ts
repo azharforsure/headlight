@@ -443,17 +443,26 @@ const buildLeanPageSummary = (page: any) => ({
     gsc_impressions: page.gscImpressions || null,
     gsc_position: page.gscPosition || null,
     gsc_ctr: page.gscCtr || null,
+    main_keyword: page.mainKeyword || null,
+    main_kw_position: page.mainKwPosition || null,
+    main_kw_estimated_volume: page.mainKwEstimatedVolume || null,
+    best_keyword: page.bestKeyword || null,
+    best_kw_position: page.bestKwPosition || null,
+    best_kw_estimated_volume: page.bestKwEstimatedVolume || null,
     ga4_sessions: page.ga4Sessions || null,
     ga4_views: page.ga4Views || null,
     ga4_bounce_rate: page.ga4BounceRate || null,
+    ga4_conversions: page.ga4Conversions || null,
+    ga4_revenue: page.ga4Revenue || null,
+    sessions_delta: page.sessionsDeltaAbsolute || page.sessionsDelta || null,
     content_hash: page.hash || null,
     in_sitemap: page.inSitemap || false,
     redirect_url: page.redirectUrl || null,
     language: page.language || null,
     crawl_timestamp: page.crawlTimestamp || null,
     recommended_action: page.recommendedAction || null,
-    insight_confidence: page.insightConfidence || null,
-    data_coverage: page.dataCoverage || null
+    insight_confidence: page.insightConfidence || page.gscMatchConfidence || null,
+    data_coverage: page.dataCoverage || page.gscJoinType || null
 });
 
 const summarizeIssueCounts = (issues: DetectedIssue[]) => ({

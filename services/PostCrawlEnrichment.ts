@@ -26,13 +26,19 @@ export interface EnrichmentConfig {
     semrushApiKey?: string;
     googleAccessToken?: string;
     googleEmail?: string;
-    keywordCsvData?: any[]; // Reusable for CSV manual uploads
+    keywordCsvData?: any[];
     backlinkCsvData?: any[];
 }
 
 export class PostCrawlEnrichment {
-    private static readonly ENRICHMENT_BATCH_SIZE = 5000;
+    // We prioritize the top 5,000 pages for deep (Page+Query) enrichment to stay within quotas/performance limits
+    private static readonly DEEP_ENRICHMENT_LIMIT = 5000;
+    // We fetch up to 100,000 summary rows to identify global trends and unlinked pages
+    private static readonly SUMMARY_ROW_LIMIT = 100000;
 
+    /**
+     * Selects priority pages for deep enrichment based on PageRank and existing traffic signals
+     */
     private static async selectPriorityHtmlPages(
         sessionId: string,
         keywordCsvData?: Array<{ url: string }>,
@@ -49,15 +55,14 @@ export class PostCrawlEnrichment {
             const score = (page: CrawledPage) => {
                 const canonical = UrlNormalization.toCanonical(page.url);
                 let value = 0;
-                if (uploadPrioritySet.has(canonical)) value += 5000;
-                if (!page.gscEnrichedAt) value += 1200;
-                if (!page.ga4EnrichedAt) value += 900;
-                value += Number((page as any).internalPageRank || 0) * 25;
-                value += Number((page as any).linkEquity || 0) * 50;
-                value += Number(page.inlinks || 0) * 2;
-                if (page.statusCode === 200) value += 50;
-                if (page.indexable !== false) value += 25;
-                value -= Number(page.crawlDepth || 0) * 3;
+                if (uploadPrioritySet.has(canonical)) value += 10000;
+                if (!page.gscEnrichedAt) value += 2000;
+                if (!page.ga4EnrichedAt) value += 1500;
+                value += Number((page as any).internalPageRank || 0) * 50;
+                value += Number(page.inlinks || 0) * 5;
+                if (page.statusCode === 200) value += 100;
+                if (page.indexable !== false) value += 50;
+                value -= Number(page.crawlDepth || 0) * 10;
                 return value;
             };
 
@@ -66,15 +71,12 @@ export class PostCrawlEnrichment {
 
         return {
             totalHtmlPages: htmlPages.length,
-            targetPages: scoredPages.slice(0, this.ENRICHMENT_BATCH_SIZE)
+            targetPages: scoredPages.slice(0, this.DEEP_ENRICHMENT_LIMIT)
         };
     }
 
     /**
      * Unified Post-Crawl Enrichment Pipeline
-     * 
-     * Orchestrates GSC, GA4, Backlink Providers, and CSV Uploads
-     * into a single, high-performance background process.
      */
     static async runUnifiedEnrichment(
         config: EnrichmentConfig,
@@ -88,78 +90,87 @@ export class PostCrawlEnrichment {
         );
         const targetUrls = targetPages.map((page) => page.url);
 
-        if (targetUrls.length === 0) {
-            onProgress?.('No HTML pages available for enrichment.');
+        if (totalHtmlPages === 0) {
+            onProgress?.('No HTML pages found in database. Check crawl settings or isHtmlPage logic.');
+            console.warn('[Enrichment] No HTML pages found for session:', sessionId);
             return;
         }
 
-        if (totalHtmlPages > targetUrls.length) {
-            onProgress?.(
-                `Prioritizing ${targetUrls.length.toLocaleString()} of ${totalHtmlPages.toLocaleString()} HTML pages for this enrichment run.`
-            );
-        }
+        onProgress?.(`Starting enrichment: ${totalHtmlPages.toLocaleString()} HTML pages found, targeting top ${targetPages.length.toLocaleString()} for deep data.`);
+        console.log(`[Enrichment] Session ${sessionId}: Total HTML=${totalHtmlPages}, Targeted=${targetPages.length}`);
 
-        // 1. CSV Keyword Overrides (Pri 1 — highest authority)
-        if (config.keywordCsvData && config.keywordCsvData.length > 0) {
-            onProgress?.('Merging Manual Keyword Uploads...');
+        // 1. CSV Data Merging (Highest Priority Overrides)
+        if (config.keywordCsvData?.length) {
+            onProgress?.(`Merging ${config.keywordCsvData.length} manual keywords...`);
             await KeywordUploadMerger.mergeFromCsv(sessionId, config.keywordCsvData);
         }
-
-        // 2. CSV Backlink Overrides
-        if (config.backlinkCsvData && config.backlinkCsvData.length > 0) {
-            onProgress?.('Merging Manual Backlink Uploads...');
+        if (config.backlinkCsvData?.length) {
+            onProgress?.(`Merging ${config.backlinkCsvData.length} manual backlinks...`);
             await BacklinkUploadMerger.mergeFromCsv(sessionId, config.backlinkCsvData);
         }
 
-        // 3. Google Search Console
+        // 2. Google Search Console (Two-Tier Batch)
         if (googleAccessToken && config.gscSiteUrl) {
             try {
-                onProgress?.('Enriching from Search Console...');
+                onProgress?.(`Connecting to GSC: ${config.gscSiteUrl} (using identity: ${config.googleEmail || 'unknown'})...`);
                 await GscClientService.enrichSession(sessionId, config.gscSiteUrl, googleAccessToken, onProgress, {
                     targetUrls,
+                    maxPageRows: this.SUMMARY_ROW_LIMIT,
+                    maxQueryRows: 250000,
                     googleEmail: config.googleEmail
                 });
-            } catch (err) {
+            } catch (err: any) {
                 console.error('[Enrichment] GSC Failed:', err);
-                onProgress?.('GSC Enrichment failed, moving on...');
+                const isAuthError = err.message?.includes('401') || err.message?.toLowerCase().includes('authentication') || err.message?.toLowerCase().includes('credentials');
+                onProgress?.(`GSC Error: ${err.message || 'Unknown error'}${isAuthError ? ' - Try reconnecting Google in Integrations.' : ''}`);
             }
+        } else {
+            const reason = !googleAccessToken ? 'No access token provided.' : 'No GSC property selected.';
+            onProgress?.(`Skipping GSC enrichment: ${reason}`);
+            console.log(`[Enrichment] Skipping GSC: ${reason}`);
         }
 
-        // 4. GA4 Analytics
+        // 3. GA4 Analytics (Robust Pagination)
         if (googleAccessToken && config.ga4PropertyId) {
             try {
-                onProgress?.('Enriching from Analytics (GA4)...');
+                onProgress?.(`Connecting to GA4: ${config.ga4PropertyId} (using identity: ${config.googleEmail || 'unknown'})...`);
                 await Ga4ClientService.enrichSession(sessionId, config.ga4PropertyId, googleAccessToken, onProgress, {
                     targetUrls,
+                    maxRows: this.SUMMARY_ROW_LIMIT,
                     googleEmail: config.googleEmail
                 });
-            } catch (err) {
+            } catch (err: any) {
                 console.error('[Enrichment] GA4 Failed:', err);
-                onProgress?.('GA4 Enrichment failed, moving on...');
+                const isAuthError = err.message?.includes('401') || err.message?.toLowerCase().includes('authentication') || err.message?.toLowerCase().includes('credentials');
+                onProgress?.(`GA4 Error: ${err.message || 'Unknown error'}${isAuthError ? ' - Try reconnecting Google in Integrations.' : ''}`);
             }
+        } else {
+            const reason = !googleAccessToken ? 'No access token provided.' : 'No GA4 property ID selected.';
+            onProgress?.(`Skipping GA4 enrichment: ${reason}`);
+            console.log(`[Enrichment] Skipping GA4: ${reason}`);
         }
 
-        // 5. Backlink API Providers
+        // 4. Backlink API Providers
         if (config.ahrefsToken || config.semrushApiKey) {
             try {
-                onProgress?.('Enriching from Authority Providers...');
+                onProgress?.('Enriching authority metrics...');
                 await BacklinkClientService.enrichSession(
                     sessionId, 
                     { ahrefsToken: config.ahrefsToken, semrushApiKey: config.semrushApiKey },
                     onProgress,
                     { targetUrls }
                 );
-            } catch (err) {
+            } catch (err: any) {
                 console.error('[Enrichment] Backlink API Failed:', err);
-                onProgress?.('Backlink enrichment failed, moving on...');
+                onProgress?.(`Backlink API Error: ${err.message || 'Unknown error'}`);
             }
         }
 
-        // 6. Final Strategic Score Pass
-        onProgress?.('Calculating Strategic Opportunities...');
+        // 5. Final Strategic scoring pass
+        onProgress?.('Recalculating strategic scores & actions...');
         await this.runStrategicPass(sessionId);
 
-        onProgress?.('Full Enrichment Pipeline Complete.');
+        onProgress?.('Enrichment pipeline finished.');
     }
 
     /**
@@ -168,28 +179,30 @@ export class PostCrawlEnrichment {
     private static async runStrategicPass(sessionId: string) {
         const pages = await crawlDb.pages.where('crawlId').equals(sessionId).toArray();
 
-        const updates: Array<{ url: string } & Partial<CrawledPage>> = pages.map(page => {
-            const actionResult = getRecommendedAction(page);
+        // Batch updates to avoid transaction overhead in IndexedDB
+        const BATCH_SIZE = 1000;
+        for (let i = 0; i < pages.length; i += BATCH_SIZE) {
+            const chunk = pages.slice(i, i + BATCH_SIZE);
+            const updates = chunk.map(page => {
+                const actionResult = getRecommendedAction(page);
+                return {
+                    url: page.url,
+                    authorityScore: calculateAuthorityScore(page),
+                    businessValueScore: calculateBusinessValueScore(page),
+                    opportunityScore: calculateOpportunityScore(page),
+                    techHealthScore: scoreTechnicalHealth(page),
+                    contentQualityScore: scoreContentQuality(page),
+                    searchVisibilityScore: scoreSearchVisibility(page),
+                    engagementScore: scoreEngagement(page),
+                    authorityComputedScore: scoreAuthority(page),
+                    businessComputedScore: scoreBusinessValue(page),
+                    recommendedAction: actionResult.action,
+                    recommendedActionReason: actionResult.reason,
+                    recommendedActionFactors: JSON.stringify(actionResult.factors),
+                    timestamp: Date.now()
+                };
+            });
 
-            return {
-                url: page.url,
-                authorityScore: calculateAuthorityScore(page),
-                businessValueScore: calculateBusinessValueScore(page),
-                opportunityScore: calculateOpportunityScore(page),
-                techHealthScore: scoreTechnicalHealth(page),
-                contentQualityScore: scoreContentQuality(page),
-                searchVisibilityScore: scoreSearchVisibility(page),
-                engagementScore: scoreEngagement(page),
-                authorityComputedScore: scoreAuthority(page),
-                businessComputedScore: scoreBusinessValue(page),
-                recommendedAction: actionResult.action,
-                recommendedActionReason: actionResult.reason,
-                recommendedActionFactors: JSON.stringify(actionResult.factors),
-                timestamp: Date.now()
-            };
-        });
-
-        if (updates.length > 0) {
             await crawlDb.transaction('rw', crawlDb.pages, async () => {
                 for (const update of updates) {
                     await crawlDb.pages.update(update.url, update);

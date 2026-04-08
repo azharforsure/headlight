@@ -1082,6 +1082,46 @@ export default function MainDataView() {
                                                 if (col.key === 'gscCtr') displayElement = `${(rawVal * 100).toFixed(1)}%`;
                                                 else if (col.key === 'gscPosition') displayElement = rawVal.toFixed(1);
                                                 else displayElement = rawVal.toLocaleString();
+                                            } else if ((col.key === 'mainKwPosition' || col.key === 'bestKwPosition') && typeof rawVal === 'number') {
+                                                cellClass = 'font-mono text-[11px] text-right pr-4 text-white font-bold';
+                                                displayElement = rawVal.toFixed(1);
+                                            } else if ((col.key === 'mainKwVolume' || col.key === 'bestKwVolume') && typeof rawVal === 'number') {
+                                                const sourceKey = col.key === 'mainKwVolume' ? 'mainKwVolumeSource' : 'bestKwVolumeSource';
+                                                const source = page[sourceKey];
+                                                cellClass = 'font-mono text-[11px] text-right pr-4 text-white font-bold';
+                                                displayElement = (
+                                                    <div className="flex items-center justify-end gap-1.5">
+                                                        {source === 'gsc' && (
+                                                            <span 
+                                                                className="text-[8px] px-1 rounded bg-blue-500/10 text-blue-400/80 border border-blue-500/20 font-bold tracking-tight"
+                                                                title="Estimated from GSC Impressions"
+                                                            >
+                                                                EST
+                                                            </span>
+                                                        )}
+                                                        <span>{rawVal.toLocaleString()}</span>
+                                                    </div>
+                                                );
+                                            } else if ((col.key === 'mainKeyword' || col.key === 'bestKeyword') && rawVal) {
+                                                const sourceKey = col.key === 'mainKeyword' ? 'mainKeywordSource' : 'bestKeywordSource';
+                                                const source = page[sourceKey];
+                                                displayElement = (
+                                                    <div className="flex items-center gap-2 overflow-hidden">
+                                                        {source && (
+                                                            <span 
+                                                                className={`text-[8px] px-1 rounded font-bold tracking-tight shrink-0 ${
+                                                                    source === 'gsc' 
+                                                                        ? 'bg-blue-500/10 text-blue-400/80 border border-blue-500/20' 
+                                                                        : 'bg-purple-500/10 text-purple-400/80 border border-purple-500/20'
+                                                                }`}
+                                                                title={`Source: ${source}`}
+                                                            >
+                                                                {source === 'gsc' ? 'GSC' : source === 'upload' || source === 'manual' ? 'USR' : source.toUpperCase()}
+                                                            </span>
+                                                        )}
+                                                        <span className="truncate">{rawVal}</span>
+                                                    </div>
+                                                );
                                             } else if (col.key.startsWith('ga4') && typeof rawVal === 'number') {
                                                 cellClass = 'font-mono text-[11px] text-right pr-4 text-white font-bold';
                                                 if (col.key === 'ga4BounceRate') displayElement = `${(rawVal * 100).toFixed(1)}%`;
