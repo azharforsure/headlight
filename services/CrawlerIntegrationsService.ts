@@ -19,6 +19,9 @@ export interface CrawlerIntegrationSelection {
     siteUrl?: string;
     propertyId?: string;
     profileId?: string;
+    gscConfidence?: number;
+    ga4Confidence?: number;
+    source?: 'saved' | 'detected' | 'manual' | 'fallback';
 }
 
 export interface CrawlerIntegrationSyncState {
@@ -48,6 +51,8 @@ export interface GoogleDetectedProperties {
     gscSiteUrl?: string;
     ga4PropertyId?: string;
     ga4PropertyName?: string;
+    gscConfidence?: number;
+    ga4Confidence?: number;
     detectedAt?: number;
     email?: string;
 }
@@ -95,11 +100,16 @@ type IntegrationRecord = {
 
 const ANON_STORAGE_KEY = 'headlight:seo-crawler-integrations:anonymous';
 const PROJECT_STORAGE_KEY_PREFIX = 'headlight:seo-crawler-integrations:project:';
+const DEFAULT_GOOGLE_SCOPES = ['webmasters.readonly', 'analytics.readonly', 'userinfo.email'];
 
 const isBrowser = () => typeof window !== 'undefined';
 
 const projectStorageKey = (projectId: string) => `${PROJECT_STORAGE_KEY_PREFIX}${projectId}`;
 let dbReady: Promise<void> | null = null;
+
+const mergeScopes = (...scopeLists: Array<string[] | null | undefined>) => Array.from(new Set(
+    scopeLists.flatMap((scopes) => Array.isArray(scopes) ? scopes.filter(Boolean) : [])
+));
 
 const ensureDb = async () => {
     if (!dbReady) {
@@ -150,6 +160,7 @@ const normalizeConnectionMap = (
 
     if (legacyGsc || legacyGa4) {
         const currentGoogle = next.google || {};
+        const mergedScopes = mergeScopes(currentGoogle.scopes, legacyGsc?.scopes, legacyGa4?.scopes);
         next.google = {
             provider: 'google',
             label: currentGoogle.label || legacyGsc?.label || legacyGa4?.label || 'Google Search & Analytics',
@@ -158,7 +169,7 @@ const normalizeConnectionMap = (
             ownership: currentGoogle.ownership || legacyGsc?.ownership || legacyGa4?.ownership || 'project',
             connectedAt: currentGoogle.connectedAt || legacyGsc?.connectedAt || legacyGa4?.connectedAt || Date.now(),
             accountLabel: currentGoogle.accountLabel || legacyGsc?.accountLabel || legacyGa4?.accountLabel,
-            scopes: currentGoogle.scopes || legacyGsc?.scopes || legacyGa4?.scopes || [],
+            scopes: mergeScopes(mergedScopes, DEFAULT_GOOGLE_SCOPES),
             credentials: currentGoogle.credentials || {},
             hasCredentials: Boolean(currentGoogle.hasCredentials || legacyGsc?.hasCredentials || legacyGa4?.hasCredentials),
             metadata: {
@@ -241,7 +252,9 @@ const toConnectionMap = (rows: IntegrationRecord[] | null | undefined): Partial<
             ownership: row.ownership,
             connectedAt: row.connected_at,
             accountLabel: row.account_label || undefined,
-            scopes: Array.isArray(row.scopes) ? row.scopes : [],
+            scopes: row.provider === 'google'
+                ? mergeScopes(Array.isArray(row.scopes) ? row.scopes : [], DEFAULT_GOOGLE_SCOPES)
+                : (Array.isArray(row.scopes) ? row.scopes : []),
             credentials: {},
             hasCredentials: Boolean(row.credentials && Object.keys(row.credentials).length > 0) || (row.provider === 'google' && !!row.account_label),
             metadata: row.metadata || {},
@@ -263,7 +276,9 @@ const toRecord = (projectId: string, connection: CrawlerIntegrationConnection): 
     ownership: 'project',
     connected_at: connection.connectedAt,
     account_label: connection.accountLabel || null,
-    scopes: connection.scopes || [],
+    scopes: connection.provider === 'google'
+        ? mergeScopes(connection.scopes || [], DEFAULT_GOOGLE_SCOPES)
+        : (connection.scopes || []),
     credentials: {},
     metadata: connection.metadata || {},
     selection: connection.selection || {},
@@ -281,7 +296,9 @@ const mapDbRows = (rows: any[]): IntegrationRecord[] => {
         ownership: 'project',
         connected_at: Number(row.updated_at ? new Date(String(row.updated_at)).getTime() : Date.now()),
         account_label: row.account_label ? String(row.account_label) : null,
-        scopes: parseJson<string[]>(row.scopes_json, []),
+        scopes: row.provider === 'google'
+            ? mergeScopes(parseJson<string[]>(row.scopes_json, []), DEFAULT_GOOGLE_SCOPES)
+            : parseJson<string[]>(row.scopes_json, []),
         credentials: {},
         metadata: parseJson<Record<string, any>>(row.metadata_json, {}),
         selection: parseJson<CrawlerIntegrationSelection>(row.selection_json, {}),

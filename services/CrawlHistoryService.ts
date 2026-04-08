@@ -37,7 +37,7 @@ export interface CrawlSession {
     urlTags?: Record<string, string[]>;
     columnWidths?: Record<string, number>;
     robotsTxt?: { raw: string; sitemaps: string[]; crawlDelay: number } | null;
-    sitemapData?: { totalUrls: number; sources: string[] } | null;
+    sitemapData?: { totalUrls: number; sources: string[]; coverageParsed?: boolean } | null;
 }
 
 export interface CrawlPageSnapshot {

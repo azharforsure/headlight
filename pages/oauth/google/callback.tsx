@@ -1,5 +1,7 @@
 import React, { useEffect } from 'react';
 
+const GOOGLE_OAUTH_RESULT_KEY = 'GOOGLE_OAUTH_RESULT';
+
 export default function GoogleOAuthCallback() {
     useEffect(() => {
         // Extract 'code' from URL
@@ -14,9 +16,10 @@ export default function GoogleOAuthCallback() {
             type: 'GOOGLE_OAUTH_CALLBACK',
             code: code || null,
             error: error || null,
-            provider: 'google'
+            provider: 'google',
+            timestamp: Date.now()
         };
-        localStorage.setItem('GOOGLE_OAUTH_RESULT', JSON.stringify(result));
+        localStorage.setItem(GOOGLE_OAUTH_RESULT_KEY, JSON.stringify(result));
 
         // 2. Primary: Send the code or error back to the opening window via postMessage
         if (window.opener) {
@@ -29,7 +32,7 @@ export default function GoogleOAuthCallback() {
         // 3. Self-close fallback (in case COOP blocks the opener from closing this window)
         setTimeout(() => {
             window.close();
-        }, 1500);
+        }, 3000);
     }, []);
 
   return (

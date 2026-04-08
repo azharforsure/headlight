@@ -6,6 +6,17 @@ const SCOPES = [
   'https://www.googleapis.com/auth/userinfo.email', // Reduced to minimum
 ].join(' ');
 
+const GOOGLE_OAUTH_RESULT_KEY = 'GOOGLE_OAUTH_RESULT';
+
+type GoogleOAuthPrompt = 'consent' | 'select_account' | 'none';
+
+interface GoogleOAuthCallbackPayload {
+    type?: string;
+    code?: string | null;
+    error?: string | null;
+    provider?: string;
+}
+
 /**
  * Metadata-Only Google OAuth Helper
  * 
@@ -70,16 +81,19 @@ export async function revokeGoogleConnection(email: string): Promise<boolean> {
  * Opens a popup for Google OAuth consent.
  * Returns { code, redirectUri } on success, null on cancel.
  */
-export function openGoogleOAuthPopup(): Promise<{ code: string; redirectUri: string } | null> {
+export function openGoogleOAuthPopup(
+    options: { prompt?: GoogleOAuthPrompt } = {}
+): Promise<{ code: string; redirectUri: string } | null> {
   return new Promise((resolve) => {
     const redirectUri = `${window.location.origin}/oauth/google/callback`;
+    localStorage.removeItem(GOOGLE_OAUTH_RESULT_KEY);
     const params = new URLSearchParams({
       client_id: GOOGLE_CLIENT_ID,
       redirect_uri: redirectUri,
       response_type: 'code',
       scope: SCOPES,
       access_type: 'offline',
-      prompt: 'consent',
+      prompt: options.prompt || 'select_account',
       include_granted_scopes: 'true',
     });
 
@@ -95,6 +109,56 @@ export function openGoogleOAuthPopup(): Promise<{ code: string; redirectUri: str
       return;
     }
 
+    let settled = false;
+
+    const readStoredResult = (): GoogleOAuthCallbackPayload | null => {
+      try {
+        const raw = localStorage.getItem(GOOGLE_OAUTH_RESULT_KEY);
+        if (!raw) return null;
+        return JSON.parse(raw) as GoogleOAuthCallbackPayload;
+      } catch (e) {
+        console.error('[GoogleOAuthHelper] Failed to parse stored OAuth result', e);
+        return null;
+      }
+    };
+
+    const cleanup = (removeStoredResult: boolean) => {
+      window.removeEventListener('message', handleMessage);
+      window.removeEventListener('storage', handleStorage);
+      clearInterval(pollTimer);
+      if (removeStoredResult) {
+        localStorage.removeItem(GOOGLE_OAUTH_RESULT_KEY);
+      }
+      try {
+        if (popup && !popup.closed) popup.close();
+      } catch (e) {
+        // Access might be blocked by COOP - let the popup close itself if needed
+      }
+    };
+
+    const resolveFromPayload = (payload: GoogleOAuthCallbackPayload | null) => {
+      if (settled || !payload) return false;
+      if (payload.type !== 'GOOGLE_OAUTH_CALLBACK' && payload.type !== 'headlight-oauth-callback') {
+        return false;
+      }
+
+      settled = true;
+      cleanup(true);
+
+      if (payload.error) {
+        resolve(null);
+        return true;
+      }
+
+      if (payload.code) {
+        resolve({ code: payload.code, redirectUri });
+        return true;
+      }
+
+      resolve(null);
+      return true;
+    };
+
     const handleMessage = (event: MessageEvent) => {
       const currentOrigin = window.location.origin.replace(/\/$/, '');
       const eventOrigin = event.origin.replace(/\/$/, '');
@@ -104,66 +168,33 @@ export function openGoogleOAuthPopup(): Promise<{ code: string; redirectUri: str
         (currentOrigin.includes('127.0.0.1') && eventOrigin.includes('localhost'));
 
       if (!isOriginMatch) return;
-
-      if (event.data?.type === 'GOOGLE_OAUTH_CALLBACK' || event.data?.type === 'headlight-oauth-callback') {
-        cleanup();
-        
-        if (event.data.error) {
-          resolve(null);
-          return;
-        }
-
-        if (event.data.code) {
-          resolve({ code: event.data.code, redirectUri });
-        } else {
-          resolve(null);
-        }
-      }
+      resolveFromPayload(event.data as GoogleOAuthCallbackPayload);
     };
 
     const handleStorage = (event: StorageEvent) => {
-      if (event.key === 'GOOGLE_OAUTH_RESULT') {
-        try {
-          const data = JSON.parse(event.newValue || '{}');
-          if (data.type === 'GOOGLE_OAUTH_CALLBACK') {
-            cleanup();
-            if (data.code) {
-              resolve({ code: data.code, redirectUri });
-            } else {
-              resolve(null);
-            }
-          }
-        } catch (e) {
-          console.error('[GoogleOAuthHelper] Failed to parse storage result', e);
-        }
-      }
-    };
-
-    const cleanup = () => {
-      window.removeEventListener('message', handleMessage);
-      window.removeEventListener('storage', handleStorage);
-      clearInterval(pollTimer);
-      localStorage.removeItem('GOOGLE_OAUTH_RESULT');
-      try {
-        if (popup && !popup.closed) popup.close();
-      } catch (e) {
-        // Access might be blocked by COOP - let the popup close itself if needed
-      }
+      if (event.key !== GOOGLE_OAUTH_RESULT_KEY) return;
+      resolveFromPayload(readStoredResult());
     };
 
     window.addEventListener('message', handleMessage);
     window.addEventListener('storage', handleStorage);
 
     const pollTimer = setInterval(() => {
+      if (resolveFromPayload(readStoredResult())) {
+        return;
+      }
+
       try {
         if (!popup || popup.closed) {
-          cleanup();
+          if (settled) return;
+          settled = true;
+          cleanup(false);
           resolve(null);
         }
       } catch (e) {
         // Access might be blocked by COOP
       }
-    }, 1000);
+    }, 500);
   });
 }
 

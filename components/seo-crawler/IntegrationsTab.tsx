@@ -52,10 +52,14 @@ export function IntegrationsTab() {
         ownership: 'project',
         connectedAt: Date.now(),
         accountLabel: meta.email,
+        scopes: ['webmasters.readonly', 'analytics.readonly', 'userinfo.email'],
         // CRITICAL: We no longer store tokens here. 
         // They are safe in Turso (server-side).
         credentials: {}, 
         hasCredentials: true,
+        metadata: {
+          email: meta.email
+        },
         sync: { 
           status: 'idle',
           expiryDate: meta.expiryDate 

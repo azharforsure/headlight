@@ -66,6 +66,32 @@ function normalizeUrl(rawUrl, baseUrl = undefined, options = {}) {
     }
 }
 
+function toSitemapKey(rawUrl, baseUrl = undefined) {
+    const normalized = normalizeUrl(rawUrl, baseUrl, { ignoreQueryParams: true });
+    if (!normalized) return '';
+
+    try {
+        const url = new URL(normalized);
+        let key = url.hostname.replace(/^www\./i, '').toLowerCase() + url.pathname.toLowerCase();
+        
+        // Strip trailing slash if not root
+        if (key.length > 1 && key.endsWith('/')) {
+            key = key.slice(0, -1);
+        }
+        
+        return key;
+    } catch {
+        // Fallback for invalid URLs that might still be string-matchable
+        return String(normalized)
+            .toLowerCase()
+            .replace(/^https?:\/\//i, '')
+            .replace(/^www\./i, '')
+            .split('?')[0]
+            .split('#')[0]
+            .replace(/\/+$/, '');
+    }
+}
+
 function escapeRegExp(value) {
     return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -391,6 +417,20 @@ class RobotsTxtParser {
 async function fetchSitemapUrls(sitemapUrl, requestHeaders, maxUrls = 500000) {
     const urls = [];
     const visited = new Set();
+    const seenUrlEntries = new Set();
+
+    function addUrlEntry(loc, meta = {}) {
+        if (!loc || urls.length >= maxUrls) return;
+        const normalizedLoc = normalizeUrl(loc, sitemapUrl);
+        if (!normalizedLoc || seenUrlEntries.has(normalizedLoc)) return;
+        seenUrlEntries.add(normalizedLoc);
+        urls.push({
+            url: normalizedLoc,
+            lastmod: meta.lastmod || '',
+            changefreq: meta.changefreq || '',
+            priority: meta.priority || ''
+        });
+    }
 
     async function parseSitemap(url) {
         if (visited.has(url) || urls.length >= maxUrls) return;
@@ -426,28 +466,58 @@ async function fetchSitemapUrls(sitemapUrl, requestHeaders, maxUrls = 500000) {
                 return;
             }
 
-            const $ = cheerio.load(text, { xmlMode: true });
+            const $ = cheerio.load(text, { xmlMode: true, decodeEntities: true });
+            const allElements = $('*');
 
-            // Sitemap index
-            const sitemapLocs = $('sitemapindex sitemap loc');
-            if (sitemapLocs.length > 0) {
-                for (let i = 0; i < sitemapLocs.length && urls.length < maxUrls; i++) {
-                    await parseSitemap($(sitemapLocs[i]).text().trim());
+            // Find sitemaps in index (index sitemaps have <sitemap> tags)
+            const sitemaps = allElements.filter((_, el) => el.name.toLowerCase() === 'sitemap');
+            if (sitemaps.length > 0) {
+                const nestedLocs = sitemaps.find('loc, Loc');
+                if (nestedLocs.length > 0) {
+                    for (let i = 0; i < nestedLocs.length && urls.length < maxUrls; i++) {
+                        await parseSitemap($(nestedLocs[i]).text().trim());
+                    }
+                    return;
                 }
-                return;
             }
 
-            // Regular sitemap
-            $('urlset url').each((_, el) => {
-                if (urls.length >= maxUrls) return false;
-                const loc = $(el).find('loc').text().trim();
-                const lastmod = $(el).find('lastmod').text().trim() || '';
-                const changefreq = $(el).find('changefreq').text().trim() || '';
-                const priority = $(el).find('priority').text().trim() || '';
-                if (loc) {
-                    urls.push({ url: loc, lastmod, changefreq, priority });
+            // Normal sitemaps: find <url> tags
+            const urlEntries = allElements.filter((_, el) => el.name.toLowerCase() === 'url');
+            if (urlEntries.length > 0) {
+                urlEntries.each((_, el) => {
+                    if (urls.length >= maxUrls) return false;
+                    const $el = $(el);
+                    // Find <loc> inside this <url>
+                    const locEl = $el.find('*').filter((_, child) => child.name.toLowerCase() === 'loc');
+                    const loc = (locEl.text() || $el.text()).trim();
+                    
+                    const lastmodEl = $el.find('*').filter((_, child) => child.name.toLowerCase() === 'lastmod');
+                    const freqEl = $el.find('*').filter((_, child) => child.name.toLowerCase() === 'changefreq');
+                    const priEl = $el.find('*').filter((_, child) => child.name.toLowerCase() === 'priority');
+                    
+                    const lastmod = lastmodEl.text().trim();
+                    const changefreq = freqEl.text().trim();
+                    const priority = priEl.text().trim();
+                    addUrlEntry(loc, { lastmod, changefreq, priority });
+                });
+            }
+
+            // Fallback for XML that doesn't match the narrow sitemap selectors cleanly.
+            if (urls.length === 0) {
+                const locMatches = [...text.matchAll(/<loc>([\s\S]*?)<\/loc>/gi)]
+                    .map((match) => String(match[1] || '').replace(/<!\[CDATA\[|\]\]>/g, '').trim())
+                    .filter(Boolean);
+
+                for (const loc of locMatches) {
+                    const normalizedLoc = normalizeUrl(loc, url);
+                    if (!normalizedLoc) continue;
+                    if (/sitemap|\.xml(\?|$)|format=xml/i.test(normalizedLoc)) {
+                        await parseSitemap(normalizedLoc);
+                    } else {
+                        addUrlEntry(normalizedLoc);
+                    }
                 }
-            });
+            }
         } catch (err) {
             // silently skip broken sitemaps
         }
@@ -776,161 +846,6 @@ async function performAIStrategicAnalysis(pagePayloads, gscDataMap) {
     return results;
 }
 
-/**
- * ─── Integrations Service (Server-side) ──────────────────────
- * Handles GSC and GA4 data fetching during post-crawl analysis.
- */
-const IntegrationsService = {
-    async fetchGscData(accessToken, siteUrl, urls, refreshToken = null) {
-        const results = {};
-        let currentToken = accessToken;
-        let isRefreshed = false;
-
-        const fetchWithRetry = async (pageCursor = 0) => {
-            const end = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
-            const start = new Date(end.getTime() - 30 * 24 * 60 * 60 * 1000);
-            const startDate = start.toISOString().split('T')[0];
-            const endDate = end.toISOString().split('T')[0];
-
-            const response = await undiciRequest(
-                `https://www.googleapis.com/webmasters/v3/sites/${encodeURIComponent(siteUrl)}/searchAnalytics/query`,
-                {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${currentToken}`,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        startDate,
-                        endDate,
-                        dimensions: ['page'],
-                        rowLimit: 25000,
-                        startRow: pageCursor
-                    })
-                }
-            );
-
-            if (response.statusCode === 401 && refreshToken && !isRefreshed) {
-                // Attempt refresh
-                const refreshRes = await undiciRequest('https://oauth2.googleapis.com/token', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                    body: new URLSearchParams({
-                        client_id: process.env.GOOGLE_CLIENT_ID,
-                        client_secret: process.env.GOOGLE_CLIENT_SECRET,
-                        refresh_token: refreshToken,
-                        grant_type: 'refresh_token'
-                    }).toString()
-                });
-
-                if (refreshRes.statusCode === 200) {
-                    const data = await refreshRes.body.json();
-                    currentToken = data.access_token;
-                    isRefreshed = true;
-                    return fetchWithRetry(pageCursor);
-                }
-            }
-
-            if (response.statusCode !== 200) {
-                await response.body.dump().catch(() => {});
-                return null;
-            }
-
-            return await response.body.json();
-        };
-
-        try {
-            const data = await fetchWithRetry();
-            if (data?.rows) {
-                for (const row of data.rows) {
-                    const url = row.keys[0];
-                    results[url] = {
-                        gscClicks: row.clicks,
-                        gscImpressions: row.impressions,
-                        gscCtr: row.ctr,
-                        gscPosition: row.position
-                    };
-                }
-            }
-            if (isRefreshed) results.__new_token = currentToken;
-        } catch (err) {
-            console.error('GSC Fetch Error:', err);
-        }
-
-        return results;
-    },
-
-    async fetchGa4Data(accessToken, propertyId, urls, refreshToken = null) {
-        const results = {};
-        let currentToken = accessToken;
-        let isRefreshed = false;
-
-        const fetchWithRetry = async () => {
-            const response = await undiciRequest(
-                `https://analyticsdata.googleapis.com/v1beta/properties/${propertyId}:runReport`,
-                {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${currentToken}`,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        dateRanges: [{ startDate: '30daysAgo', endDate: 'yesterday' }],
-                        dimensions: [{ name: 'pagePath' }],
-                        metrics: [
-                            { name: 'screenPageViews' },
-                            { name: 'sessions' },
-                            { name: 'bounceRate' },
-                            { name: 'averageSessionDuration' }
-                        ],
-                        limit: 100000
-                    })
-                }
-            );
-
-            if (response.statusCode === 401 && refreshToken && !isRefreshed) {
-                // Simplified refresh check (reuse logic or notify crawler)
-                // For GA4, we usually use the same GSC token refresh path
-                return { isAuthError: true };
-            }
-
-            if (response.statusCode !== 200) {
-                await response.body.dump().catch(() => {});
-                return null;
-            }
-
-            return await response.body.json();
-        };
-
-        try {
-            const data = await fetchWithRetry();
-            if (data?.isAuthError) {
-                // If GA4 fails with 401, we don't try to double-refresh here for simplicity
-                // since GSC usually refreshes first in the flow.
-            } else if (data?.rows) {
-                const rowCount = data.rows.length;
-                console.log(`[GA4] Successfully fetched ${rowCount} rows for property ${propertyId}`);
-                for (const row of data.rows) {
-                    const path = row.dimensionValues[0].value;
-                    const metrics = row.metricValues;
-                    results[path] = {
-                        ga4Views: parseInt(metrics[0]?.value || '0', 10),
-                        ga4Sessions: parseInt(metrics[1]?.value || '0', 10),
-                        ga4BounceRate: parseFloat(metrics[2]?.value || '0'),
-                        ga4AvgDuration: parseFloat(metrics[3]?.value || '0')
-                    };
-                }
-            } else {
-                console.log(`[GA4] No rows returned for property ${propertyId}`);
-            }
-        } catch (err) {
-            console.error('GA4 Fetch Error:', err);
-        }
-
-        return results;
-    }
-};
-
 // ════════════════════════════════════════════════════════════
 //  MAIN CRAWLER
 // ════════════════════════════════════════════════════════════
@@ -1034,7 +949,7 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
     let maxDepthSeen = initialState?.maxDepthSeen || 0;
     const crawlStartedAt = initialState?.crawlStartedAt || Date.now();
     let lastProgressEmitAt = 0;
-    let sitemapData = {}; // url -> { lastmod, changefreq, priority }
+    let sitemapData = {}; // normalized url -> { url, lastmod, changefreq, priority }
 
     const firstUrl = normalizeUrl(startUrls[0], undefined, urlNormalizationOptions);
     if (!firstUrl) {
@@ -1468,6 +1383,7 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
                             isRedirectLoop = chainResult.isLoop;
                             redirectType = resolveRedirectType(chainResult.firstStatusCode || statusCode);
                             totalTransferred = chainResult.totalTransferred || transferredBytes;
+                            redirectUrl = chainResult.finalUrl || redirectUrl;
                         }
 
                         // Detect HTTP version
@@ -1523,6 +1439,7 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
                                 isRedirectLoop = chainResult.isLoop;
                                 redirectType = resolveRedirectType(chainResult.firstStatusCode || statusCode);
                                 totalTransferred = chainResult.totalTransferred || transferredBytes;
+                                redirectUrl = chainResult.finalUrl || redirectUrl;
                             }
                             if (contentType.includes('text/html')) {
                                 html = await withTimeout(
@@ -1569,6 +1486,7 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
                         inlinks: inlinksMap[currentUrl]?.size || 0,
                         cookies,
                         redirectUrl,
+                        finalUrl: redirectUrl || currentUrl,
                         redirectChain,
                         redirectChainLength,
                         isRedirectLoop,
@@ -1590,9 +1508,9 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
                         grammarErrors: 0,
                         ...securityInfo,
                         // Sitemap data if available
-                        sitemapLastmod: sitemapData[currentUrl]?.lastmod || '',
-                        sitemapPriority: sitemapData[currentUrl]?.priority || '',
-                        inSitemap: !!sitemapData[currentUrl]
+                        sitemapLastmod: sitemapData[toSitemapKey(currentUrl)]?.lastmod || '',
+                        sitemapPriority: sitemapData[toSitemapKey(currentUrl)]?.priority || '',
+                        inSitemap: !!sitemapData[toSitemapKey(currentUrl)]
                     };
                     pagePayloads.set(currentUrl, nonHtmlPayload);
                     onEvent('PAGE_CRAWLED', nonHtmlPayload);
@@ -1667,6 +1585,7 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
                             inp: webVitals.inp,
                             lastModified,
                             redirectUrl,
+                            finalUrl: redirectUrl || currentUrl,
                             redirectChain,
                             redirectChainLength,
                             isRedirectLoop,
@@ -1674,6 +1593,7 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
                             language: data.lang,
                             crawlTimestamp: new Date().toISOString(),
                             cookies,
+                            isHtmlPage: Boolean(contentType.includes('text/html') || contentType.includes('application/xhtml')),
                             canonical: data.canonical,
                             multipleCanonical: data.multipleCanonical,
                             metaRefresh: data.metaRefresh,
@@ -1736,9 +1656,9 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
                             // Security headers
                             ...securityInfo,
                             // Sitemap info
-                            sitemapLastmod: sitemapData[currentUrl]?.lastmod || '',
-                            sitemapPriority: sitemapData[currentUrl]?.priority || '',
-                            inSitemap: !!sitemapData[currentUrl]
+                            sitemapLastmod: sitemapData[toSitemapKey(currentUrl)]?.lastmod || '',
+                            sitemapPriority: sitemapData[toSitemapKey(currentUrl)]?.priority || '',
+                            inSitemap: !!sitemapData[toSitemapKey(currentUrl)]
                         };
 
                         // Handle initial redirect hostname transition (e.g. non-www to www)
@@ -1929,12 +1849,13 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
     // ─── Main Queue Processor ────────────────────────────────
     async function processQueue() {
         // Phase 2a: Fetch and parse robots.txt before starting
-        if (respectRobots) {
-            compactQueue();
-            onEvent('FETCHING', { url: `${baseProtocol}//${baseHostname}/robots.txt`, queueLength: getPendingQueueLength() });
-            await robotsParser.fetchAndParse(baseHostname, baseProtocol, requestHeaders, userAgent);
+        // We ALWAYS fetch robots.txt to discover sitemap URLs, even if we don't respect the disallow rules.
+        compactQueue();
+        onEvent('FETCHING', { url: `${baseProtocol}//${baseHostname}/robots.txt`, queueLength: getPendingQueueLength() });
+        await robotsParser.fetchAndParse(baseHostname, baseProtocol, requestHeaders, userAgent);
 
-            // Emit robots.txt info to client
+        if (respectRobots) {
+            // Emit robots.txt info to client for UI display
             onEvent('ROBOTS_TXT', {
                 hostname: baseHostname,
                 raw: robotsParser.getRaw(baseHostname),
@@ -1943,27 +1864,69 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
             });
         }
 
-        // Phase 2b: If sitemap mode, fetch and parse sitemap.xml
-        if (mode === 'sitemap') {
+        // Phase 2b: Load sitemap coverage for the domain for all crawl modes.
+        // In sitemap mode we also seed the crawl queue from it.
+        {
             const sitemapUrls = robotsParser.getSitemaps(baseHostname);
             const targetSitemaps = sitemapUrls.length > 0
                 ? sitemapUrls
                 : [`${baseProtocol}//${baseHostname}/sitemap.xml`];
 
+            // Concurrent sitemap parsing with aggregate timeout
+            onEvent('LOG', { message: `Sitemap discovery: ${targetSitemaps.length} sources found. Starting parse...`, type: 'info' });
             onEvent('FETCHING', { url: 'Parsing sitemap(s)...', queueLength: 0 });
 
-            for (const smUrl of targetSitemaps) {
-                const entries = await fetchSitemapUrls(smUrl, requestHeaders, limit || 500000);
-                for (const entry of entries) {
-                    sitemapData[entry.url] = entry;
-                    enqueueUrl(entry.url, 0, null);
+            await Promise.all(targetSitemaps.map(async (smUrl) => {
+                try {
+                    onEvent('LOG', { message: `Fetching sitemap: ${smUrl}`, type: 'info' });
+                    // 15 seconds max for a single sitemap
+                    const entries = await withTimeout(
+                        fetchSitemapUrls(smUrl, requestHeaders, limit || 500000),
+                        15000,
+                        `Timeout parsing sitemap ${smUrl}`
+                    );
+                    
+                    if (entries.length > 0) {
+                        onEvent('LOG', { message: `Success: Extracted ${entries.length} URLs from ${smUrl}`, type: 'success' });
+                    } else {
+                        onEvent('LOG', { message: `Warning: No URLs found in sitemap ${smUrl}`, type: 'warning' });
+                    }
+
+                    for (const entry of entries) {
+                        const sitemapKey = toSitemapKey(entry.url);
+                        if (!sitemapKey) continue;
+                        if (!sitemapData[sitemapKey]) {
+                            sitemapData[sitemapKey] = entry;
+                        }
+                        if (mode === 'sitemap') {
+                            enqueueUrl(entry.url, 0, null);
+                        }
+                    }
+                } catch (smErr) {
+                    onEvent('LOG', { message: `Sitemap parse failed (${smUrl}): ${smErr.message}`, type: 'error' });
+                }
+            }));
+
+            const totalSitemapUrls = Object.keys(sitemapData).length;
+            onEvent('SITEMAP_PARSED', {
+                totalUrls: totalSitemapUrls,
+                sitemapSources: targetSitemaps,
+                coverageParsed: true
+            });
+
+            // Back-fill inSitemap for pages already crawled before sitemap parsing finished
+            let backfillCount = 0;
+            for (const [url, payload] of pagePayloads.entries()) {
+                const sitemapKey = toSitemapKey(url);
+                if (sitemapData[sitemapKey] && !payload.inSitemap) {
+                    payload.inSitemap = true;
+                    onEvent('UPDATE_PAGE', payload);
+                    backfillCount++;
                 }
             }
-
-            onEvent('SITEMAP_PARSED', {
-                totalUrls: Object.keys(sitemapData).length,
-                sitemapSources: targetSitemaps
-            });
+            if (backfillCount > 0) {
+                onEvent('LOG', { message: `Back-filled sitemap status for ${backfillCount} already-crawled pages.`, type: 'info' });
+            }
         }
 
         // Launch browser if JS rendering
@@ -2062,49 +2025,7 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
         onEvent('LOG', { message: 'Starting Strategic SEO Analysis & Data Integration...', type: 'info' });
         
         const pageUrls = Array.from(visited);
-        let gscDataMap = {};
-        let ga4DataMap = {};
-        
-        // 1. Fetch Google Search Console data if connected
-        if (config.gscApiKey && config.gscSiteUrl) {
-            onEvent('LOG', { message: 'Fetching Google Search Console performance data...', type: 'info' });
-            gscDataMap = await IntegrationsService.fetchGscData(
-                config.gscApiKey,
-                config.gscSiteUrl,
-                pageUrls,
-                config.gscRefreshToken
-            );
-            
-            if (gscDataMap.__new_token) {
-                onEvent('TOKEN_REFRESHED', { provider: 'google', accessToken: gscDataMap.__new_token });
-                config.gscApiKey = gscDataMap.__new_token; // Update local config for GA4 fetch if needed
-                delete gscDataMap.__new_token;
-            }
-        } else if (config.gscSiteUrl && !config.gscApiKey) {
-            onEvent('LOG', { message: 'Skipping Google Search Console fetch: property is selected but no Google access token is available.', type: 'warn' });
-        } else if (config.gscApiKey && !config.gscSiteUrl) {
-            onEvent('LOG', { message: 'Skipping Google Search Console fetch: no Search Console property is selected.', type: 'warn' });
-        }
-
-        // 1b. Fetch Google Analytics 4 data if connected
-        if ((config.gscApiKey || config.ga4AccessToken) && config.ga4PropertyId) {
-            onEvent('LOG', { message: 'Fetching Google Analytics 4 page metrics...', type: 'info' });
-            ga4DataMap = await IntegrationsService.fetchGa4Data(
-                config.ga4AccessToken || config.gscApiKey,
-                config.ga4PropertyId,
-                pageUrls,
-                config.gscRefreshToken // GA4 usually uses the same Google refresh token
-            );
-
-            if (ga4DataMap.__new_token) {
-                onEvent('TOKEN_REFRESHED', { provider: 'google', accessToken: ga4DataMap.__new_token });
-                delete ga4DataMap.__new_token;
-            }
-        } else if (config.ga4PropertyId && !(config.gscApiKey || config.ga4AccessToken)) {
-            onEvent('LOG', { message: 'Skipping Google Analytics 4 fetch: property is selected but no Google access token is available.', type: 'warn' });
-        } else if ((config.gscApiKey || config.ga4AccessToken) && !config.ga4PropertyId) {
-            onEvent('LOG', { message: 'Skipping Google Analytics 4 fetch: no Analytics property ID is selected.', type: 'warn' });
-        }
+        const gscDataMap = {}; // Legacy map, kept empty as enrichment moved to client
 
 
         // 2. Perform Internal PageRank calculation (Link Equity)
@@ -2183,36 +2104,13 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
             const payload = pagePayloads.get(url);
             if (!payload) continue;
 
-            // GA4 Mapping: try matching full URL then just the path (GA4 standard)
-            let ga4Data = {};
-            try {
-                const urlObj = new URL(url);
-                const pathOnly = urlObj.pathname;
-                const pathWithQuery = urlObj.pathname + (urlObj.search || '');
-                
-                ga4Data = ga4DataMap[url] || 
-                          ga4DataMap[pathWithQuery] || 
-                          ga4DataMap[pathOnly] || 
-                          ga4DataMap[pathOnly + '/'] || {};
-                          
-                // If path is root '/', GA4 sometimes reports it as '(index)' or empty
-                if (pathOnly === '/' && !Object.keys(ga4Data).length) {
-                    ga4Data = ga4DataMap['(index)'] || ga4DataMap['/'] || {};
-                }
-            } catch (e) {
-                ga4Data = ga4DataMap[url] || {};
-            }
-
             const update = {
                 url,
-                ...(gscDataMap[url] || {}),
-                ...ga4Data,
                 linkEquity: internalPageRank[url] || 0,
                 uniqueJsInlinks: jsInlinksMap[url]?.size || 0,
                 ...(semanticAnalysis[url] || {}),
                 searchIntent: strategicInsights[url]?.intent || 'Unknown',
-                strategicPriority: strategicInsights[url]?.priority || 'Medium',
-                contentDecay: gscDataMap[url] && (gscDataMap[url].gscClicks < 5 && gscDataMap[url].gscImpressions > 100) ? 'Possible Decay' : 'Stable'
+                strategicPriority: strategicInsights[url]?.priority || 'Medium'
             };
             update.funnelStage = classifyFunnelStage({ ...payload, ...update });
 
@@ -2227,9 +2125,9 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
             failedPages: failedUrls.size,
             failedUrlSamples: Array.from(failedUrls.entries()).slice(0, 10).map(([url, message]) => ({ url, message })),
             sitemapCoverage: Object.keys(sitemapData).length > 0 ? {
-                inSitemap: [...visited].filter(u => sitemapData[u]).length,
-                notInSitemap: [...visited].filter(u => !sitemapData[u]).length,
-                sitemapOnly: Object.keys(sitemapData).filter(u => !visited.has(u)).length,
+                inSitemap: [...visited].filter(u => sitemapData[toSitemapKey(u)]).length,
+                notInSitemap: [...visited].filter(u => !sitemapData[toSitemapKey(u)]).length,
+                sitemapOnly: Object.keys(sitemapData).filter(u => ![...visited].some(v => toSitemapKey(v) === u)).length,
                 totalSitemapUrls: Object.keys(sitemapData).length
             } : null,
             robotsTxt: robotsParser.getRaw(baseHostname),

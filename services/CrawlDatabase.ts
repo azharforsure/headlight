@@ -71,6 +71,12 @@ export interface CrawledPage {
   gscEnrichedAt: number | null;     // timestamp
   ga4EnrichedAt: number | null;     // timestamp
   backlinkEnrichedAt: number | null; // timestamp
+  
+  // ── NEW: Match confidence & join type ──
+  gscMatchConfidence: number | null; // 0-100
+  ga4MatchConfidence: number | null; // 0-100
+  gscJoinType: 'exact' | 'canonical' | 'redirect' | 'path' | null;
+  ga4JoinType: 'exact' | 'canonical' | 'redirect' | 'path' | null;
 
   // ── NEW: HTML-only flag ──
   isHtmlPage: boolean;
@@ -109,7 +115,17 @@ export interface CrawledPage {
   businessValueScore: number | null;
   authorityScore: number | null;
   recommendedAction: string | null;
+  recommendedActionReason: string | null;
+  recommendedActionFactors: string | null;
+  techHealthScore: number | null;
+  contentQualityScore: number | null;
+  searchVisibilityScore: number | null;
+  engagementScore: number | null;
+  authorityComputedScore: number | null;
+  businessComputedScore: number | null;
   searchIntent: string | null;
+  inSitemap: boolean | null;
+  finalUrl: string | null;
   // Metadata
   timestamp: number;
 }
@@ -150,16 +166,11 @@ class CrawlDB extends Dexie {
       queries: '++id, [crawlId+pageUrl], [crawlId+query]'
     });
 
-    // Bump version for new fields
     this.version(2).stores({
         pages: 'url, crawlId, isHtmlPage, statusCode, [crawlId+statusCode]',
     }).upgrade(tx => {
-        // Backfill existing pages
         return tx.table('pages').toCollection().modify(page => {
-            // Set isHtmlPage based on contentType
             page.isHtmlPage = (page.contentType || '').includes('text/html');
-            
-            // Initialize new fields
             page.mainKeywordSource = page.mainKeyword ? 'gsc' : null;
             page.bestKeywordSource = null;
             page.mainKwSearchVolume = null;
@@ -176,6 +187,34 @@ class CrawlDB extends Dexie {
             page.gscEnrichedAt = null;
             page.ga4EnrichedAt = null;
             page.backlinkEnrichedAt = null;
+        });
+    });
+
+    this.version(3).stores({
+        pages: 'url, crawlId, isHtmlPage, statusCode, [crawlId+statusCode]',
+    }).upgrade(tx => {
+        return tx.table('pages').toCollection().modify(page => {
+            page.recommendedActionReason = page.recommendedActionReason || null;
+            page.recommendedActionFactors = page.recommendedActionFactors || null;
+            page.techHealthScore = page.techHealthScore ?? null;
+            page.contentQualityScore = page.contentQualityScore ?? null;
+            page.searchVisibilityScore = page.searchVisibilityScore ?? null;
+            page.engagementScore = page.engagementScore ?? null;
+            page.authorityComputedScore = page.authorityComputedScore ?? null;
+            page.businessComputedScore = page.businessComputedScore ?? null;
+            page.inSitemap = page.inSitemap ?? null;
+            page.finalUrl = page.finalUrl || page.redirectUrl || page.url || null;
+        });
+    });
+
+    this.version(4).stores({
+        pages: 'url, crawlId, isHtmlPage, statusCode, [crawlId+statusCode]',
+    }).upgrade(tx => {
+        return tx.table('pages').toCollection().modify(page => {
+            page.gscMatchConfidence = null;
+            page.ga4MatchConfidence = null;
+            page.gscJoinType = null;
+            page.ga4JoinType = null;
         });
     });
   }

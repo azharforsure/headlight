@@ -6,6 +6,15 @@ import {
 } from 'lucide-react';
 import { useSeoCrawler } from '../../contexts/SeoCrawlerContext';
 
+const getSafeHostname = (url: string | undefined | null) => {
+    if (!url) return 'example.com';
+    try {
+        return new URL(url).hostname;
+    } catch {
+        return url;
+    }
+};
+
 export default function PageDetails() {
     const {
         selectedPage, setSelectedPage,
@@ -202,7 +211,7 @@ export default function PageDetails() {
                         )}
 
                         {/* REDIRECT CHAIN VISUALIZATION */}
-                        {selectedPage.redirectChainLength > 0 && (
+                        {selectedPage.redirectChainLength > 0 && Array.isArray(selectedPage.redirectChain) && (
                             <div className="mt-6 pt-4 border-t border-[#222]">
                                 <h4 className="text-[11px] font-black text-[#444] uppercase tracking-widest mb-3 flex items-center gap-2">
                                     <Repeat size={12} className="text-orange-400" /> Redirect Chain ({selectedPage.redirectChainLength})
@@ -533,7 +542,7 @@ export default function PageDetails() {
                                     )}
                                 </div>
                                 <div className="p-3 bg-[#111]">
-                                    <div className="text-[#888] text-[11px] uppercase tracking-wider mb-1">{selectedPage.url ? new URL(selectedPage.url).hostname : 'example.com'}</div>
+                                    <div className="text-[#888] text-[11px] uppercase tracking-wider mb-1">{getSafeHostname(selectedPage.url)}</div>
                                     <div className="text-[#eee] font-bold text-[14px] leading-tight mb-1 truncate">{selectedPage.title || 'Untitled Page'}</div>
                                     <div className="text-[#888] text-[12px] line-clamp-2">{selectedPage.metaDesc || 'No description provided.'}</div>
                                 </div>

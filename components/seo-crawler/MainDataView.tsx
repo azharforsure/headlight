@@ -9,6 +9,27 @@ import PageDetails from './PageDetails';
 
 const ForceGraph3D = lazy(() => import('react-force-graph-3d'));
 
+const ACTION_COLORS: Record<string, { text: string; bg: string; border: string }> = {
+    'Fix Errors': { text: '#FCA5A5', bg: 'rgba(239,68,68,0.12)', border: 'rgba(239,68,68,0.35)' },
+    'Protect High-Value Page': { text: '#FCD34D', bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.35)' },
+    'Rewrite Title & Description': { text: '#93C5FD', bg: 'rgba(59,130,246,0.12)', border: 'rgba(59,130,246,0.35)' },
+    'Push to Page One': { text: '#C4B5FD', bg: 'rgba(139,92,246,0.12)', border: 'rgba(139,92,246,0.35)' },
+    'Add Internal Links': { text: '#FDBA74', bg: 'rgba(249,115,22,0.12)', border: 'rgba(249,115,22,0.35)' },
+    'Fix Technical Issues': { text: '#FCA5A5', bg: 'rgba(239,68,68,0.12)', border: 'rgba(239,68,68,0.35)' },
+    'Improve Content': { text: '#93C5FD', bg: 'rgba(59,130,246,0.12)', border: 'rgba(59,130,246,0.35)' },
+    'Reduce Bounce Rate': { text: '#FCD34D', bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.35)' },
+    'Merge or Remove': { text: '#D1D5DB', bg: 'rgba(107,114,128,0.12)', border: 'rgba(107,114,128,0.35)' },
+    'Monitor': { text: '#86EFAC', bg: 'rgba(34,197,94,0.12)', border: 'rgba(34,197,94,0.35)' }
+};
+
+const getSafePathname = (url: string) => {
+    try {
+        return new URL(url).pathname || url;
+    } catch {
+        return url;
+    }
+};
+
 
 
 export default function MainDataView() {
@@ -1025,7 +1046,7 @@ export default function MainDataView() {
                                             } else if (col.key.toLowerCase().includes('size') || col.key.toLowerCase().includes('bytes') || col.key === 'co2Mg') {
                                                 displayElement = formatBytes(rawVal);
                                                 cellClass = 'font-mono text-[11px] text-[#999] text-right pr-4';
-                                            } else if (['titleLength', 'titlePixelWidth', 'metaDescLength', 'metaDescPixelWidth', 'h1_1Length', 'h1_2Length', 'h2_1Length', 'h2_2Length', 'wordCount', 'readability', 'loadTime', 'inlinks', 'outlinks', 'folderDepth', 'crawlDepth', 'linkScore', 'lcp', 'cls', 'inp', 'internalPageRank', 'semanticSimilarityScore', 'semanticRelevanceScore', 'missingAltImages', 'longAltImages', 'totalImages', 'schemaErrors', 'schemaWarnings', 'opportunityScore', 'businessValueScore', 'authorityScore', 'trafficQuality', 'engagementRisk', 'insightConfidence', 'dataCoverage'].includes(col.key)) {
+                                            } else if (['titleLength', 'titlePixelWidth', 'metaDescLength', 'metaDescPixelWidth', 'h1_1Length', 'h1_2Length', 'h2_1Length', 'h2_2Length', 'wordCount', 'readability', 'loadTime', 'inlinks', 'outlinks', 'folderDepth', 'crawlDepth', 'linkScore', 'lcp', 'cls', 'inp', 'internalPageRank', 'semanticSimilarityScore', 'semanticRelevanceScore', 'missingAltImages', 'longAltImages', 'totalImages', 'schemaErrors', 'schemaWarnings', 'opportunityScore', 'businessValueScore', 'authorityScore', 'trafficQuality', 'engagementRisk', 'insightConfidence', 'dataCoverage', 'techHealthScore', 'contentQualityScore', 'searchVisibilityScore', 'engagementScore', 'authorityComputedScore', 'businessComputedScore', 'redirectChainLength'].includes(col.key)) {
                                                 displayElement = (rawVal === null || rawVal === undefined) ? '-' : rawVal;
                                                 cellClass = 'font-mono text-[11px] text-[#999] text-right pr-4';
 
@@ -1061,6 +1082,46 @@ export default function MainDataView() {
                                                 if (col.key === 'gscCtr') displayElement = `${(rawVal * 100).toFixed(1)}%`;
                                                 else if (col.key === 'gscPosition') displayElement = rawVal.toFixed(1);
                                                 else displayElement = rawVal.toLocaleString();
+                                            } else if ((col.key === 'mainKwPosition' || col.key === 'bestKwPosition') && typeof rawVal === 'number') {
+                                                cellClass = 'font-mono text-[11px] text-right pr-4 text-white font-bold';
+                                                displayElement = rawVal.toFixed(1);
+                                            } else if ((col.key === 'mainKwVolume' || col.key === 'bestKwVolume') && typeof rawVal === 'number') {
+                                                const sourceKey = col.key === 'mainKwVolume' ? 'mainKwVolumeSource' : 'bestKwVolumeSource';
+                                                const source = page[sourceKey];
+                                                cellClass = 'font-mono text-[11px] text-right pr-4 text-white font-bold';
+                                                displayElement = (
+                                                    <div className="flex items-center justify-end gap-1.5">
+                                                        {source === 'gsc' && (
+                                                            <span 
+                                                                className="text-[8px] px-1 rounded bg-blue-500/10 text-blue-400/80 border border-blue-500/20 font-bold tracking-tight"
+                                                                title="Estimated from GSC Impressions"
+                                                            >
+                                                                EST
+                                                            </span>
+                                                        )}
+                                                        <span>{rawVal.toLocaleString()}</span>
+                                                    </div>
+                                                );
+                                            } else if ((col.key === 'mainKeyword' || col.key === 'bestKeyword') && rawVal) {
+                                                const sourceKey = col.key === 'mainKeyword' ? 'mainKeywordSource' : 'bestKeywordSource';
+                                                const source = page[sourceKey];
+                                                displayElement = (
+                                                    <div className="flex items-center gap-2 overflow-hidden">
+                                                        {source && (
+                                                            <span 
+                                                                className={`text-[8px] px-1 rounded font-bold tracking-tight shrink-0 ${
+                                                                    source === 'gsc' 
+                                                                        ? 'bg-blue-500/10 text-blue-400/80 border border-blue-500/20' 
+                                                                        : 'bg-purple-500/10 text-purple-400/80 border border-purple-500/20'
+                                                                }`}
+                                                                title={`Source: ${source}`}
+                                                            >
+                                                                {source === 'gsc' ? 'GSC' : source === 'upload' || source === 'manual' ? 'USR' : source.toUpperCase()}
+                                                            </span>
+                                                        )}
+                                                        <span className="truncate">{rawVal}</span>
+                                                    </div>
+                                                );
                                             } else if (col.key.startsWith('ga4') && typeof rawVal === 'number') {
                                                 cellClass = 'font-mono text-[11px] text-right pr-4 text-white font-bold';
                                                 if (col.key === 'ga4BounceRate') displayElement = `${(rawVal * 100).toFixed(1)}%`;
@@ -1072,7 +1133,33 @@ export default function MainDataView() {
                                                 displayElement = <span className={`px-2 py-0.5 rounded-full text-[10px] ${intentColor}`}>{rawVal || 'Info'}</span>;
                                                 cellClass = 'text-center';
                                             } else if (col.key === 'recommendedAction') {
-                                                displayElement = rawVal ? <span className="px-2 py-0.5 rounded-full text-[10px] bg-[#1f1820] text-[#f3d4d8] border border-[#3c2730]">{rawVal}</span> : '-';
+                                                const actionStyle = ACTION_COLORS[String(rawVal)] || ACTION_COLORS.Monitor;
+                                                let tooltip = page.recommendedActionReason || '';
+                                                if (page.recommendedActionFactors) {
+                                                    try {
+                                                        const factors = Array.isArray(page.recommendedActionFactors)
+                                                            ? page.recommendedActionFactors
+                                                            : JSON.parse(page.recommendedActionFactors);
+                                                        if (Array.isArray(factors) && factors.length > 0) {
+                                                            tooltip = tooltip
+                                                                ? `${tooltip}\nFactors: ${factors.join(', ')}`
+                                                                : `Factors: ${factors.join(', ')}`;
+                                                        }
+                                                    } catch {}
+                                                }
+                                                displayElement = rawVal ? (
+                                                    <span
+                                                        className="px-2 py-0.5 rounded-full text-[10px] border"
+                                                        title={tooltip || undefined}
+                                                        style={{
+                                                            color: actionStyle.text,
+                                                            backgroundColor: actionStyle.bg,
+                                                            borderColor: actionStyle.border
+                                                        }}
+                                                    >
+                                                        {rawVal}
+                                                    </span>
+                                                ) : '-';
                                                 cellClass = 'text-center';
                                             } else if (col.key === 'strategicPriority') {
                                                 const isHighPri = rawVal === 'High' || rawVal === 'Critical';
@@ -1188,7 +1275,7 @@ export default function MainDataView() {
                     
                     <div className="flex items-center gap-1.5 group">
                         <span className="text-[11px] text-[#444] font-mono mr-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                            {Array.from(selectedRows).slice(0, 3).map((u: string) => new URL(u).pathname).join(', ')}...
+                            {Array.from(selectedRows).slice(0, 3).map((u: string) => getSafePathname(u)).join(', ')}...
                         </span>
                         <button 
                             onClick={() => setSelectedRows(new Set())}

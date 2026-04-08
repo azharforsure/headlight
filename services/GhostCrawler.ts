@@ -1,5 +1,6 @@
 import { normalizeUrl } from './UrlUtils';
 import { crawlDb, upsertPages, type CrawledPage } from './CrawlDatabase';
+import { UrlNormalization } from './UrlNormalization';
 
 export interface GhostCrawlConfig {
     maxConcurrent?: number;
@@ -10,7 +11,7 @@ export interface GhostCrawlConfig {
     crawlResources?: boolean;
 }
 
-type GhostEvent = 'page' | 'progress' | 'complete' | 'error' | 'log';
+type GhostEvent = 'page' | 'progress' | 'complete' | 'error' | 'log' | 'sitemap';
 
 export class GhostCrawler {
     private queue: { url: string; depth: number }[] = [];
@@ -30,6 +31,8 @@ export class GhostCrawler {
     private currentSessionId: string | null = null;
     private flushTimer: number | null = null;
     private pendingPages: CrawledPage[] = [];
+    private sitemapUrls: Set<string> | null = null;
+    private sitemapSources: string[] = [];
 
     constructor(private config: GhostCrawlConfig) {
         if (config.aiCategorization) {
@@ -90,10 +93,185 @@ export class GhostCrawler {
             this.baseHostname = '';
         }
 
+        const sitemapInfo = await this.fetchSitemapUrls(startUrl);
+        this.sitemapUrls = sitemapInfo?.urls || null;
+        this.sitemapSources = sitemapInfo?.sources || [];
+        if (sitemapInfo) {
+            this.emit('sitemap', {
+                totalUrls: sitemapInfo.urls.size,
+                sitemapSources: this.sitemapSources,
+                coverageParsed: sitemapInfo.coverageParsed,
+                urls: sitemapInfo.urls
+            });
+        }
         this.queue.push({ url: startUrl, depth: 0 });
         this.discoveredCount = 1;
         this.emit('log', `Ghost Engine starting at ${startUrl}`, 'info');
         this.scheduleRun();
+    }
+
+    private getBridgeTarget(url: string) {
+        let bridgeUrl = (import.meta as any).env?.VITE_GHOST_BRIDGE_URL;
+        if (!bridgeUrl) return url;
+        
+        // Ensure bridge URL ends with a slash before the query param
+        const base = bridgeUrl.replace(/\/$/, '');
+        return `${base}/?url=${encodeURIComponent(url)}`;
+    }
+
+    private async fetchText(url: string): Promise<string | null> {
+        const bridgeTarget = this.getBridgeTarget(url);
+        const isUsingBridge = bridgeTarget !== url;
+
+        try {
+            const response = await fetch(bridgeTarget, {
+                mode: 'cors',
+                headers: { 'User-Agent': this.config.userAgent || 'Headlight-Ghost/1.0' },
+                signal: this.abortController?.signal
+            });
+
+            if (response.ok) {
+                return await response.text();
+            }
+
+            if (isUsingBridge) {
+                this.emit('log', `Ghost Bridge error (${response.status}) fetching ${url}. Attempting direct fallback...`, 'warning');
+                // Fallback to direct fetch
+                const fallbackRes = await fetch(url, {
+                    mode: 'cors',
+                    headers: { 'User-Agent': this.config.userAgent || 'Headlight-Ghost/1.0' },
+                    signal: this.abortController?.signal
+                });
+                if (fallbackRes.ok) {
+                    this.emit('log', `Direct fetch successful for ${url}`, 'success');
+                    return await fallbackRes.text();
+                }
+            }
+            
+            return null;
+        } catch (err: any) {
+            if (isUsingBridge) {
+                this.emit('log', `Ghost Bridge failed: ${err.message}. Attempting direct fallback...`, 'warning');
+                try {
+                    const fallbackRes = await fetch(url, {
+                        mode: 'cors',
+                        headers: { 'User-Agent': this.config.userAgent || 'Headlight-Ghost/1.0' },
+                        signal: this.abortController?.signal
+                    });
+                    if (fallbackRes.ok) return await fallbackRes.text();
+                } catch { /* ignore fallback error */ }
+            }
+            return null;
+        }
+    }
+
+    private async fetchSitemapUrls(startUrl: string): Promise<{ urls: Set<string>; sources: string[]; coverageParsed: boolean } | null> {
+        try {
+            const parsed = new URL(startUrl.startsWith('http') ? startUrl : `https://${startUrl}`);
+            const base = `${parsed.protocol}//${parsed.host}`;
+            const robotsText = await this.fetchText(`${base}/robots.txt`);
+            const discoveredSitemaps = robotsText
+                ? robotsText
+                    .split(/\r?\n/)
+                    .map((line) => line.trim())
+                    .filter((line) => /^sitemap:/i.test(line))
+                    .map((line) => line.split(':').slice(1).join(':').trim())
+                    .filter(Boolean)
+                : [];
+
+            const targetSitemaps = discoveredSitemaps.length > 0
+                ? discoveredSitemaps
+                : [`${base}/sitemap.xml`];
+
+            const collected = new Set<string>();
+            const visited = new Set<string>();
+            let coverageParsed = false;
+
+            const parseSitemap = async (sitemapUrl: string) => {
+                if (!sitemapUrl || visited.has(sitemapUrl)) return;
+                visited.add(sitemapUrl);
+                console.log(`[GhostCrawler] Fetching sitemap: ${sitemapUrl}`);
+
+                const xmlText = await this.fetchText(sitemapUrl);
+                if (!xmlText) {
+                    console.log(`[GhostCrawler] Failed to fetch sitemap text: ${sitemapUrl}`);
+                    return;
+                }
+
+                const xml = new DOMParser().parseFromString(xmlText, 'application/xml');
+                
+                // Robust method to find tags regardless of namespace or case
+                const getTags = (tagName: string) => {
+                    const all = xml.getElementsByTagName('*');
+                    return Array.from(all).filter(el => 
+                        el.localName?.toLowerCase() === tagName.toLowerCase() || 
+                        el.tagName?.toLowerCase() === tagName.toLowerCase()
+                    );
+                };
+
+                const nestedSitemaps = getTags('sitemap');
+                if (nestedSitemaps.length > 0) {
+                    console.log(`[GhostCrawler] Detected sitemap index: ${sitemapUrl} (${nestedSitemaps.length} nested)`);
+                    for (const sitemapNode of nestedSitemaps) {
+                        const loc = sitemapNode.getElementsByTagName('loc')[0]?.textContent?.trim() || 
+                                    sitemapNode.getElementsByTagName('Loc')[0]?.textContent?.trim();
+                        if (loc) await parseSitemap(loc);
+                    }
+                    return;
+                }
+
+                const urls = getTags('url');
+                console.log(`[GhostCrawler] Found ${urls.length} URL entries in sitemap: ${sitemapUrl}`);
+                urls.forEach((urlNode) => {
+                    const loc = urlNode.getElementsByTagName('loc')[0]?.textContent?.trim() || 
+                                urlNode.getElementsByTagName('Loc')[0]?.textContent?.trim();
+                    const normalized = loc ? UrlNormalization.toCanonical(loc) : '';
+                    if (normalized) {
+                        coverageParsed = true;
+                        collected.add(normalized);
+                    } else if (loc) {
+                        // Even if it doesn't normalize to our preferred format, if we see a loc, we've parsed coverage.
+                        coverageParsed = true;
+                    }
+                });
+
+                if (urls.length === 0) {
+                    const locMatches = Array.from(xmlText.matchAll(/<loc>([\s\S]*?)<\/loc>/gi))
+                        .map((match) => String(match[1] || '').replace(/<!\[CDATA\[|\]\]>/g, '').trim())
+                        .filter(Boolean);
+
+                    console.log(`[GhostCrawler] Fallback regex found ${locMatches.length} loc matches: ${sitemapUrl}`);
+                    for (const loc of locMatches) {
+                        const normalized = UrlNormalization.toCanonical(loc);
+                        if (!normalized) continue;
+                        if (/sitemap|\.xml(\?|$)|format=xml/i.test(normalized)) {
+                            if (!visited.has(loc)) await parseSitemap(loc);
+                            continue;
+                        }
+                        coverageParsed = true;
+                        collected.add(normalized);
+                    }
+                }
+            };
+
+            for (const sitemapUrl of targetSitemaps) {
+                await parseSitemap(sitemapUrl);
+            }
+
+            console.log(`[GhostCrawler] Finished sitemap parsing. Total unique URLs: ${collected.size}, coverageParsed: ${coverageParsed}`);
+
+            if (targetSitemaps.length === 0) {
+                return null;
+            }
+
+            return {
+                urls: collected,
+                sources: targetSitemaps,
+                coverageParsed
+            };
+        } catch {
+            return null;
+        }
     }
 
     private scheduleRun() {
@@ -150,8 +328,7 @@ export class GhostCrawler {
         if (this.isStopped) return;
 
         try {
-            const bridgeUrl = (import.meta as any).env?.VITE_GHOST_BRIDGE_URL;
-            const targetUrl = bridgeUrl ? `${bridgeUrl}?url=${encodeURIComponent(url)}` : url;
+            const targetUrl = this.getBridgeTarget(url);
 
             // Skip non-HTML resources to save Worker requests unless explicitly enabled
             const lowerUrl = url.toLowerCase();
@@ -184,7 +361,8 @@ export class GhostCrawler {
             if (this.isStopped) return;
 
             if (!response.ok) {
-                if (!bridgeUrl && response.status === 0) {
+                const bridgeConfig = (import.meta as any).env?.VITE_GHOST_BRIDGE_URL;
+                if (!bridgeConfig && response.status === 0) {
                     throw new Error('CORS Blocked. Please enable the Ghost Bridge or use a CORS extension.');
                 }
                 // Report the error page but don't throw
@@ -228,7 +406,8 @@ export class GhostCrawler {
             const html = await response.text();
             if (this.isStopped) return;
 
-            let pageData = this.parseHtml(url, html, depth);
+            const finalUrl = response.url || url;
+            let pageData = this.parseHtml(url, html, depth, finalUrl);
 
             // Trigger AI Scoring asynchronously if worker is ready
             if (this.config.aiCategorization && this.aiWorker && this.aiWorkerReady) {
@@ -280,7 +459,7 @@ export class GhostCrawler {
         }
     }
 
-    private parseHtml(url: string, html: string, depth: number) {
+    private parseHtml(url: string, html: string, depth: number, finalUrl: string) {
         const parser = new DOMParser();
         const doc = parser.parseFromString(html, 'text/html');
         const title = doc.querySelector('title')?.textContent || '';
@@ -313,6 +492,8 @@ export class GhostCrawler {
 
         return {
             url,
+            finalUrl,
+            redirectUrl: finalUrl !== url ? finalUrl : '',
             title,
             metaDesc,
             h1_1: h1,
@@ -382,6 +563,8 @@ export class GhostCrawler {
         const dbPage: CrawledPage = {
             ...page,
             crawlId: this.currentSessionId,
+            inSitemap: page.inSitemap ?? (this.sitemapUrls ? this.sitemapUrls.has(UrlNormalization.toCanonical(page.finalUrl || page.url)) : null),
+            finalUrl: page.finalUrl || page.url,
             // ── NEW: Source & Volume ──
             mainKeywordSource: null,
             bestKeywordSource: null,
@@ -432,6 +615,14 @@ export class GhostCrawler {
             businessValueScore: null,
             authorityScore: null,
             recommendedAction: null,
+            recommendedActionReason: null,
+            recommendedActionFactors: null,
+            techHealthScore: null,
+            contentQualityScore: null,
+            searchVisibilityScore: null,
+            engagementScore: null,
+            authorityComputedScore: null,
+            businessComputedScore: null,
             searchIntent: page.searchIntent || null,
             timestamp: Date.now()
         };

@@ -29,6 +29,10 @@ export default function AuditSidebar() {
     } = useSeoCrawler();
 
     const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null);
+    const sitemapCrawledCount = useMemo(
+        () => pages.filter((p) => p.inSitemap).length,
+        [pages]
+    );
 
     const issueGroups = useMemo(() => {
         return SEO_ISSUES_TAXONOMY.map((group) => {
@@ -552,16 +556,6 @@ export default function AuditSidebar() {
                                         </div>
                                     ))}
                                 </div>
-                                {robotsTxt.sitemaps.length > 0 && (
-                                    <div className="space-y-2">
-                                        <div className="text-[10px] text-[#555] uppercase tracking-widest font-bold">Detected Sitemaps</div>
-                                        {robotsTxt.sitemaps.map((s, i) => (
-                                            <div key={i} className="text-[10px] text-blue-400 truncate bg-[#141414] p-2 rounded border border-[#222] flex items-center gap-2">
-                                                <Globe size={10} /> {s}
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
                             </>
                         )}
                     </div>
@@ -576,7 +570,31 @@ export default function AuditSidebar() {
 
                         {!sitemapData ? (
                             <div className="text-[11px] text-[#666] text-center py-8 bg-[#141414] rounded border border-[#222]">
-                                {crawlingMode === 'sitemap' ? 'Scanning sitemap...' : 'Scan via Sitemap Mode to see coverage.'}
+                                {crawlingMode === 'sitemap' ? 'Scanning sitemap...' : 'No sitemap discovered yet.'}
+                            </div>
+                        ) : sitemapData.coverageParsed === false ? (
+                            <div className="space-y-4">
+                                <div className="text-[11px] text-[#888] text-center py-5 bg-[#141414] rounded border border-[#222]">
+                                    Sitemap source detected. URL coverage has not been parsed for this crawl yet.
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <div className="bg-[#141414] p-3 rounded border border-[#222]">
+                                        <div className="text-[10px] text-[#888] mb-1">Known Sources</div>
+                                        <div className="text-[16px] font-mono text-white">{sitemapData.sources.length}</div>
+                                    </div>
+                                    <div className="bg-[#141414] p-3 rounded border border-[#222]">
+                                        <div className="text-[10px] text-[#888] mb-1">Matched in Crawl</div>
+                                        <div className="text-[16px] font-mono text-white">{sitemapCrawledCount}</div>
+                                    </div>
+                                </div>
+                                <div className="space-y-2">
+                                    <div className="text-[10px] text-[#555] uppercase tracking-widest font-bold">Sitemap Sources</div>
+                                    {sitemapData.sources.map((s, i) => (
+                                        <div key={i} className="text-[10px] text-[#888] truncate bg-[#0a0a0a] p-2 rounded border border-[#222] font-mono">
+                                            {s}
+                                        </div>
+                                    ))}
+                                </div>
                             </div>
                         ) : (
                             <div className="space-y-6">
@@ -587,15 +605,15 @@ export default function AuditSidebar() {
                                     </div>
                                     <div className="bg-[#141414] p-3 rounded border border-[#222]">
                                         <div className="text-[10px] text-[#888] mb-1">Crawled So Far</div>
-                                        <div className="text-[16px] font-mono text-white">{pages.filter(p => p.inSitemap).length}</div>
+                                        <div className="text-[16px] font-mono text-white">{sitemapCrawledCount}</div>
                                     </div>
                                 </div>
 
                                 <div className="space-y-2">
                                     <div className="text-[10px] text-[#555] uppercase tracking-widest font-bold">Coverage Status</div>
                                     {[
-                                        { label: 'In Sitemap & Crawled', count: pages.filter(p => p.inSitemap).length, color: 'bg-green-500' },
-                                        { label: 'In Sitemap but Missing', count: sitemapData.totalUrls - pages.filter(p => p.inSitemap).length, color: 'bg-red-500' },
+                                        { label: 'In Sitemap & Crawled', count: sitemapCrawledCount, color: 'bg-green-500' },
+                                        { label: 'In Sitemap but Missing', count: Math.max(0, sitemapData.totalUrls - sitemapCrawledCount), color: 'bg-red-500' },
                                         { label: 'Crawled but Not in Sitemap', count: pages.filter(p => !p.inSitemap && !p.isImage && !p.isCss && !p.isJs).length, color: 'bg-orange-400' }
                                     ].map(stat => (
                                         <div key={stat.label} className="flex items-center gap-3 text-[11px]">

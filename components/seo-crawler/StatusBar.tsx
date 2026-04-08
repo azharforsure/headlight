@@ -2,6 +2,15 @@ import React from 'react';
 import { Clock, Layers, Keyboard, Cpu, Route } from 'lucide-react';
 import { useSeoCrawler } from '../../contexts/SeoCrawlerContext';
 
+const getSafeHostname = (url: string | undefined | null) => {
+    if (!url) return '';
+    try {
+        return new URL(url).hostname;
+    } catch {
+        return url;
+    }
+};
+
 export default function StatusBar() {
     const { 
         isCrawling, elapsedTime, crawlRate, crawlRuntime, isAuthenticated, viewMode, pages, trialPagesLimit, crawlHistory
@@ -58,7 +67,7 @@ export default function StatusBar() {
                     <>
                         <span className="text-[#333]">|</span>
                         <span className="text-[#ccc] font-medium tracking-tight">
-                            {new URL(pages[0].url).hostname}
+                            {getSafeHostname(pages[0].url)}
                         </span>
                     </>
                 ) : crawlHistory?.length > 0 && (
