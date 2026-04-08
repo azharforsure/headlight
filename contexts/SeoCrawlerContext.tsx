@@ -65,6 +65,7 @@ import { UrlNormalization } from '../services/UrlNormalization';
 import { refreshWithLock } from '../services/TokenRefreshLock';
 import { getAIEngine } from '../services/ai';
 import type { PageAIResult } from '../services/ai/AIAnalysisEngine';
+import type { CrawlerConfig, SettingsTabId } from '../services/CrawlerConfigTypes';
 
 // Collaboration Services (P5)
 import { getTasks, createTask as createTaskService, updateTask as updateTaskService } from '../services/TaskService';
@@ -317,6 +318,86 @@ const DEFAULT_VISIBLE_COLUMNS = [
     'authorityScore',
     'recommendedAction'
 ];
+
+const DEFAULT_CONFIG: CrawlerConfig = {
+    startUrls: [],
+    mode: 'spider',
+    limit: '',
+    maxDepth: '',
+    threads: 5,
+    crawlSpeed: 'normal',
+    userAgent: 'Headlight Scanner 1.0',
+    respectRobots: true,
+    followRedirects: true,
+    maxRedirectHops: 5,
+    cookieConsent: 'auto-accept',
+    useGhostEngine: false,
+    fallbackToServer: true,
+    concurrent: 6,
+    requestTimeout: 30,
+    retryOnFail: true,
+    retryCount: 2,
+    rateLimit: false,
+    rateLimitDelay: 500,
+    useProxy: false,
+    proxyUrl: '',
+    proxyPort: '',
+    proxyUser: '',
+    proxyPass: '',
+    viewportWidth: 1920,
+    viewportHeight: 1080,
+    aiEnabled: true,
+    aiAutoRotation: true,
+    aiBatchSize: 20,
+    aiTasks: {
+        summarize: true,
+        keywords: true,
+        intent: true,
+        quality: true,
+        priority: true,
+        fixSuggestions: true,
+        competitiveGap: false,
+        eeat: true,
+        schemaGenerate: false,
+        metaRewrite: false,
+        altTextGenerate: false,
+    },
+    aiProviderOrder: ['cloudflare', 'github', 'huggingface', 'gemini', 'groq'],
+    aiCustomKeys: { openai: '', anthropic: '', gemini: '', cohere: '' },
+    includeRules: '',
+    excludeRules: '',
+    ignoreQueryParams: false,
+    allowedDomains: '',
+    customHeaders: '',
+    customCookies: '',
+    authUser: '',
+    authPass: '',
+    authType: 'none',
+    authBearerToken: '',
+    customExtractionRules: [],
+    jsRendering: false,
+    fetchWebVitals: false,
+    crawlResources: false,
+    extractCss: '',
+    extractRegex: '',
+    customFieldExtractors: [],
+    scheduleEnabled: false,
+    scheduleFrequency: 'weekly',
+    scheduleDay: 'monday',
+    scheduleTime: '02:00',
+    scheduleCron: '0 0 * * *',
+    changeDetection: true,
+    alertOnScoreDrop: true,
+    alertOnNew404s: true,
+    alertOnNewIssues: true,
+    alertChannels: { email: true, inApp: true, slack: false, webhook: false },
+    webhookUrl: '',
+    cloudSync: 'metadata',
+    rawHtmlBackup: 'local',
+    exportOnCrawl: 'none',
+    retentionSessions: 10,
+    autoBackupDestination: 'none',
+};
 
 const getHashRouteSearchParams = () => {
     if (typeof window === 'undefined') return new URLSearchParams();
@@ -706,20 +787,40 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
     const columns = useMemo(() => ALL_COLUMNS.filter(c => visibleColumns.includes(c.key)), [visibleColumns]);
 
     // Config & Settings
-    const [config, setConfig] = useState<any>({ 
-        limit: '', maxDepth: '', threads: 5, crawlSpeed: 'normal',
-        userAgent: 'Headlight Scanner 1.0', respectRobots: true, 
-        excludeRules: '', includeRules: '', ignoreQueryParams: false,
-        jsRendering: false, extractCss: '', extractRegex: '', viewportWidth: 1920, viewportHeight: 1080,
-        generateEmbeddings: false, aiCategorization: true, aiSentiment: false,
-        aiEnabled: true, aiAutoRotation: true, aiBatchSize: 20,
-        fetchWebVitals: false, crawlResources: false,
-        gscApiKey: '', gscSiteUrl: '', ga4PropertyId: '', openAiKey: '', ahrefsToken: '', semrushApiKey: '', bingAccessToken: '',
-        customHeaders: '', customCookies: '', authUser: '', authPass: '',
-        useProxy: false, proxyUrl: '', proxyPort: '', proxyUser: '', proxyPass: '',
-        scheduleEnabled: false, scheduleCron: '0 0 * * *'
-    });
-    const [settingsTab, setSettingsTab] = useState<'general'|'extraction'|'rules'|'ai'|'integrations'|'auth'|'proxies'|'scheduling'|'display'>('general');
+    const [config, setConfig] = useState<CrawlerConfig>(DEFAULT_CONFIG);
+    const [settingsTab, setSettingsTab] = useState<SettingsTabId>('general');
+
+    const CONFIG_STORAGE_KEY = 'headlight:crawler-config';
+
+    // Load config on mount
+    useEffect(() => {
+        const saved = localStorage.getItem(CONFIG_STORAGE_KEY);
+        if (saved) {
+            try {
+                const parsed = JSON.parse(saved);
+                
+                // Deep merge helper to ensure nested structures (aiTasks, alertChannels) are fully populated
+                setConfig(prev => {
+                    const next = { ...prev, ...parsed };
+                    if (parsed.aiTasks) next.aiTasks = { ...prev.aiTasks, ...parsed.aiTasks };
+                    if (parsed.alertChannels) next.alertChannels = { ...prev.alertChannels, ...parsed.alertChannels };
+                    if (parsed.aiCustomKeys) next.aiCustomKeys = { ...prev.aiCustomKeys, ...parsed.aiCustomKeys };
+                    return next;
+                });
+            } catch (e) {
+                console.error('Failed to parse saved config', e);
+            }
+        }
+    }, []);
+
+    // Save config on change (debounced)
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(config));
+        }, 500);
+        return () => clearTimeout(timer);
+    }, [config]);
+
     const [theme, setTheme] = useState<'dark'|'light'|'system'|'high-contrast'>('dark');
     const [integrationConnections, setIntegrationConnections] = useState<Partial<Record<CrawlerIntegrationProvider, CrawlerIntegrationConnection>>>({});
     const [integrationsLoading, setIntegrationsLoading] = useState(false);
@@ -1629,11 +1730,21 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
             addLog(`Initializing Ghost Engine (Local-Only)...`, 'info', { source: 'system' });
             
             const ghost = new GhostCrawler({
-                maxConcurrent: parseInt(String(config.threads), 10) || 5,
+                maxConcurrent: config.concurrent || parseInt(String(config.threads), 10) || 5,
                 maxDepth: parseInt(config.maxDepth) || 10,
                 limit: parseInt(config.limit) || 0,
                 userAgent: config.userAgent,
-                crawlResources: config.crawlResources
+                crawlResources: config.crawlResources,
+                requestTimeout: (config.requestTimeout || 30) * 1000,
+                retryOnFail: config.retryOnFail ?? true,
+                retryCount: config.retryCount ?? 2,
+                rateLimit: config.rateLimit,
+                rateLimitDelay: config.rateLimitDelay || 500,
+                followRedirects: config.followRedirects ?? true,
+                maxRedirectHops: config.maxRedirectHops || 5,
+                allowedDomains: config.allowedDomains,
+                authType: config.authType,
+                authBearerToken: config.authBearerToken,
             });
             
             ghostCrawlerRef.current = ghost;
@@ -1868,7 +1979,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
                         mode: crawlingMode,
                         limit: parseInt(config.limit) || 0,
                         maxDepth: parseInt(config.maxDepth) || null,
-                        threads: parseInt(String(config.threads), 10) || 5,
+                        threads: config.concurrent || parseInt(String(config.threads), 10) || 5,
                         crawlSpeed: config.crawlSpeed || 'normal',
                         userAgent: config.userAgent,
                         respectRobots: config.respectRobots,
@@ -1883,15 +1994,31 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
                         authUser: config.authUser,
                         authPass: config.authPass,
                         fetchWebVitals: config.fetchWebVitals,
-                        generateEmbeddings: config.generateEmbeddings,
+                        generateEmbeddings: (config as any).generateEmbeddings,
                         crawlResources: config.crawlResources,
-                        
+
+                        // New fields
+                        requestTimeout: (config.requestTimeout || 30) * 1000,
+                        retryOnFail: config.retryOnFail ?? true,
+                        retryCount: config.retryCount ?? 2,
+                        rateLimit: config.rateLimit,
+                        rateLimitDelay: config.rateLimitDelay || 500,
+                        followRedirects: config.followRedirects ?? true,
+                        maxRedirectHops: config.maxRedirectHops || 5,
+                        allowedDomains: config.allowedDomains,
+                        authType: config.authType,
+                        authBearerToken: config.authBearerToken,
+                        cookieConsent: config.cookieConsent,
+                        aiTasks: config.aiTasks,
+                        customExtractionRules: config.customExtractionRules,
+                        customFieldExtractors: config.customFieldExtractors,
+
                         // Unified Google & Other Integrations
                         google: {
                             email: googleEmail,
                             accountLabel: googleEmail,
-                            accessToken: googleAccessToken || config.gscApiKey,
-                            refreshToken: googleRefreshToken || config.gscRefreshToken,
+                            accessToken: googleAccessToken || (config as any).gscApiKey,
+                            refreshToken: googleRefreshToken || (config as any).gscRefreshToken,
                             gscSiteUrl: currentGsc,
                             ga4PropertyId: currentGa4,
                             selection: {
@@ -1899,6 +2026,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
                                 propertyId: currentGa4
                             }
                         },
+
                         bing: {
                             accessToken: getCrawlerIntegrationSecret(integrationSecretScope, 'bingWebmaster').accessToken || config.bingAccessToken
                         },

@@ -202,6 +202,14 @@ export async function initializeDatabase(): Promise<void> {
         )
     `);
 
+    await client.execute(`
+        CREATE TABLE IF NOT EXISTS crawler_configs (
+            id TEXT PRIMARY KEY,
+            config_json TEXT NOT NULL,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    `);
+
     // ─── Collaboration & Tasks Schema (P5) ───
     await client.execute(`
         CREATE TABLE IF NOT EXISTS project_members (

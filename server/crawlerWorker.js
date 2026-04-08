@@ -603,6 +603,67 @@ parentPort.on('message', (task) => {
         const hasServiceWorker = /navigator\.serviceWorker\.register/i.test(pageSource);
         const hasWebManifest = $('link[rel="manifest"]').length > 0;
 
+        // ─── Custom Extraction (Phase 7) ────────────────────
+        const customFieldResults = {};
+        if (Array.isArray(config?.customFieldExtractors)) {
+            for (const field of config.customFieldExtractors) {
+                if (!field.name || !field.cssSelector) continue;
+                
+                const $el = $(field.cssSelector);
+                if ($el.length === 0) {
+                    customFieldResults[field.name] = null;
+                    continue;
+                }
+
+                let value = '';
+                if (field.extractType === 'text') {
+                    value = $el.first().text().trim();
+                } else if (field.extractType === 'html') {
+                    value = $el.first().html() || '';
+                } else if (field.extractType === 'attribute' && field.attributeName) {
+                    value = $el.first().attr(field.attributeName) || '';
+                }
+
+                if (field.regex && value) {
+                    try {
+                        const match = value.match(new RegExp(field.regex));
+                        value = match ? (match[1] || match[0]) : '';
+                    } catch {}
+                }
+
+                customFieldResults[field.name] = value;
+            }
+        }
+
+        const customRuleResults = [];
+        if (Array.isArray(config?.customExtractionRules)) {
+            for (const rule of config.customExtractionRules) {
+                try {
+                    const globToRegex = (glob) => new RegExp('^' + String(glob || '*').replace(/\*/g, '.*') + '$');
+                    const pathname = new URL(url).pathname;
+                    const isMatch = rule.pages === '*' || globToRegex(rule.pages).test(pathname);
+                    
+                    if (!isMatch) continue;
+
+                    const $el = $(rule.selector);
+                    let passed = true;
+
+                    if (rule.condition === 'exists') passed = $el.length > 0;
+                    else if (rule.condition === 'missing') passed = $el.length === 0;
+                    else if (rule.condition === 'empty') passed = $el.length > 0 && $el.text().trim() === '';
+                    else if (rule.condition === 'not_empty') passed = $el.length > 0 && $el.text().trim() !== '';
+
+                    if (!passed) {
+                        customRuleResults.push({
+                            name: rule.name,
+                            severity: rule.severity,
+                            message: `Custom rule "${rule.name}" failed.`
+                        });
+                    }
+                } catch {}
+            }
+        }
+
         // ─── Pixel width for title & meta desc ──────────────
         const titlePixelWidth = estimatePixelWidth(title);
         const metaDescPixelWidth = estimatePixelWidth(metaDesc);
@@ -667,7 +728,10 @@ parentPort.on('message', (task) => {
                 // Advanced content
                 visibleDate, genericAnchorCount, anchorTextDiversity,
                 isSoft404, hasFavicon, hasCharset, charsetValue,
-                hasRssFeed, hasServiceWorker, hasWebManifest
+                hasRssFeed, hasServiceWorker, hasWebManifest,
+                // Custom extraction
+                customFields: customFieldResults,
+                customRules: customRuleResults
             }
         });
     } catch (err) {

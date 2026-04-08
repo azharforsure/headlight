@@ -1065,14 +1065,28 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
         ignoreQueryParams = false,
         includeRules = '',
         excludeRules = '',
+        allowedDomains = '',
         customHeaders = '',
         customCookies = '',
         authUser = '',
         authPass = '',
+        authType = 'none',
+        authBearerToken = '',
         fetchWebVitals = false,
         viewportWidth = 1920,
         viewportHeight = 1080,
-        crawlResources = false
+        crawlResources = false,
+        requestTimeout = 30000,
+        retryOnFail = true,
+        retryCount = 2,
+        rateLimit = false,
+        rateLimitDelay = 500,
+        followRedirects = true,
+        maxRedirectHops = 5,
+        cookieConsent = 'auto-accept',
+        aiTasks = {},
+        customExtractionRules = [],
+        customFieldExtractors = []
     } = config;
 
     const urlNormalizationOptions = { ignoreQueryParams };
@@ -1088,7 +1102,11 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
         requestHeaders.Cookie = customCookies.trim();
     }
 
-    if (authUser && authPass) {
+    if (authType === 'basic' && authUser && authPass) {
+        requestHeaders.Authorization = `Basic ${Buffer.from(`${authUser}:${authPass}`).toString('base64')}`;
+    } else if (authType === 'bearer' && authBearerToken) {
+        requestHeaders.Authorization = `Bearer ${authBearerToken}`;
+    } else if (authUser && authPass) {
         requestHeaders.Authorization = `Basic ${Buffer.from(`${authUser}:${authPass}`).toString('base64')}`;
     }
 
@@ -1418,7 +1436,7 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
             const requestController = new AbortController();
             const totalTimeout = setTimeout(() => {
                 requestController.abort(new Error(`URL processing timeout for ${currentUrl}`));
-            }, config.jsRendering ? 25000 : 20000);
+            }, Number(requestTimeout) || (config.jsRendering ? 25000 : 20000));
             activeTasks.set(currentUrl, {
                 startedAt: Date.now(),
                 abort: (reason = `Active URL aborted: ${currentUrl}`) => {
@@ -1530,7 +1548,7 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
                         }
                         totalTransferred = transferredBytes;
                         if (redirectUrl && redirectUrl !== currentUrl) {
-                            const chainResult = await followRedirectChain(currentUrl, requestHeaders);
+                            const chainResult = await followRedirectChain(currentUrl, requestHeaders, maxRedirectHops);
                             redirectChain = chainResult.chain;
                             redirectChainLength = chainResult.chainLength;
                             isRedirectLoop = chainResult.isLoop;
@@ -1603,7 +1621,7 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
                         // Track redirects via header
                         if (statusCode >= 300 && statusCode < 400 && headers.location) {
                             redirectUrl = normalizeUrl(headers.location, currentUrl) || headers.location;
-                            const chainResult = await followRedirectChain(currentUrl, requestHeaders);
+                            const chainResult = await followRedirectChain(currentUrl, requestHeaders, maxRedirectHops);
                             redirectChain = chainResult.chain;
                             redirectChainLength = chainResult.chainLength;
                             isRedirectLoop = chainResult.isLoop;
@@ -1659,7 +1677,7 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
                             httpRelPrev = parsedLinkHeader.prev || '';
                             if (res.redirected) {
                                 redirectUrl = res.url;
-                                const chainResult = await followRedirectChain(currentUrl, requestHeaders);
+                                const chainResult = await followRedirectChain(currentUrl, requestHeaders, maxRedirectHops);
                                 redirectChain = chainResult.chain;
                                 redirectChainLength = chainResult.chainLength;
                                 isRedirectLoop = chainResult.isLoop;

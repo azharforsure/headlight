@@ -39,16 +39,11 @@ export function IntegrationsTab() {
     addLog,
     detectedGscSite,
     detectedGa4Property,
-    pages,
-    isCrawling,
-    runFullEnrichment,
     config,
     setConfig
   } = useSeoCrawler();
 
   const [loadingProvider, setLoadingProvider] = useState<string | null>(null);
-  const router = getAIRouter();
-  const providerStatus = router.getProviderStatus();
 
   const handleConnectGoogle = async () => {
     setLoadingProvider('google');
@@ -160,76 +155,6 @@ export function IntegrationsTab() {
       </div>
 
       <div className="space-y-6">
-        {/* AI Gateway Settings */}
-        <div className="rounded-lg border border-indigo-500/10 bg-indigo-500/[0.02] p-5">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <div className="p-1.5 bg-indigo-500/20 rounded text-indigo-400">
-                <Sparkles size={14} />
-              </div>
-              <h4 className="text-xs font-semibold text-white/90 uppercase tracking-wider">AI Analysis Gateway</h4>
-            </div>
-            <Toggle 
-              checked={config.aiEnabled} 
-              onChange={(val) => updateConfig('aiEnabled', val)} 
-            />
-          </div>
-
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <div className="text-[10px] text-white/30 font-bold uppercase tracking-tight">Auto-Rotation</div>
-                <div className="flex items-center justify-between bg-white/[0.03] border border-white/[0.05] rounded px-3 py-2">
-                  <span className="text-[11px] text-white/60 italic">Provider fallback</span>
-                  <Toggle 
-                    checked={config.aiAutoRotation} 
-                    onChange={(val) => updateConfig('aiAutoRotation', val)} 
-                    small
-                  />
-                </div>
-              </div>
-              <div className="space-y-1">
-                <div className="text-[10px] text-white/30 font-bold uppercase tracking-tight">Batch Size</div>
-                <div className="flex items-center gap-2 bg-white/[0.03] border border-white/[0.05] rounded px-3 py-1.5">
-                  <input 
-                    type="number" 
-                    value={config.aiBatchSize} 
-                    onChange={(e) => updateConfig('aiBatchSize', parseInt(e.target.value) || 1)}
-                    className="bg-transparent border-none text-[11px] text-white w-full focus:outline-none"
-                    min="1" max="100"
-                  />
-                  <span className="text-[9px] text-white/20 uppercase font-bold">Pages</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="border-t border-white/[0.06] pt-4">
-              <div className="text-[10px] text-white/30 font-bold uppercase tracking-tight mb-3">Model Provider Status</div>
-              <div className="space-y-2">
-                {providerStatus.map(p => (
-                  <div key={p.provider} className="flex items-center justify-between px-3 py-2 bg-black/20 border border-white/[0.03] rounded group hover:border-white/10 transition-all">
-                    <div className="flex items-center gap-3">
-                      <div className={`w-1.5 h-1.5 rounded-full ${p.available ? 'bg-indigo-400 shadow-[0_0_8px_rgba(129,140,248,0.4)]' : 'bg-white/10'}`} />
-                      <span className="text-[11px] text-white/70 capitalize">{p.provider === 'local' ? 'Local Browser (WASM)' : p.provider}</span>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      {p.provider !== 'local' && (
-                        <div className="text-[9px] font-mono text-white/20 uppercase">
-                          {p.quotaRemaining.rpd > 0 ? `${p.quotaRemaining.rpd} req/day left` : 'No Limit'}
-                        </div>
-                      )}
-                      <StatusBadge status={p.available ? 'pass' : 'info'} label={p.available ? 'ACTIVE' : 'NOT CONFIGURED'} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <p className="mt-3 text-[10px] text-white/20 italic">
-                Cloud providers require environment variables or project-level API keys.
-              </p>
-            </div>
-          </div>
-        </div>
-
         {/* Google Card */}
         <div className="rounded-lg border border-white/[0.06] bg-white/[0.01] p-5">
           <div className="flex items-center justify-between mb-1">
