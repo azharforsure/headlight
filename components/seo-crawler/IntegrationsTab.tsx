@@ -2,7 +2,9 @@ import React, { useState, useRef } from 'react';
 import { 
   Loader2, 
   RefreshCw, 
-  X
+  X,
+  Sparkles,
+  Bot
 } from 'lucide-react';
 import { useSeoCrawler } from '../../contexts/SeoCrawlerContext';
 import { 
@@ -15,6 +17,19 @@ import {
   parseBacklinkCsv, 
   parseKeywordCsv
 } from '../../services/CsvUploadParser';
+import { getAIRouter } from '../../services/ai';
+import { StatusBadge } from './inspector/shared';
+
+function Toggle({ checked, onChange, small = false }: { checked: boolean; onChange: (val: boolean) => void; small?: boolean }) {
+  return (
+    <div 
+      onClick={() => onChange(!checked)}
+      className={`${small ? 'w-8 h-4.5' : 'w-10 h-6'} rounded-full p-1 transition-colors cursor-pointer ${checked ? 'bg-indigo-500' : 'bg-white/10'}`}
+    >
+      <div className={`${small ? 'w-2.5 h-2.5' : 'w-4 h-4'} bg-white rounded-full transition-transform ${checked ? (small ? 'translate-x-3.5' : 'translate-x-4') : ''}`}></div>
+    </div>
+  );
+}
 
 export function IntegrationsTab() {
   const { 
@@ -26,10 +41,14 @@ export function IntegrationsTab() {
     detectedGa4Property,
     pages,
     isCrawling,
-    runFullEnrichment
+    runFullEnrichment,
+    config,
+    setConfig
   } = useSeoCrawler();
 
   const [loadingProvider, setLoadingProvider] = useState<string | null>(null);
+  const router = getAIRouter();
+  const providerStatus = router.getProviderStatus();
 
   const handleConnectGoogle = async () => {
     setLoadingProvider('google');
@@ -125,16 +144,92 @@ export function IntegrationsTab() {
     }
   };
 
+  const updateConfig = (key: string, value: any) => {
+    setConfig((prev: any) => ({ ...prev, [key]: value }));
+  };
+
   return (
     <div className="max-w-2xl mx-auto space-y-4 animate-in fade-in duration-300">
-      <div className="pb-4 border-b border-white/[0.06]">
-        <h3 className="text-xs font-bold text-white uppercase tracking-[0.2em]">Integrations</h3>
-        <p className="mt-1 text-[11px] text-white/30">
-          Connect external data sources to enhance audit depth.
-        </p>
+      <div className="pb-4 border-b border-white/[0.06] flex items-center justify-between">
+        <div>
+          <h3 className="text-xs font-bold text-white uppercase tracking-[0.2em]">Integrations & AI</h3>
+          <p className="mt-1 text-[11px] text-white/30">
+            Connect data sources and configure AI analysis models.
+          </p>
+        </div>
       </div>
 
-      <div className="space-y-3">
+      <div className="space-y-6">
+        {/* AI Gateway Settings */}
+        <div className="rounded-lg border border-indigo-500/10 bg-indigo-500/[0.02] p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 bg-indigo-500/20 rounded text-indigo-400">
+                <Sparkles size={14} />
+              </div>
+              <h4 className="text-xs font-semibold text-white/90 uppercase tracking-wider">AI Analysis Gateway</h4>
+            </div>
+            <Toggle 
+              checked={config.aiEnabled} 
+              onChange={(val) => updateConfig('aiEnabled', val)} 
+            />
+          </div>
+
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <div className="text-[10px] text-white/30 font-bold uppercase tracking-tight">Auto-Rotation</div>
+                <div className="flex items-center justify-between bg-white/[0.03] border border-white/[0.05] rounded px-3 py-2">
+                  <span className="text-[11px] text-white/60 italic">Provider fallback</span>
+                  <Toggle 
+                    checked={config.aiAutoRotation} 
+                    onChange={(val) => updateConfig('aiAutoRotation', val)} 
+                    small
+                  />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <div className="text-[10px] text-white/30 font-bold uppercase tracking-tight">Batch Size</div>
+                <div className="flex items-center gap-2 bg-white/[0.03] border border-white/[0.05] rounded px-3 py-1.5">
+                  <input 
+                    type="number" 
+                    value={config.aiBatchSize} 
+                    onChange={(e) => updateConfig('aiBatchSize', parseInt(e.target.value) || 1)}
+                    className="bg-transparent border-none text-[11px] text-white w-full focus:outline-none"
+                    min="1" max="100"
+                  />
+                  <span className="text-[9px] text-white/20 uppercase font-bold">Pages</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="border-t border-white/[0.06] pt-4">
+              <div className="text-[10px] text-white/30 font-bold uppercase tracking-tight mb-3">Model Provider Status</div>
+              <div className="space-y-2">
+                {providerStatus.map(p => (
+                  <div key={p.provider} className="flex items-center justify-between px-3 py-2 bg-black/20 border border-white/[0.03] rounded group hover:border-white/10 transition-all">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-1.5 h-1.5 rounded-full ${p.available ? 'bg-indigo-400 shadow-[0_0_8px_rgba(129,140,248,0.4)]' : 'bg-white/10'}`} />
+                      <span className="text-[11px] text-white/70 capitalize">{p.provider === 'local' ? 'Local Browser (WASM)' : p.provider}</span>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      {p.provider !== 'local' && (
+                        <div className="text-[9px] font-mono text-white/20 uppercase">
+                          {p.quotaRemaining.rpd > 0 ? `${p.quotaRemaining.rpd} req/day left` : 'No Limit'}
+                        </div>
+                      )}
+                      <StatusBadge status={p.available ? 'pass' : 'info'} label={p.available ? 'ACTIVE' : 'NOT CONFIGURED'} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-3 text-[10px] text-white/20 italic">
+                Cloud providers require environment variables or project-level API keys.
+              </p>
+            </div>
+          </div>
+        </div>
+
         {/* Google Card */}
         <div className="rounded-lg border border-white/[0.06] bg-white/[0.01] p-5">
           <div className="flex items-center justify-between mb-1">

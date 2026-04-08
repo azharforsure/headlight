@@ -26,7 +26,8 @@ export default function CrawlerHeader() {
         integrationsSource,
         runFullEnrichment,
         runIncrementalEnrichment,
-        auditFilter, applyAuditMode, saveCustomPreset
+        auditFilter, applyAuditMode, saveCustomPreset,
+        runAIAnalysis, isAnalyzingAI, aiProgress
     } = useSeoCrawler();
 
     const [showShortcuts, setShowShortcuts] = useState(false);
@@ -166,22 +167,48 @@ export default function CrawlerHeader() {
                     {showNoIntegrationsState && (
                         <span className="px-2 py-1 rounded border border-[#222] text-[10px] text-[#666]">No integrations</span>
                     )}
-                    {integrationConnections.google?.status === 'connected' && pages.length > 0 && !isCrawling && (
+                    {pages.length > 0 && !isCrawling && (
                         <div className="flex items-center gap-1.5">
-                            <button 
-                                onClick={() => runFullEnrichment()}
-                                className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-t from-[#059669] to-[#10b981] text-white rounded text-[11px] font-bold shadow-[0_2px_8px_rgba(16,185,129,0.3)] hover:to-[#34d399] transition-all"
-                                title="Run GSC, GA4, and Strategic Intelligence pipeline (Opportunity, Authority, Priority) based on current signals"
+                             <button 
+                                onClick={() => runAIAnalysis()}
+                                disabled={isAnalyzingAI}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-[11px] font-bold shadow-lg transition-all ${
+                                    isAnalyzingAI 
+                                    ? 'bg-[#1a1a1a] text-gray-500 border border-[#333] cursor-not-allowed'
+                                    : 'bg-gradient-to-t from-[#4f46e5] to-[#6366f1] text-white hover:to-[#818cf8] shadow-[0_2px_8px_rgba(79,70,229,0.3)]'
+                                }`}
+                                title="Run Tier 3 AI checks (Summaries, Intent, Quality, EEAT, Keywords)"
                             >
-                                <Sparkles size={12} fill="currentColor" /> Run Strategic Audit
+                                {isAnalyzingAI ? (
+                                    <div className="flex items-center gap-1.5">
+                                        <div className="w-2 h-2 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                        {aiProgress ? `Analyzing ${aiProgress.done}/${aiProgress.total}...` : 'Analyzing...'}
+                                    </div>
+                                ) : (
+                                    <>
+                                        <Sparkles size={12} fill="currentColor" /> Run AI Analysis
+                                    </>
+                                )}
                             </button>
-                            <button 
-                                onClick={() => runIncrementalEnrichment()}
-                                className="flex items-center gap-1.5 px-3 py-1.5 bg-[#1a1a1a] hover:bg-[#222] border border-[#333] text-[#ccc] rounded text-[11px] font-medium transition-all"
-                                title="Continue enrichment for large sites (processes next batch of stale/never-enriched pages)"
-                            >
-                                <Database size={11} /> Continue Audit
-                            </button>
+
+                            {integrationConnections.google?.status === 'connected' && (
+                                <>
+                                    <button 
+                                        onClick={() => runFullEnrichment()}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-t from-[#059669] to-[#10b981] text-white rounded text-[11px] font-bold shadow-[0_2px_8px_rgba(16,185,129,0.3)] hover:to-[#34d399] transition-all"
+                                        title="Run GSC, GA4, and Strategic Intelligence pipeline (Opportunity, Authority, Priority) based on current signals"
+                                    >
+                                        <Sparkles size={12} fill="currentColor" /> Run Strategic Audit
+                                    </button>
+                                    <button 
+                                        onClick={() => runIncrementalEnrichment()}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-[#1a1a1a] hover:bg-[#222] border border-[#333] text-[#ccc] rounded text-[11px] font-medium transition-all"
+                                        title="Continue enrichment for large sites (processes next batch of stale/never-enriched pages)"
+                                    >
+                                        <Database size={11} /> Continue Audit
+                                    </button>
+                                </>
+                            )}
                         </div>
                     )}
                 </div>

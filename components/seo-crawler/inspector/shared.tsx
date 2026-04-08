@@ -66,8 +66,9 @@ export const DataRow = ({ label, value, status, mono = false }: {
     );
 };
 
-export const SectionHeader = ({ title, color }: { title: string; color?: string }) => (
-    <h4 className={`text-[11px] font-black uppercase tracking-widest border-b border-[#222] pb-1 mb-3 ${color || 'text-[#444]'}`}>
+export const SectionHeader = ({ title, color, icon }: { title: string; color?: string; icon?: React.ReactNode }) => (
+    <h4 className={`text-[11px] font-black uppercase tracking-widest border-b border-[#222] pb-1 mb-3 flex items-center gap-2 ${color || 'text-[#444]'}`}>
+        {icon}
         {title}
     </h4>
 );

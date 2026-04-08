@@ -63,6 +63,8 @@ import { crawlDb } from '../services/CrawlDatabase';
 import { GoogleSelectionResolver, EffectiveGoogleSelection } from '../services/googleSelectionResolver';
 import { UrlNormalization } from '../services/UrlNormalization';
 import { refreshWithLock } from '../services/TokenRefreshLock';
+import { getAIEngine } from '../services/ai';
+import type { PageAIResult } from '../services/ai/AIAnalysisEngine';
 
 export type InspectorTab =
     | 'general'
@@ -121,8 +123,8 @@ export interface CrawlerContextType {
     setInspectorCollapsed: (c: boolean) => void;
     showAuditSidebar: boolean;
     setShowAuditSidebar: (s: boolean) => void;
-    activeAuditTab: 'overview' | 'issues' | 'opportunities' | 'history' | 'logs' | 'robots' | 'sitemap';
-    setActiveAuditTab: (t: 'overview' | 'issues' | 'opportunities' | 'history' | 'logs' | 'robots' | 'sitemap') => void;
+    activeAuditTab: 'overview' | 'issues' | 'opportunities' | 'ai' | 'history' | 'logs' | 'robots' | 'sitemap';
+    setActiveAuditTab: (t: 'overview' | 'issues' | 'opportunities' | 'ai' | 'history' | 'logs' | 'robots' | 'sitemap') => void;
     showSettings: boolean;
     setShowSettings: (s: boolean) => void;
     activeMacro: string | null;
@@ -265,6 +267,13 @@ export interface CrawlerContextType {
     clearCrawlerWorkspace: () => void;
     showTrialLimitAlert: boolean;
     setShowTrialLimitAlert: (s: boolean) => void;
+
+    // AI Layer
+    aiResults: Map<string, PageAIResult>;
+    aiProgress: { done: number; total: number; url: string } | null;
+    aiNarrative: string;
+    isAnalyzingAI: boolean;
+    runAIAnalysis: (pagesToAnalyze?: any[]) => Promise<void>;
 }
 
 const SeoCrawlerContext = createContext<CrawlerContextType | undefined>(undefined);
@@ -579,8 +588,9 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
     const [selectedPage, setSelectedPage] = useState<any | null>(null);
     const [activeTab, setActiveTab] = useState<InspectorTab>('general');
     const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
-    const [showAuditSidebar, setShowAuditSidebar] = useState(false); 
-    const [activeAuditTab, setActiveAuditTab] = useState<'overview' | 'issues' | 'opportunities' | 'history' | 'logs' | 'robots' | 'sitemap'>('overview');
+    const [showAuditSidebar, setShowAuditSidebar] = useState(false);
+    const [activeAuditTab, setActiveAuditTab] = useState<'overview' | 'issues' | 'opportunities' | 'ai' | 'history' | 'logs' | 'robots' | 'sitemap'>('overview');
+
     const [showSettings, setShowSettings] = useState(false);
     const [activeMacro, setActiveMacro] = useState<string | null>(null);
     const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>(null);
@@ -685,6 +695,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         excludeRules: '', includeRules: '', ignoreQueryParams: false,
         jsRendering: false, extractCss: '', extractRegex: '', viewportWidth: 1920, viewportHeight: 1080,
         generateEmbeddings: false, aiCategorization: true, aiSentiment: false,
+        aiEnabled: true, aiAutoRotation: true, aiBatchSize: 20,
         fetchWebVitals: false, crawlResources: false,
         gscApiKey: '', gscSiteUrl: '', ga4PropertyId: '', openAiKey: '', ahrefsToken: '', semrushApiKey: '', bingAccessToken: '',
         customHeaders: '', customCookies: '', authUser: '', authPass: '',
@@ -2871,6 +2882,104 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
             }));
     }, [pagesWithDerivedSignals]);
 
+    // AI Layer States
+    const [aiResults, setAiResults] = useState<Map<string, PageAIResult>>(new Map());
+    const [aiProgress, setAiProgress] = useState<{ done: number; total: number; url: string } | null>(null);
+    const [aiNarrative, setAiNarrative] = useState<string>('');
+    const [isAnalyzingAI, setIsAnalyzingAI] = useState(false);
+
+    // ─── Trigger AI analysis after crawl completes ─────
+    const runAIAnalysis = useCallback(async (pagesToAnalyze?: any[]) => {
+        const targetPages = pagesToAnalyze || pages.filter(p => p.isHtmlPage && p.statusCode === 200);
+        if (targetPages.length === 0) return;
+
+        setIsAnalyzingAI(true);
+        const engine = getAIEngine();
+        addLog(`Starting AI Analysis for ${targetPages.length} pages...`, 'info', { source: 'analysis' });
+
+        try {
+            // 1. Analyze individual pages
+            const results = await engine.analyzePages(
+                targetPages.map(p => ({
+                    url: p.url,
+                    title: p.title || '',
+                    metaDesc: p.metaDesc || '',
+                    h1_1: p.h1_1 || '',
+                    textContent: p.textContent || '',
+                    wordCount: p.wordCount || 0,
+                    issues: auditInsights
+                        .filter((issue: any) => issue.condition?.(p))
+                        .map((issue: any) => ({ id: issue.id, label: issue.label })),
+                })),
+                (done, total, url) => setAiProgress({ done, total, url })
+            );
+
+            // 2. Merge AI results into page data
+            const resultMap = new Map<string, PageAIResult>();
+            for (const r of results) {
+                resultMap.set(r.url, r);
+            }
+            setAiResults(resultMap);
+
+            // 3. Update page objects with AI data for the grid columns
+            const updatedPages = targetPages.map(p => {
+                const ai = resultMap.get(p.url);
+                if (!ai) return p;
+                return {
+                    ...p,
+                    topicCluster: ai.topicCluster || p.topicCluster,
+                    searchIntent: ai.searchIntent || p.searchIntent,
+                    funnelStage: ai.searchIntent === 'transactional' ? 'Transactional'
+                        : ai.searchIntent === 'commercial' ? 'Commercial'
+                        : ai.searchIntent === 'navigational' ? 'Navigational'
+                        : 'Informational',
+                    contentQualityScore: ai.contentQualityScore ?? p.contentQualityScore,
+                    strategicPriority: ai.contentQualityScore != null
+                        ? (ai.contentQualityScore < 40 ? 'High' : ai.contentQualityScore < 70 ? 'Medium' : 'Low')
+                        : p.strategicPriority,
+                    recommendedAction: ai.fixSuggestions?.[0]?.fix || p.recommendedAction,
+                    recommendedActionReason: ai.contentWeaknesses?.[0] || p.recommendedActionReason,
+                    aiSummary: ai.summary,
+                };
+            });
+
+            // Persist updated pages to Dexie
+            if (currentSessionIdRef.current) {
+                await crawlDb.pages.bulkPut(updatedPages);
+                // Also update the in-memory analysisPages for the grid
+                setAnalysisPages(prev => {
+                    const next = [...prev];
+                    updatedPages.forEach(up => {
+                        const idx = next.findIndex(p => p.url === up.url);
+                        if (idx !== -1) next[idx] = up;
+                        else next.push(up);
+                    });
+                    return next;
+                });
+            }
+
+            // 4. Generate crawl narrative
+            const narrative = await engine.generateCrawlNarrative({
+                domain: targetPages[0]?.url ? new URL(targetPages[0].url).hostname : '',
+                total: stats?.total || 0,
+                healthy: stats?.total - (stats?.broken || 0) - (stats?.redirects || 0),
+                errors: stats?.broken || 0,
+                healthScore: healthScore.score,
+                grade: healthScore.grade,
+                topIssues: auditInsights.slice(0, 5).map((i: any) => i.label),
+            });
+            setAiNarrative(narrative);
+            addLog('AI analysis complete.', 'success', { source: 'analysis' });
+
+        } catch (err) {
+            console.error('AI analysis failed:', err);
+            addLog(`AI analysis error: ${(err as Error).message}`, 'error', { source: 'analysis' });
+        } finally {
+            setIsAnalyzingAI(false);
+            setAiProgress(null);
+        }
+    }, [pages, stats, healthScore, auditInsights, addLog]);
+
     const crawlRate = useMemo(() => {
         if (crawlRuntime.rate > 0) return crawlRuntime.rate.toFixed(1);
         if (!crawlStartTime || pages.length === 0) return 0;
@@ -3461,7 +3570,8 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         showScheduleModal, setShowScheduleModal,
         ignoredUrls, setIgnoredUrls, urlTags, setUrlTags,
         robotsTxt, sitemapData,
-        columnWidths, setColumnWidths
+        columnWidths, setColumnWidths,
+        aiResults, aiProgress, aiNarrative, isAnalyzingAI, runAIAnalysis
     };
 
     return (

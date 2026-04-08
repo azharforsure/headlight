@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { 
     ChevronRight, CheckCircle2, AlertTriangle, ArrowRight,
     Search, PanelRightOpen, Clock, Trash2, GitCompare, ExternalLink,
-    RefreshCw, BarChart3, FileText, Map as MapIcon, Globe
+    RefreshCw, BarChart3, FileText, Map as MapIcon, Globe, Sparkles
 } from 'lucide-react';
 import { useSeoCrawler } from '../../contexts/SeoCrawlerContext';
 
@@ -25,7 +25,8 @@ export default function AuditSidebar() {
         auditInsights,
         strategicOpportunities,
         robotsTxt, sitemapData,
-        filteredIssuePages
+        filteredIssuePages,
+        aiNarrative, isAnalyzingAI
     } = useSeoCrawler();
 
     const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null);
@@ -90,6 +91,7 @@ export default function AuditSidebar() {
                         { id: 'overview', label: 'Overview' },
                         { id: 'issues', label: 'Issues', count: totalIssueCount },
                         { id: 'opportunities', label: 'Opportunities', count: strategicOpportunities.length },
+                        { id: 'ai', label: 'AI Strategy' },
                         { id: 'robots', label: 'Robots' },
                         { id: 'sitemap', label: 'Sitemap' },
                         { id: 'history', label: 'History', count: crawlHistory?.length || 0 },
@@ -321,6 +323,107 @@ export default function AuditSidebar() {
                                 </button>
                             ))
                         )}
+                    </div>
+                )}
+
+                {activeAuditTab === 'ai' && (
+                    <div className="space-y-6 animate-in fade-in duration-200">
+                        {/* Executive Summary Narrative */}
+                        <div className="bg-gradient-to-br from-indigo-900/20 to-purple-900/10 border border-indigo-500/30 rounded-lg p-4 relative overflow-hidden">
+                            <div className="absolute top-0 right-0 w-24 h-24 bg-indigo-500/10 rounded-full blur-3xl -mr-8 -mt-8" />
+                            <h4 className="text-[11px] font-bold text-indigo-400 mb-3 uppercase tracking-widest flex items-center gap-2">
+                                <Sparkles size={14} fill="currentColor" /> Executive AI Narrative
+                            </h4>
+                            {aiNarrative ? (
+                                <p className="text-[12px] text-gray-200 leading-relaxed italic">
+                                    "{aiNarrative}"
+                                </p>
+                            ) : (
+                                <div className="text-[11px] text-[#666] text-center py-4 border border-white/5 bg-black/20 rounded">
+                                    {isAnalyzingAI ? 'Generating narrative...' : 'Run AI Analysis to generate site narrative.'}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Top AI Insights / Opportunities */}
+                        <div className="space-y-3">
+                            <h4 className="text-[11px] font-bold text-[#555] mb-3 uppercase tracking-widest border-b border-[#222] pb-1">Strategic Topic Clusters</h4>
+                            {(() => {
+                                const clusters: Record<string, number> = {};
+                                pages.forEach(p => {
+                                    if (p.topicCluster) clusters[p.topicCluster] = (clusters[p.topicCluster] || 0) + 1;
+                                });
+                                const sortedClusters = Object.entries(clusters).sort((a, b) => b[1] - a[1]);
+
+                                if (sortedClusters.length === 0) return <div className="text-[11px] text-[#444] text-center py-4 italic">No clusters identified yet.</div>;
+
+                                return (
+                                    <div className="grid grid-cols-1 gap-2">
+                                        {sortedClusters.slice(0, 6).map(([cluster, count]) => (
+                                            <div key={cluster} className="flex items-center justify-between p-2 bg-[#141414] border border-[#222] rounded text-[11px]">
+                                                <span className="text-gray-300 font-medium truncate pr-2">{cluster}</span>
+                                                <span className="text-gray-500 font-mono text-[10px] bg-black px-1.5 py-0.5 rounded">{count} pages</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                );
+                            })()}
+                        </div>
+
+                        {/* Funnel Stage Breakdown */}
+                        <div className="space-y-3">
+                            <h4 className="text-[11px] font-bold text-[#555] mb-3 uppercase tracking-widest border-b border-[#222] pb-1">Search Intent Funnel</h4>
+                            {(() => {
+                                const stages = ['Informational', 'Commercial', 'Transactional', 'Navigational'];
+                                const counts = stages.map(s => pages.filter(p => p.funnelStage === s).length);
+                                const total = counts.reduce((a, b) => a + b, 0);
+                                const max = Math.max(...counts, 1);
+
+                                if (total === 0) return <div className="text-[11px] text-[#444] text-center py-4 italic">No intent data available.</div>;
+
+                                return (
+                                    <div className="space-y-3">
+                                        {stages.map((stage, i) => (
+                                            <div key={stage} className="space-y-1">
+                                                <div className="flex justify-between text-[10px] uppercase tracking-tighter">
+                                                    <span className="text-gray-400 font-bold">{stage}</span>
+                                                    <span className="text-gray-500">{counts[i]} pages</span>
+                                                </div>
+                                                <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
+                                                    <div 
+                                                        className={`h-full transition-all duration-1000 ${
+                                                            stage === 'Transactional' ? 'bg-emerald-500' :
+                                                            stage === 'Commercial' ? 'bg-blue-500' :
+                                                            stage === 'Navigational' ? 'bg-orange-500' : 'bg-gray-500'
+                                                        }`}
+                                                        style={{ width: `${(counts[i] / max) * 100}%` }}
+                                                    />
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                );
+                            })()}
+                        </div>
+
+                        {/* Batch AI Actions */}
+                        <div className="bg-[#1a1a1a] border border-[#222] rounded-lg p-4">
+                            <h4 className="text-[11px] font-bold text-emerald-400 mb-3 uppercase tracking-widest">Batch AI Actions</h4>
+                            <div className="space-y-2">
+                                <button className="w-full flex items-center justify-between p-2.5 bg-[#111] border border-[#222] hover:border-emerald-500/30 rounded text-[11px] text-gray-300 transition-all group">
+                                    <span>Rewrite missing meta descriptions</span>
+                                    <Sparkles size={12} className="text-emerald-500 opacity-50 group-hover:opacity-100" />
+                                </button>
+                                <button className="w-full flex items-center justify-between p-2.5 bg-[#111] border border-[#222] hover:border-emerald-500/30 rounded text-[11px] text-gray-300 transition-all group">
+                                    <span>Generate missing alt text</span>
+                                    <Sparkles size={12} className="text-emerald-500 opacity-50 group-hover:opacity-100" />
+                                </button>
+                                <button className="w-full flex items-center justify-between p-2.5 bg-[#111] border border-[#222] hover:border-emerald-500/30 rounded text-[11px] text-gray-300 transition-all group">
+                                    <span>Cluster topics across site</span>
+                                    <Sparkles size={12} className="text-emerald-500 opacity-50 group-hover:opacity-100" />
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 )}
 
