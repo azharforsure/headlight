@@ -202,6 +202,132 @@ export async function initializeDatabase(): Promise<void> {
         )
     `);
 
+    // ─── Collaboration & Tasks Schema (P5) ───
+    await client.execute(`
+        CREATE TABLE IF NOT EXISTS project_members (
+            id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            email TEXT NOT NULL,
+            name TEXT,
+            avatar_url TEXT,
+            role TEXT NOT NULL DEFAULT 'member',
+            invited_by TEXT,
+            invited_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            accepted_at DATETIME,
+            UNIQUE(project_id, user_id)
+        )
+    `);
+
+    await client.execute(`
+        CREATE TABLE IF NOT EXISTS crawl_comments (
+            id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            session_id TEXT,
+            target_type TEXT NOT NULL,
+            target_id TEXT NOT NULL,
+            parent_id TEXT,
+            user_id TEXT NOT NULL,
+            user_name TEXT,
+            user_avatar TEXT,
+            text TEXT NOT NULL,
+            mentions_json TEXT,
+            reactions_json TEXT,
+            attachments_json TEXT,
+            resolved INTEGER NOT NULL DEFAULT 0,
+            resolved_by TEXT,
+            resolved_at DATETIME,
+            edited_at DATETIME,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    `);
+
+    await client.execute(`
+        CREATE TABLE IF NOT EXISTS crawl_tasks (
+            id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            session_id TEXT,
+            title TEXT NOT NULL,
+            description TEXT,
+            status TEXT NOT NULL DEFAULT 'todo',
+            priority TEXT NOT NULL DEFAULT 'medium',
+            category TEXT,
+            source TEXT NOT NULL DEFAULT 'manual',
+            linked_issue_id TEXT,
+            affected_urls_json TEXT,
+            assignee_id TEXT,
+            assignee_name TEXT,
+            assignee_avatar TEXT,
+            created_by TEXT NOT NULL,
+            due_date TEXT,
+            completed_at DATETIME,
+            tags_json TEXT,
+            sort_order INTEGER DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    `);
+
+    await client.execute(`
+        CREATE TABLE IF NOT EXISTS crawl_subtasks (
+            id TEXT PRIMARY KEY,
+            task_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            completed INTEGER NOT NULL DEFAULT 0,
+            completed_at DATETIME,
+            sort_order INTEGER DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (task_id) REFERENCES crawl_tasks(id) ON DELETE CASCADE
+        )
+    `);
+
+    await client.execute(`
+        CREATE TABLE IF NOT EXISTS activity_log (
+            id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            actor_id TEXT NOT NULL,
+            actor_name TEXT,
+            action TEXT NOT NULL,
+            entity_type TEXT NOT NULL,
+            entity_id TEXT NOT NULL,
+            metadata_json TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    `);
+
+    await client.execute(`
+        CREATE TABLE IF NOT EXISTS assignment_rules (
+            id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            rule_name TEXT NOT NULL,
+            trigger_type TEXT NOT NULL,
+            trigger_condition_json TEXT NOT NULL,
+            action_type TEXT NOT NULL DEFAULT 'create_task',
+            assignee_id TEXT,
+            assignee_strategy TEXT NOT NULL DEFAULT 'specific',
+            priority_override TEXT,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    `);
+
+    await client.execute(`
+        CREATE TABLE IF NOT EXISTS notifications (
+            id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            type TEXT NOT NULL,
+            title TEXT NOT NULL,
+            body TEXT,
+            link_url TEXT,
+            entity_type TEXT,
+            entity_id TEXT,
+            read INTEGER NOT NULL DEFAULT 0,
+            read_at DATETIME,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    `);
+
     await client.execute(`
         CREATE TABLE IF NOT EXISTS projects (
             id TEXT PRIMARY KEY,

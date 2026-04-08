@@ -2,7 +2,8 @@ import React, { useMemo, useState } from 'react';
 import { 
     ChevronRight, CheckCircle2, AlertTriangle, ArrowRight,
     Search, PanelRightOpen, Clock, Trash2, GitCompare, ExternalLink,
-    RefreshCw, BarChart3, FileText, Map as MapIcon, Globe, Sparkles
+    RefreshCw, BarChart3, FileText, Map as MapIcon, Globe, Sparkles,
+    MessageSquare, CheckSquare, User
 } from 'lucide-react';
 import { useSeoCrawler } from '../../contexts/SeoCrawlerContext';
 
@@ -26,7 +27,8 @@ export default function AuditSidebar() {
         strategicOpportunities,
         robotsTxt, sitemapData,
         filteredIssuePages,
-        aiNarrative, isAnalyzingAI
+        aiNarrative, isAnalyzingAI,
+        tasks, setShowCollabOverlay, setCollabOverlayTarget
     } = useSeoCrawler();
 
     const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null);
@@ -91,6 +93,8 @@ export default function AuditSidebar() {
                         { id: 'overview', label: 'Overview' },
                         { id: 'issues', label: 'Issues', count: totalIssueCount },
                         { id: 'opportunities', label: 'Opportunities', count: strategicOpportunities.length },
+                        { id: 'tasks', label: 'Tasks', count: tasks.length },
+                        { id: 'comments', label: 'Comments' },
                         { id: 'ai', label: 'AI Strategy' },
                         { id: 'robots', label: 'Robots' },
                         { id: 'sitemap', label: 'Sitemap' },
@@ -278,6 +282,28 @@ export default function AuditSidebar() {
                                                         }`}>
                                                             {issue.count}
                                                         </span>
+                                                        <div className="flex items-center gap-1 ml-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                            <button 
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setCollabOverlayTarget({ type: 'issue', id: issue.id, title: issue.label });
+                                                                    setShowCollabOverlay(true);
+                                                                }}
+                                                                className="p-1 hover:bg-white/10 rounded transition-colors text-gray-500 hover:text-white"
+                                                            >
+                                                                <MessageSquare size={12} />
+                                                            </button>
+                                                            <button 
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setCollabOverlayTarget({ type: 'task', id: issue.id, title: `Fix: ${issue.label}` });
+                                                                    setShowCollabOverlay(true);
+                                                                }}
+                                                                className="p-1 hover:bg-white/10 rounded transition-colors text-gray-500 hover:text-white"
+                                                            >
+                                                                <FileText size={12} />
+                                                            </button>
+                                                        </div>
                                                     </button>
                                                 ))}
                                             </div>
@@ -291,6 +317,79 @@ export default function AuditSidebar() {
                                 )}
                             </div>
                         )}
+                    </div>
+                )}
+
+                {/* TASKS TAB */}
+                {activeAuditTab === 'tasks' && (
+                    <div className="space-y-4 animate-in fade-in duration-200">
+                        <div className="flex items-center justify-between">
+                            <h4 className="text-[11px] font-bold text-[#888] uppercase tracking-widest flex items-center gap-1.5">
+                                Active Tasks
+                            </h4>
+                            <span className="text-[10px] text-[#555] font-mono">{tasks.length} Total</span>
+                        </div>
+
+                        {tasks.length === 0 ? (
+                            <div className="text-[11px] text-[#666] text-center py-8 bg-[#141414] rounded border border-[#222]">
+                                No tasks created yet.
+                            </div>
+                        ) : (
+                            <div className="space-y-2">
+                                {tasks.map(task => (
+                                    <button
+                                        key={task.id}
+                                        onClick={() => {
+                                            setCollabOverlayTarget({ type: 'task', id: task.id, title: task.title });
+                                            setShowCollabOverlay(true);
+                                        }}
+                                        className="w-full text-left p-3 rounded border border-[#222] bg-[#141414] hover:bg-[#1a1a1a] transition-all group"
+                                    >
+                                        <div className="flex items-start justify-between gap-3 mb-2">
+                                            <div className="flex-1 min-w-0">
+                                                <div className="text-[11px] font-bold text-white group-hover:text-brand-red transition-colors truncate">
+                                                    {task.title}
+                                                </div>
+                                                <div className="text-[9px] text-gray-500 uppercase font-mono mt-0.5">
+                                                    {task.priority} • {task.status}
+                                                </div>
+                                            </div>
+                                            {task.assignee_id ? (
+                                                <div className="w-5 h-5 rounded-full bg-brand-red/20 flex items-center justify-center text-[8px] font-bold text-brand-red">
+                                                    {task.assignee_name?.[0] || 'U'}
+                                                </div>
+                                            ) : (
+                                                <div className="w-5 h-5 rounded-full bg-white/5 flex items-center justify-center text-gray-600">
+                                                    <User size={10} />
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="flex items-center justify-between text-[9px] text-[#555]">
+                                            <div className="flex items-center gap-2">
+                                                <span className="px-1.5 py-0.5 bg-black rounded border border-white/5">
+                                                    {task.source}
+                                                </span>
+                                            </div>
+                                            <span>{new Date(task.created_at).toLocaleDateString()}</span>
+                                        </div>
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* COMMENTS TAB */}
+                {activeAuditTab === 'comments' && (
+                    <div className="space-y-4 animate-in fade-in duration-200">
+                        <h4 className="text-[11px] font-bold text-[#888] uppercase tracking-widest flex items-center gap-1.5">
+                            Recent Comments
+                        </h4>
+                        <div className="text-[11px] text-[#666] text-center py-12 bg-[#141414] rounded border border-[#222] border-dashed">
+                            <MessageSquare size={24} className="mx-auto mb-2 opacity-20" />
+                            <p>Global project discussion feed coming soon.</p>
+                            <p className="mt-1 text-[10px]">Open an issue to start a discussion.</p>
+                        </div>
                     </div>
                 )}
 

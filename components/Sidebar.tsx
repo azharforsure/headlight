@@ -2,16 +2,15 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
     ChevronLeft, ChevronDown, Plus, LayoutDashboard, Search, Sparkles,
     Globe, Target, Share2, Activity, Lightbulb, Briefcase, BellRing,
-    Settings, Users, Trash2, X, LogOut
+    Settings, Users, Trash2, X, LogOut, CheckSquare
 } from 'lucide-react';
 import { ViewType } from '../types';
 import { useProject } from '../services/ProjectContext';
 import { IndustryType } from '../services/app-types';
 import { useAuth } from '../services/AuthContext';
+import { useNavigate } from 'react-router-dom';
 
 interface SidebarProps {
-    isCollapsed: boolean;
-    setIsCollapsed: (collapsed: boolean) => void;
     currentView: ViewType;
     setCurrentView: (view: ViewType) => void;
 }
@@ -64,9 +63,10 @@ const SidebarItem = ({ icon, label, active, onClick, hasNotification, badge, col
     );
 };
 
-export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setIsCollapsed, currentView, setCurrentView }) => {
-    const { projects, activeProject, switchProject, addProject } = useProject();
+export const Sidebar: React.FC<SidebarProps> = ({ currentView, setCurrentView }) => {
+    const { projects, activeProject, switchProject, addProject, isCollapsed, setIsCollapsed } = useProject();
     const { user, profile, signOut } = useAuth();
+    const navigate = useNavigate();
     const [isProjectMenuOpen, setIsProjectMenuOpen] = useState(false);
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [newProjectName, setNewProjectName] = useState('');
@@ -221,6 +221,15 @@ export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setIsCollapsed, c
                         </div>
                     )}
                     <SidebarItem icon={<Lightbulb size={18} />} label="Opportunities" active={currentView === 'opportunities'} onClick={() => setCurrentView('opportunities')} collapsed={isCollapsed} />
+                    <SidebarItem 
+                        icon={<CheckSquare size={18} />} 
+                        label="Tasks" 
+                        active={window.location.pathname.includes('/tasks')} 
+                        onClick={() => {
+                            if (activeProject) navigate(`/project/${activeProject.id}/tasks`);
+                        }} 
+                        collapsed={isCollapsed} 
+                    />
                     <SidebarItem icon={<Briefcase size={18} />} label="Agency Hub" active={currentView === 'agency_hub'} onClick={() => setCurrentView('agency_hub')} collapsed={isCollapsed} />
                     <SidebarItem icon={<BellRing size={18} />} label="Automations" active={currentView === 'automation'} onClick={() => setCurrentView('automation')} collapsed={isCollapsed} />
                 </div>

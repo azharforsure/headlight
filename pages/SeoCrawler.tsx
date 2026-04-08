@@ -6,6 +6,8 @@ import MainDataView from '../components/seo-crawler/MainDataView';
 import AuditSidebar from '../components/seo-crawler/AuditSidebar';
 import StatusBar from '../components/seo-crawler/StatusBar';
 import CrawlerModals from '../components/seo-crawler/CrawlerModals';
+import { CollaborationOverlay } from '../components/seo-crawler/CollaborationOverlay';
+import { useSeoCrawler } from '../contexts/SeoCrawlerContext';
 
 interface ErrorBoundaryProps {
     children: ReactNode;
@@ -63,6 +65,8 @@ export default function SeoCrawlerWrapper() {
 }
 
 function SeoCrawlerLayout() {
+    const { showCollabOverlay, setShowCollabOverlay } = useSeoCrawler();
+
     return (
         <div className="flex flex-col h-screen bg-[#070707] text-[#e0e0e0] font-sans overflow-hidden">
             <CrawlerHeader />
@@ -73,6 +77,11 @@ function SeoCrawlerLayout() {
                 <MainDataView />
 
                 <AuditSidebar />
+
+                <CollaborationOverlay 
+                    isOpen={showCollabOverlay} 
+                    onClose={() => setShowCollabOverlay(false)} 
+                />
             </div>
 
             <StatusBar />

@@ -1,4 +1,13 @@
 import Dexie, { type Table } from 'dexie';
+import type { 
+  ProjectMember, 
+  CrawlComment, 
+  CrawlTask, 
+  CrawlSubtask, 
+  ActivityLog, 
+  AssignmentRule, 
+  NotificationRecord as Notification 
+} from './app-types';
 
 export interface CrawledPage {
   url: string;             // primary key
@@ -167,6 +176,13 @@ class CrawlDB extends Dexie {
   pages!: Table<CrawledPage, string>;
   sessions!: Table<CrawlSession, string>;
   queries!: Table<PageQuery, number>;
+  members!: Table<ProjectMember, string>;
+  comments!: Table<CrawlComment, string>;
+  tasks!: Table<CrawlTask, string>;
+  subtasks!: Table<CrawlSubtask, string>;
+  activity!: Table<ActivityLog, string>;
+  rules!: Table<AssignmentRule, string>;
+  notifications!: Table<Notification, string>;
 
   constructor() {
     super('HeadlightCrawlDB');
@@ -271,6 +287,18 @@ class CrawlDB extends Dexie {
             page.hasMainLandmark = page.hasMainLandmark ?? null;
             page.isSoft404 = page.isSoft404 ?? false;
         });
+    });
+
+    this.version(7).stores({
+        pages: 'url, crawlId, isHtmlPage, statusCode, [crawlId+statusCode]',
+        sessions: 'id, projectId, startedAt',
+        members: 'id, projectId, userId',
+        comments: 'id, projectId, sessionId, targetType, targetId, createdAt',
+        tasks: 'id, projectId, sessionId, status, priority, assigneeId, createdAt',
+        subtasks: 'id, taskId, sortOrder',
+        activity: 'id, projectId, entityType, entityId, createdAt',
+        rules: 'id, projectId, enabled',
+        notifications: 'id, userId, projectId, read, createdAt'
     });
   }
 }

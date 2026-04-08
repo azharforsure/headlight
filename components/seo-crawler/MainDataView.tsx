@@ -1,7 +1,8 @@
 import React, { useState, useEffect, lazy, Suspense, useMemo, useRef } from 'react';
 import { 
     List, Map as MapIcon, ChevronDown, ChevronUp, AlignLeft, Search, Download, CheckCircle2,
-    Tag, Focus, EyeOff, X, AlertCircle, Sparkles, Expand, Shrink
+    Tag, Focus, EyeOff, X, AlertCircle, Sparkles, Expand, Shrink,
+    MessageSquare, CheckSquare
 } from 'lucide-react';
 import { useSeoCrawler } from '../../contexts/SeoCrawlerContext';
 import { ALL_COLUMNS, formatBytes } from './constants';
@@ -71,7 +72,8 @@ export default function MainDataView() {
         handleNodeClick,
         showTrialLimitAlert, setShowTrialLimitAlert,
         runSelectedEnrichment,
-        integrationConnections
+        integrationConnections,
+        setShowCollabOverlay, setCollabOverlayTarget
     } = useSeoCrawler();
 
     useEffect(() => {
@@ -825,7 +827,7 @@ export default function MainDataView() {
                                     </div>
                                 </div>
                                 <div className="grid grid-cols-2 gap-x-6 gap-y-2 max-h-[400px] overflow-y-auto custom-scrollbar pr-2">
-                                    {['General', 'Technical', 'Metrics', 'Links', 'Advanced'].map(group => (
+                                    {['General', 'Technical', 'Metrics', 'Links', 'Advanced', 'Security', 'Collaboration'].map(group => (
                                         <div key={group} className="col-span-2 mb-2">
                                             <h5 className="text-[10px] text-[#444] font-black uppercase tracking-widest mb-2 border-l-2 border-[#F5364E] pl-2">{group}</h5>
                                             <div className="grid grid-cols-2 gap-2">
@@ -1081,6 +1083,42 @@ export default function MainDataView() {
                                                     const color = rawVal > 1000 ? 'text-red-400' : rawVal > 500 ? 'text-orange-400' : 'text-green-400';
                                                     cellClass = `font-mono text-[11px] text-right pr-4 ${color}`;
                                                 }
+                                            } else if (col.key === 'commentCount' || col.key === 'taskCount') {
+                                                const count = Number(rawVal) || 0;
+                                                const Icon = col.key === 'commentCount' ? MessageSquare : CheckSquare;
+                                                displayElement = count > 0 ? (
+                                                    <button 
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setCollabOverlayTarget({ 
+                                                                type: col.key === 'commentCount' ? 'page' : 'task', 
+                                                                id: page.url, 
+                                                                title: `Page: ${getSafePathname(page.url)}` 
+                                                            });
+                                                            setShowCollabOverlay(true);
+                                                        }}
+                                                        className="flex items-center justify-center gap-1.5 px-2 py-0.5 rounded bg-brand-red/10 text-brand-red border border-brand-red/20 hover:bg-brand-red hover:text-white transition-all mx-auto"
+                                                    >
+                                                        <Icon size={10} />
+                                                        <span className="font-bold font-mono text-[10px]">{count}</span>
+                                                    </button>
+                                                ) : (
+                                                    <button 
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setCollabOverlayTarget({ 
+                                                                type: col.key === 'commentCount' ? 'page' : 'task', 
+                                                                id: page.url, 
+                                                                title: `Page: ${getSafePathname(page.url)}` 
+                                                            });
+                                                            setShowCollabOverlay(true);
+                                                        }}
+                                                        className="flex items-center justify-center p-1 text-[#333] hover:text-[#666] transition-colors mx-auto"
+                                                    >
+                                                        <Icon size={10} />
+                                                    </button>
+                                                );
+                                                cellClass = 'text-center';
                                             } else if (col.key === 'topicCluster' || col.key === 'funnelStage') {
                                                 displayElement = rawVal ? <span className="bg-[#222] text-[#ccc] px-2 py-0.5 rounded-full text-[10px]">{rawVal}</span> : '-';
                                                 cellClass = 'text-center';

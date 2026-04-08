@@ -26,6 +26,7 @@ import { BrandMentionsView } from '../components/dashboard/BrandMentionsView';
 import { ProjectSettingsView } from '../components/dashboard/ProjectSettingsView';
 import { EmptyStateView } from '../components/dashboard/EmptyStateView';
 import { OnboardingWizard } from '../components/dashboard/OnboardingWizard';
+import { NotificationBell } from '../components/NotificationBell';
 import { Button } from '../components/Button';
 import { useProject } from '../services/ProjectContext';
 import { useAuth } from '../services/AuthContext';
@@ -50,11 +51,10 @@ const isDashboardView = (value: string | null): value is ViewType => {
     return value !== null && DASHBOARD_VIEWS.includes(value as ViewType);
 };
 
-const Dashboard: React.FC = () => {
+export const Dashboard: React.FC = () => {
     const [searchParams, setSearchParams] = useSearchParams();
     const { profile } = useAuth();
-    const { projects, loading: projectsLoading } = useProject();
-    const [isCollapsed, setIsCollapsed] = useState(false);
+    const { projects, loading: projectsLoading, isCollapsed, setIsCollapsed } = useProject();
     const [dateRange, setDateRange] = useState('30d');
     const [copilotOpen, setCopilotOpen] = useState(false);
     const [showOnboarding, setShowOnboarding] = useState(false);
@@ -120,8 +120,6 @@ const Dashboard: React.FC = () => {
 
             {/* 1. Sidebar */}
             <Sidebar
-                isCollapsed={isCollapsed}
-                setIsCollapsed={setIsCollapsed}
                 currentView={currentView}
                 setCurrentView={setCurrentView}
             />
@@ -166,6 +164,8 @@ const Dashboard: React.FC = () => {
                             </div>
                         </div>
                         <div className="h-8 w-px bg-white/5 mx-2"></div>
+
+                        <NotificationBell />
 
                         <button
                             onClick={() => setCopilotOpen(true)}

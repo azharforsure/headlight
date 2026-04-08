@@ -11,6 +11,7 @@ const Pricing = React.lazy(() => import('./pages/Pricing'));
 const Board = React.lazy(() => import('./pages/Board'));
 const Auth = React.lazy(() => import('./pages/Auth'));
 const SeoCrawler = React.lazy(() => import('./pages/SeoCrawler'));
+const TasksPage = React.lazy(() => import('./pages/Tasks'));
 const GoogleOAuthCallback = React.lazy(() => import('./pages/oauth/google/callback'));
 import { AuthProvider, useAuth } from './services/AuthContext';
 import { ProjectProvider } from './services/ProjectContext';
@@ -44,6 +45,11 @@ const App: React.FC = () => {
                                 <Route path="/dashboard" element={
                                     <ProtectedRoute>
                                         <Dashboard />
+                                    </ProtectedRoute>
+                                } />
+                                <Route path="/project/:projectId/tasks" element={
+                                    <ProtectedRoute>
+                                        <TasksPage />
                                     </ProtectedRoute>
                                 } />
                                 <Route path="/oauth/google/callback" element={<GoogleOAuthCallback />} />

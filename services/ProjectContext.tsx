@@ -16,6 +16,8 @@ interface ProjectContextType {
     projects: Project[];
     activeProject: Project | null;
     loading: boolean;
+    isCollapsed: boolean;
+    setIsCollapsed: (collapsed: boolean) => void;
     switchProject: (projectId: string) => void;
     addProject: (name: string, url: string, industry: IndustryType) => Promise<Project | null>;
     updateProject: (id: string, updates: Partial<Project>) => Promise<boolean>;
@@ -30,6 +32,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const [projects, setProjects] = useState<Project[]>([]);
     const [activeProject, setActiveProject] = useState<Project | null>(null);
     const [loading, setLoading] = useState(true);
+    const [isCollapsed, setIsCollapsed] = useState(false);
     const migrationRunRef = useRef(false);
 
     const localStorageKey = user ? `headlight:projects:${source}:${user.id}` : null;
@@ -224,7 +227,18 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     };
 
     return (
-        <ProjectContext.Provider value={{ projects, activeProject, loading, switchProject, addProject, updateProject, deleteProject, refreshProjects: fetchProjects }}>
+        <ProjectContext.Provider value={{ 
+            projects, 
+            activeProject, 
+            loading, 
+            isCollapsed, 
+            setIsCollapsed, 
+            switchProject, 
+            addProject, 
+            updateProject, 
+            deleteProject, 
+            refreshProjects: fetchProjects 
+        }}>
             {children}
         </ProjectContext.Provider>
     );

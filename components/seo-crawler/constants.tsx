@@ -177,6 +177,10 @@ export const ALL_COLUMNS = [
     { key: 'termsPageLinked', label: 'Terms Link', width: '110px', group: 'Security' },
     { key: 'hasCookieBanner', label: 'Cookie Banner', width: '120px', group: 'Security' },
 
+    // Collaboration (P5)
+    { key: 'commentCount', label: 'Comments', width: '90px', group: 'Collaboration' },
+    { key: 'taskCount', label: 'Tasks', width: '90px', group: 'Collaboration' },
+
     // Accessibility
     { key: 'hasMainLandmark', label: 'Main Landmark', width: '120px', group: 'Accessibility' },
     { key: 'hasNavLandmark', label: 'Nav Landmark', width: '120px', group: 'Accessibility' },

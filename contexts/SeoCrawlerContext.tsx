@@ -66,6 +66,13 @@ import { refreshWithLock } from '../services/TokenRefreshLock';
 import { getAIEngine } from '../services/ai';
 import type { PageAIResult } from '../services/ai/AIAnalysisEngine';
 
+// Collaboration Services (P5)
+import { getTasks, createTask as createTaskService, updateTask as updateTaskService } from '../services/TaskService';
+import { executeRules } from '../services/AutoAssignmentService';
+import { getMembers } from '../services/TeamService';
+import { getComments, createComment as createCommentService } from '../services/CollaborationService';
+import type { CrawlTask, CommentTargetType, ProjectMember } from '../services/app-types';
+
 export type InspectorTab =
     | 'general'
     | 'seo'
@@ -123,8 +130,8 @@ export interface CrawlerContextType {
     setInspectorCollapsed: (c: boolean) => void;
     showAuditSidebar: boolean;
     setShowAuditSidebar: (s: boolean) => void;
-    activeAuditTab: 'overview' | 'issues' | 'opportunities' | 'ai' | 'history' | 'logs' | 'robots' | 'sitemap';
-    setActiveAuditTab: (t: 'overview' | 'issues' | 'opportunities' | 'ai' | 'history' | 'logs' | 'robots' | 'sitemap') => void;
+    activeAuditTab: 'overview' | 'issues' | 'opportunities' | 'tasks' | 'comments' | 'ai' | 'history' | 'logs' | 'robots' | 'sitemap';
+    setActiveAuditTab: (t: 'overview' | 'issues' | 'opportunities' | 'tasks' | 'comments' | 'ai' | 'history' | 'logs' | 'robots' | 'sitemap') => void;
     showSettings: boolean;
     setShowSettings: (s: boolean) => void;
     activeMacro: string | null;
@@ -274,6 +281,17 @@ export interface CrawlerContextType {
     aiNarrative: string;
     isAnalyzingAI: boolean;
     runAIAnalysis: (pagesToAnalyze?: any[]) => Promise<void>;
+
+    // Collaboration & Tasks (P5)
+    tasks: CrawlTask[];
+    setTasks: React.Dispatch<React.SetStateAction<CrawlTask[]>>;
+    teamMembers: ProjectMember[];
+    showCollabOverlay: boolean;
+    setShowCollabOverlay: (s: boolean) => void;
+    collabOverlayTarget: { type: CommentTargetType, id: string, title: string } | null;
+    setCollabOverlayTarget: (t: { type: CommentTargetType, id: string, title: string } | null) => void;
+    activeCommentTarget: { type: CommentTargetType, id: string } | null;
+    setActiveCommentTarget: (t: { type: CommentTargetType, id: string } | null) => void;
 }
 
 const SeoCrawlerContext = createContext<CrawlerContextType | undefined>(undefined);
@@ -589,8 +607,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
     const [activeTab, setActiveTab] = useState<InspectorTab>('general');
     const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
     const [showAuditSidebar, setShowAuditSidebar] = useState(false);
-    const [activeAuditTab, setActiveAuditTab] = useState<'overview' | 'issues' | 'opportunities' | 'ai' | 'history' | 'logs' | 'robots' | 'sitemap'>('overview');
-
+    const [activeAuditTab, setActiveAuditTab] = useState<'overview' | 'issues' | 'opportunities' | 'tasks' | 'comments' | 'ai' | 'history' | 'logs' | 'robots' | 'sitemap'>('overview');
     const [showSettings, setShowSettings] = useState(false);
     const [activeMacro, setActiveMacro] = useState<string | null>(null);
     const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>(null);
@@ -1733,9 +1750,21 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
                                     });
                                 }
                                 // Auto-populate Dashboard: keywords, competitors, mentions
-                                syncFromCrawl(activeProject!.id, pagesRef.current, activeProject!.name).then(sync => {
+                                syncFromCrawl(activeProject!.id, pagesRef.current, activeProject!.name).then(async (sync) => {
                                     if (sync.keywordsImported > 0 || sync.competitorsFound > 0) {
                                         addLog(`Auto-discovered: ${sync.keywordsImported} keywords, ${sync.competitorsFound} competitors.`, 'info', { source: 'analysis' });
+                                    }
+
+                                    // ─── Auto-Assignment (P5) ───
+                                    const autoTasks = await executeRules(
+                                        activeProject.id,
+                                        currentSessionIdRef.current || sessionId || '',
+                                        result.issues
+                                    );
+                                    if (autoTasks.length > 0) {
+                                        addLog(`Auto-created ${autoTasks.length} tasks from crawler issues.`, 'info', { source: 'system' });
+                                        const updatedTasks = await getTasks(activeProject.id);
+                                        setTasks(updatedTasks);
                                     }
                                 }).catch(() => {});
                             }
@@ -2117,6 +2146,19 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
                                                 });
                                             }
                                             await syncFromCrawl(activeProject!.id, freshPages, activeProject!.name);
+
+                                            // ─── Auto-Assignment (P5) ───
+                                            const autoTasks = await executeRules(
+                                                activeProject.id,
+                                                currentSessionIdRef.current || '',
+                                                result.issues // These are the IssueClusters
+                                            );
+                                            if (autoTasks.length > 0) {
+                                                addLog(`Auto-created ${autoTasks.length} tasks from crawler issues.`, 'info', { source: 'system' });
+                                                // Update local tasks state
+                                                const updatedTasks = await getTasks(activeProject.id);
+                                                setTasks(updatedTasks);
+                                            }
                                         }
                                     }
                                     
@@ -2888,6 +2930,36 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
     const [aiNarrative, setAiNarrative] = useState<string>('');
     const [isAnalyzingAI, setIsAnalyzingAI] = useState(false);
 
+    // Collaboration & Tasks (P5)
+    const [tasks, setTasks] = useState<CrawlTask[]>([]);
+    const [teamMembers, setTeamMembers] = useState<ProjectMember[]>([]);
+    const [showCollabOverlay, setShowCollabOverlay] = useState(false);
+    const [collabOverlayTarget, setCollabOverlayTarget] = useState<{ type: CommentTargetType, id: string, title: string } | null>(null);
+    const [activeCommentTarget, setActiveCommentTarget] = useState<{ type: CommentTargetType, id: string } | null>(null);
+
+    // Sync Tasks & Team Members (P5)
+    useEffect(() => {
+        if (!activeProject?.id) return;
+        let cancelled = false;
+
+        const loadCollabData = async () => {
+            try {
+                const [taskList, memberList] = await Promise.all([
+                    getTasks(activeProject.id),
+                    getMembers(activeProject.id)
+                ]);
+                if (cancelled) return;
+                setTasks(taskList);
+                setTeamMembers(memberList);
+            } catch (err) {
+                console.error('[SeoCrawlerContext] Failed to load collaboration data:', err);
+            }
+        };
+
+        loadCollabData();
+        return () => { cancelled = true; };
+    }, [activeProject?.id]);
+
     // ─── Trigger AI analysis after crawl completes ─────
     const runAIAnalysis = useCallback(async (pagesToAnalyze?: any[]) => {
         const targetPages = pagesToAnalyze || pages.filter(p => p.isHtmlPage && p.statusCode === 200);
@@ -3571,7 +3643,10 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         ignoredUrls, setIgnoredUrls, urlTags, setUrlTags,
         robotsTxt, sitemapData,
         columnWidths, setColumnWidths,
-        aiResults, aiProgress, aiNarrative, isAnalyzingAI, runAIAnalysis
+        aiResults, aiProgress, aiNarrative, isAnalyzingAI, runAIAnalysis,
+        // Collaboration & Tasks (P5)
+        tasks, setTasks, teamMembers, showCollabOverlay, setShowCollabOverlay,
+        collabOverlayTarget, setCollabOverlayTarget, activeCommentTarget, setActiveCommentTarget
     };
 
     return (
