@@ -2,12 +2,13 @@ import React, { useState, useEffect, lazy, Suspense, useMemo, useRef } from 'rea
 import { 
     List, Map as MapIcon, ChevronDown, ChevronUp, AlignLeft, Search, Download, CheckCircle2,
     Tag, Focus, EyeOff, X, AlertCircle, Sparkles, Expand, Shrink,
-    MessageSquare, CheckSquare
+    MessageSquare, CheckSquare, BarChart3
 } from 'lucide-react';
 import { useSeoCrawler } from '../../contexts/SeoCrawlerContext';
 import { ALL_COLUMNS, formatBytes } from './constants';
 import InspectorShell from './inspector/InspectorShell';
 import FullDetailDrawer from './inspector/FullDetailDrawer';
+import ChartsView from './ChartsView';
 
 const ForceGraph3D = lazy(() => import('react-force-graph-3d'));
 
@@ -870,6 +871,12 @@ export default function MainDataView() {
                         >
                             <MapIcon size={12} /> Map
                         </button>
+                        <button 
+                            onClick={() => setViewMode('charts')}
+                            className={`px-3 py-1 text-[11px] font-medium rounded-sm flex items-center gap-1.5 transition-colors ${viewMode === 'charts' ? 'bg-[#222] text-white' : 'text-[#888] hover:text-[#ccc]'}`}
+                        >
+                            <BarChart3 size={12} /> Charts
+                        </button>
                     </div>
 
                     <button 
@@ -943,6 +950,8 @@ export default function MainDataView() {
                      </div>
                 ) : viewMode === 'map' ? (
                     renderMapView(false)
+                ) : viewMode === 'charts' ? (
+                    <ChartsView />
                 ) : (
                     <table className="w-max border-collapse text-left text-[12px] whitespace-nowrap table-fixed">
                         <thead className="sticky top-0 bg-[#0d0d0d]/85 backdrop-blur-md z-20 shadow-[0_1px_0_#333]">

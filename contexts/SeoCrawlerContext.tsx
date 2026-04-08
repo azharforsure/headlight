@@ -142,8 +142,8 @@ export interface CrawlerContextType {
     setShowColumnPicker: (s: boolean) => void;
     visibleColumns: string[];
     setVisibleColumns: React.Dispatch<React.SetStateAction<string[]>>;
-    viewMode: 'grid' | 'map';
-    setViewMode: (v: 'grid' | 'map') => void;
+    viewMode: 'grid' | 'map' | 'charts';
+    setViewMode: (v: 'grid' | 'map' | 'charts') => void;
     showAiInsights: boolean;
     setShowAiInsights: (s: boolean) => void;
     graphDimensions: { width: number; height: number };
@@ -613,7 +613,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
     const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>(null);
     const [showColumnPicker, setShowColumnPicker] = useState(false);
     const [visibleColumns, setVisibleColumns] = useState<string[]>(DEFAULT_VISIBLE_COLUMNS);
-    const [viewMode, setViewMode] = useState<'grid' | 'map'>('grid');
+    const [viewMode, setViewMode] = useState<'grid' | 'map' | 'charts'>('grid');
     const [showAiInsights, setShowAiInsights] = useState(false);
     const [graphDimensions, setGraphDimensions] = useState({ width: 800, height: 600 });
     const graphContainerRef = useRef<HTMLDivElement>(null);
