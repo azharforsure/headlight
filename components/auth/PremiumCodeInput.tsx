@@ -72,7 +72,7 @@ const PremiumCodeInput: React.FC<PremiumCodeInputProps> = ({ length = 6, value, 
       {Array.from({ length }).map((_, i) => (
         <div key={i} className="relative flex-1">
           <input
-            ref={(el) => (inputRefs.current[i] = el)}
+            ref={(el) => { if (el) inputRefs.current[i] = el; }}
             type="text"
             inputMode="numeric"
             pattern="[0-9]*"

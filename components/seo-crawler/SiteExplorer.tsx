@@ -21,7 +21,9 @@ export default function SiteExplorer() {
         pages, toggleCategory,
         activeCategories, setActiveCategories,
         prioritizedCategories, prioritizeByIssues, setPrioritizeByIssues,
-        addLog
+        addLog,
+        activeCheckCategories,
+        auditFilter
     } = useSeoCrawler();
 
     const [contextMenu, setContextMenu] = useState<CategoryMenuState | null>(null);
@@ -49,14 +51,22 @@ export default function SiteExplorer() {
 
     const allCategories = useMemo(() => {
         const baseCategories = prioritizeByIssues && pages.length > 0 ? prioritizedCategories : CATEGORIES;
+        const shouldScopeByAuditFilter = !(auditFilter.modes.includes('full') && auditFilter.industry === 'all');
+        const scopedBaseCategories = shouldScopeByAuditFilter
+            ? baseCategories.filter((category) => activeCheckCategories.has(category.id) || category.id === 'internal')
+            : baseCategories;
+
+        const showAiInsightsCategory = hasAiInsights && (!shouldScopeByAuditFilter || activeCheckCategories.has('ai-insights'));
+        const showAiClusterCategory = dynamicClusters.length > 0 && (!shouldScopeByAuditFilter || activeCheckCategories.has('ai-clusters'));
+
         return [
-            ...baseCategories,
-            ...(hasAiInsights ? [AI_INSIGHTS_CATEGORY] : []),
-            ...(dynamicClusters.length > 0
+            ...scopedBaseCategories,
+            ...(showAiInsightsCategory ? [AI_INSIGHTS_CATEGORY] : []),
+            ...(showAiClusterCategory
                 ? [{ id: 'ai-clusters', label: 'AI Topic Clusters', icon: <Wand2 size={14} />, sub: ['All', ...dynamicClusters] }]
                 : [])
         ];
-    }, [prioritizeByIssues, pages.length, prioritizedCategories, hasAiInsights, dynamicClusters]);
+    }, [prioritizeByIssues, pages.length, prioritizedCategories, hasAiInsights, dynamicClusters, activeCheckCategories, auditFilter.industry, auditFilter.modes]);
 
     const allCategoryIds = useMemo(() => allCategories.map((category) => category.id), [allCategories]);
 

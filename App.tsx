@@ -1,5 +1,5 @@
 /// <reference types="vite/client" />
-import React, { useEffect } from 'react';
+import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ClerkProvider } from '@clerk/clerk-react';
 import { GoogleOAuthProvider } from '@react-oauth/google';
@@ -60,8 +60,9 @@ const App: React.FC = () => {
             publishableKey={clerkPublishableKey}
             signInUrl="/auth"
             signUpUrl="/auth?mode=signup"
-            fallbackRedirectUrl="/dashboard"
-            forceRedirectUrl="/dashboard"
+            signInFallbackRedirectUrl="/dashboard"
+            signUpFallbackRedirectUrl="/dashboard"
+            afterSignOutUrl="/"
         >
             {app}
         </ClerkProvider>

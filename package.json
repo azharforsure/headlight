@@ -37,6 +37,8 @@
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20240405.0",
     "@types/node": "^22.14.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.0.0",
     "dotenv": "^16.4.5",
     "typescript": "~5.8.2",
