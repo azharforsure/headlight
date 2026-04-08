@@ -38,7 +38,11 @@ const TAB_COMPONENTS: Record<InspectorTab, React.FC<{ page: any }>> = {
     social: SocialTab,
     gsc: GscTab,
     ga4: Ga4Tab,
-    ai: AiTab
+    ai: AiTab,
+    details: GeneralTab, // Placeholder
+    headers: SeoTab,     // Placeholder
+    serp: SeoTab,        // Placeholder
+    source: ContentTab   // Placeholder
 };
 
 export default function InspectorShell() {

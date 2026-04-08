@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { SeoCrawlerProvider } from '../contexts/SeoCrawlerContext';
 import CrawlerHeader from '../components/seo-crawler/CrawlerHeader';
 import SiteExplorer from '../components/seo-crawler/SiteExplorer';
@@ -8,7 +8,7 @@ import StatusBar from '../components/seo-crawler/StatusBar';
 import CrawlerModals from '../components/seo-crawler/CrawlerModals';
 
 interface ErrorBoundaryProps {
-    children: React.ReactNode;
+    children: ReactNode;
 }
 
 interface ErrorBoundaryState {
@@ -16,7 +16,7 @@ interface ErrorBoundaryState {
     errorMessage: string;
 }
 
-class SeoCrawlerErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+class SeoCrawlerErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
     constructor(props: ErrorBoundaryProps) {
         super(props);
         this.state = { hasError: false, errorMessage: '' };
@@ -29,7 +29,7 @@ class SeoCrawlerErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorB
         };
     }
 
-    componentDidCatch(error: Error, info: React.ErrorInfo) {
+    componentDidCatch(error: Error, info: ErrorInfo) {
         console.error('[SeoCrawler] Runtime error:', error, info);
     }
 

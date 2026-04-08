@@ -195,6 +195,14 @@ export async function initializeDatabase(): Promise<void> {
     `);
 
     await client.execute(`
+        CREATE TABLE IF NOT EXISTS crawl_audit_presets (
+            project_id TEXT PRIMARY KEY,
+            presets_json TEXT NOT NULL,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    `);
+
+    await client.execute(`
         CREATE TABLE IF NOT EXISTS projects (
             id TEXT PRIMARY KEY,
             user_id TEXT NOT NULL,
@@ -235,6 +243,8 @@ export async function initializeDatabase(): Promise<void> {
     await migrate('ALTER TABLE projects ADD COLUMN auto_crawl_enabled INTEGER NOT NULL DEFAULT 0');
     await migrate('ALTER TABLE projects ADD COLUMN auto_crawl_interval TEXT NOT NULL DEFAULT \'weekly\'');
     await migrate('ALTER TABLE projects ADD COLUMN notification_email TEXT');
+    await migrate('ALTER TABLE crawl_sessions ADD COLUMN audit_modes TEXT');
+    await migrate('ALTER TABLE crawl_sessions ADD COLUMN industry_filter TEXT');
 
     // Optional indexed crawl-page fields for faster filtering on common security/perf checks.
     await migrate('ALTER TABLE crawl_pages ADD COLUMN ssl_valid INTEGER');

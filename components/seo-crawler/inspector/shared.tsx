@@ -46,6 +46,7 @@ export const DataRow = ({ label, value, status, mono = false }: {
     value: React.ReactNode;
     status?: 'pass' | 'warn' | 'fail' | 'info';
     mono?: boolean;
+    key?: any;
 }) => {
     const tone = status === 'pass'
         ? 'text-green-400'
@@ -74,6 +75,7 @@ export const SectionHeader = ({ title, color }: { title: string; color?: string 
 export const StatusBadge = ({ status, label }: {
     status: 'pass' | 'warn' | 'fail' | 'info';
     label: string;
+    key?: any;
 }) => {
     const styles = {
         pass: 'bg-green-500/15 text-green-400 border-green-500/25',

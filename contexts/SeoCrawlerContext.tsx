@@ -3,9 +3,26 @@ import {
     CATEGORIES,
     ALL_COLUMNS,
     SEO_ISSUES_TAXONOMY,
+    ISSUE_TO_CHECK_MAP,
+    resolveIssueCheckId,
     matchesCategoryFilter,
     AI_INSIGHTS_CATEGORY
 } from '../components/seo-crawler/constants';
+import { AUDIT_MODES } from '../services/AuditModeConfig';
+import {
+    DEFAULT_FILTER_STATE,
+    type AuditFilterState,
+    getActiveCategoryTreeIds,
+    getActiveCheckIds
+} from '../services/CheckFilterEngine';
+import type { AuditMode, IndustryFilter } from '../services/CheckRegistry';
+import {
+    fetchPresetsFromCloud,
+    getLocalPresets,
+    saveLocalPreset,
+    syncPresetsToCloud,
+    type CustomAuditPreset
+} from '../services/AuditPresetService';
 import { 
     saveSession, getSessions, getPages, getSession, deleteSession, 
     generateSessionId, diffSessions, CrawlSession, upsertPages
@@ -58,7 +75,11 @@ export type InspectorTab =
     | 'social'
     | 'gsc'
     | 'ga4'
-    | 'ai';
+    | 'ai'
+    | 'details'
+    | 'headers'
+    | 'serp'
+    | 'source';
 
 export interface CrawlerContextType {
     crawlingMode: 'spider' | 'list' | 'sitemap';
@@ -80,6 +101,14 @@ export interface CrawlerContextType {
     setActiveCategories: React.Dispatch<React.SetStateAction<Array<{ group: string; sub: string }>>>;
     activeCategory: { group: string; sub: string };
     setActiveCategory: (c: { group: string; sub: string }) => void;
+    auditFilter: AuditFilterState;
+    activeCheckIds: Set<string>;
+    activeCheckCategories: Set<string>;
+    filteredIssuePages: Array<{ category: string; issues: any[] }>;
+    customPresets: CustomAuditPreset[];
+    applyAuditMode: (modes: AuditMode[], industry: IndustryFilter) => void;
+    saveCustomPreset: (name: string, modes: AuditMode[], industry: IndustryFilter) => void;
+    loadCustomPreset: (preset: CustomAuditPreset) => void;
     openCategories: string[];
     setOpenCategories: (c: string[]) => void;
     searchQuery: string;
@@ -103,7 +132,7 @@ export interface CrawlerContextType {
     showColumnPicker: boolean;
     setShowColumnPicker: (s: boolean) => void;
     visibleColumns: string[];
-    setVisibleColumns: (c: string[]) => void;
+    setVisibleColumns: React.Dispatch<React.SetStateAction<string[]>>;
     viewMode: 'grid' | 'map';
     setViewMode: (v: 'grid' | 'map') => void;
     showAiInsights: boolean;
@@ -147,13 +176,15 @@ export interface CrawlerContextType {
     showAutoFixModal: boolean;
     setShowAutoFixModal: (s: boolean) => void;
     autoFixItems: any[];
-    setAutoFixItems: (i: any[]) => void;
+    setAutoFixItems: React.Dispatch<React.SetStateAction<any[]>>;
     isFixing: boolean;
     setIsFixing: (f: boolean) => void;
     autoFixProgress: number;
     setAutoFixProgress: (p: number) => void;
     stats: any;
     setStats: (s: any) => void;
+    dynamicClusters: string[];
+    categoryCounts: Record<string, Record<string, number>>;
     healthScore: { score: number; grade: string };
     auditInsights: any[];
     strategicOpportunities: any[];
@@ -219,9 +250,9 @@ export interface CrawlerContextType {
     config: any;
     setConfig: (c: any) => void;
     settingsTab: string;
-    setSettingsTab: (t: string) => void;
+    setSettingsTab: React.Dispatch<React.SetStateAction<string>>;
     theme: string;
-    setTheme: (t: string) => void;
+    setTheme: React.Dispatch<React.SetStateAction<string>>;
     integrationConnections: Partial<Record<CrawlerIntegrationProvider, CrawlerIntegrationConnection>>;
     integrationsLoading: boolean;
     integrationsSource: 'anonymous' | 'project' | 'project-cache' | 'none';
@@ -526,7 +557,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         msg: string;
         type: 'info' | 'warn' | 'error' | 'success';
         time: number;
-        source?: 'crawler' | 'session' | 'history' | 'analysis' | 'system';
+        source?: 'crawler' | 'session' | 'history' | 'analysis' | 'system' | 'enrichment';
         url?: string;
         sessionId?: string;
         detail?: string;
@@ -541,6 +572,8 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
     const setActiveCategory = useCallback((category: { group: string; sub: string }) => {
         setActiveCategories([category]);
     }, []);
+    const [auditFilter, setAuditFilter] = useState<AuditFilterState>(DEFAULT_FILTER_STATE);
+    const [customPresets, setCustomPresets] = useState<CustomAuditPreset[]>(() => getLocalPresets());
     const [openCategories, setOpenCategories] = useState<string[]>(() => CATEGORIES.map((category) => category.id));
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedPage, setSelectedPage] = useState<any | null>(null);
@@ -663,15 +696,15 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
     const [integrationConnections, setIntegrationConnections] = useState<Partial<Record<CrawlerIntegrationProvider, CrawlerIntegrationConnection>>>({});
     const [integrationsLoading, setIntegrationsLoading] = useState(false);
     const [integrationsSource, setIntegrationsSource] = useState<'anonymous' | 'project' | 'project-cache' | 'none'>('none');
-    const [crawlRuntime, setCrawlRuntime] = useState({
-        stage: 'idle' as const,
+    const [crawlRuntime, setCrawlRuntime] = useState<CrawlerContextType['crawlRuntime']>({
+        stage: 'idle',
         queued: 0,
         activeWorkers: 0,
         discovered: 0,
         crawled: 0,
         maxDepthSeen: 0,
         concurrency: 0,
-        mode: 'spider' as 'spider' | 'list' | 'sitemap',
+        mode: 'spider',
         rate: 0,
         workerUtilization: 0
     });
@@ -693,6 +726,31 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
     const routeProjectId = getHashRouteSearchParams().get('projectId');
     const integrationProjectId = activeProject?.id || routeProjectId || null;
     const integrationSecretScope = getCrawlerSecretScope(integrationProjectId);
+
+    useEffect(() => {
+        if (!integrationProjectId) return;
+        let cancelled = false;
+
+        fetchPresetsFromCloud(integrationProjectId)
+            .then((cloudPresets) => {
+                if (cancelled || cloudPresets.length === 0) return;
+                setCustomPresets(cloudPresets);
+            })
+            .catch(() => {
+                // Keep local presets when cloud fetch is unavailable.
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [integrationProjectId]);
+
+    useEffect(() => {
+        if (!integrationProjectId) return;
+        syncPresetsToCloud(integrationProjectId, customPresets).catch(() => {
+            // Cloud sync is best-effort.
+        });
+    }, [integrationProjectId, customPresets]);
 
     const buildEntryUrls = useCallback(() => {
         if (crawlingMode === 'list') {
@@ -1079,7 +1137,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
     const addLog = useCallback((
         msg: string,
         type: 'info' | 'warn' | 'error' | 'success' = 'info',
-        meta?: { source?: 'crawler' | 'session' | 'history' | 'analysis' | 'system'; url?: string; detail?: string }
+        meta?: { source?: 'crawler' | 'session' | 'history' | 'analysis' | 'system' | 'enrichment'; url?: string; detail?: string }
     ) => {
         setLogs(prev => [...prev.slice(-499), {
             msg,
@@ -1703,7 +1761,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
                 
                 // Helper to get a fresh token, optionally refreshing if needed
                 const getOrRefreshGoogleToken = async () => {
-                    const email = googleConnection?.accountLabel || googleConnection?.providerEmail || (googleConnection?.metadata?.email as string);
+                    const email = googleConnection?.accountLabel || googleConnection?.sync?.email || (googleConnection?.metadata?.email as string);
                     const secrets = googleConnection ? getCrawlerIntegrationSecret(integrationSecretScope, 'google') : null;
                     let token = secrets?.accessToken || secrets?.access_token;
                     const refreshToken = secrets?.refreshToken || secrets?.refresh_token;
@@ -1989,7 +2047,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
                                     const effectiveSelection = googleConn?.selection as any;
 
                                     if (googleConn && effectiveSelection) {
-                                        const email = googleConn.accountLabel || googleConn.providerEmail || (googleConn.metadata?.email as string);
+                                        const email = googleConn.accountLabel || googleConn?.sync?.email || (googleConn.metadata?.email as string);
                                         if (email) {
                                             addLog('Refreshing Google credentials for enrichment...', 'info', { source: 'system' });
                                             const freshToken = await refreshGoogleToken(email);
@@ -2097,6 +2155,85 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
             return '';
         }
     }, [pages]);
+
+    const activeCheckIds = useMemo(() => getActiveCheckIds(auditFilter), [auditFilter]);
+    const activeCheckCategories = useMemo(() => getActiveCategoryTreeIds(auditFilter), [auditFilter]);
+
+    const filteredIssuePages = useMemo(() => {
+        const isFullAudit = auditFilter.modes.includes('full') && auditFilter.industry === 'all';
+
+        return SEO_ISSUES_TAXONOMY
+            .map((group) => ({
+                ...group,
+                issues: group.issues.filter((issue: any) => {
+                    const checkId = resolveIssueCheckId(issue.id, issue.checkId);
+                    if (isFullAudit) return true;
+                    if (!checkId) return true;
+                    return activeCheckIds.has(checkId);
+                })
+            }))
+            .filter((group) => group.issues.length > 0);
+    }, [activeCheckIds, auditFilter.industry, auditFilter.modes]);
+
+    const applyAuditMode = useCallback((modes: AuditMode[], industry: IndustryFilter) => {
+        const normalizedModes: AuditMode[] = modes.length > 0 ? modes : ['full'];
+        setAuditFilter((previous) => ({ ...previous, modes: normalizedModes, industry }));
+        setLeftSidebarPreset(null);
+        setActiveMacro(null);
+    }, []);
+
+    const saveCustomPreset = useCallback((name: string, modes: AuditMode[], industry: IndustryFilter) => {
+        const preset: CustomAuditPreset = {
+            id: `preset-${Date.now()}`,
+            name,
+            modes: modes.length > 0 ? modes : ['full'],
+            industry,
+            enabledCheckOverrides: auditFilter.customOverrides?.enabled || [],
+            disabledCheckOverrides: auditFilter.customOverrides?.disabled || [],
+            columnPreset: visibleColumns,
+            createdAt: Date.now()
+        };
+
+        const next = saveLocalPreset(preset);
+        setCustomPresets(next);
+    }, [auditFilter.customOverrides, visibleColumns]);
+
+    const loadCustomPreset = useCallback((preset: CustomAuditPreset) => {
+        setAuditFilter({
+            modes: preset.modes.length > 0 ? preset.modes : ['full'],
+            industry: preset.industry,
+            customOverrides: {
+                enabled: preset.enabledCheckOverrides || [],
+                disabled: preset.disabledCheckOverrides || []
+            }
+        });
+
+        if (Array.isArray(preset.columnPreset) && preset.columnPreset.length > 0) {
+            setVisibleColumns(preset.columnPreset);
+        }
+    }, []);
+
+    useEffect(() => {
+        const primaryMode = auditFilter.modes[0];
+        if (!primaryMode) return;
+
+        const modeConfig = AUDIT_MODES.find((mode) => mode.id === primaryMode);
+        if (!modeConfig || modeConfig.defaultColumns.length === 0) return;
+
+        const validColumns = new Set(ALL_COLUMNS.map((column) => column.key));
+        const nextColumns = modeConfig.defaultColumns.filter((column) => validColumns.has(column));
+        if (nextColumns.length > 0) {
+            setVisibleColumns(nextColumns);
+        }
+    }, [auditFilter.modes]);
+
+    useEffect(() => {
+        if (!activeMacro || activeMacro === 'all') return;
+        const exists = filteredIssuePages.some((group) => group.issues.some((issue: any) => issue.id === activeMacro));
+        if (!exists) {
+            setActiveMacro(null);
+        }
+    }, [activeMacro, filteredIssuePages]);
 
     const duplicateTitleSet = useMemo(() => {
         const map = new Map();
@@ -2277,7 +2414,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
                 list = list.filter(MACRO_FILTERS[activeMacro]);
             } else if (activeMacro !== 'all') {
                 let issueCondition: ((page: any) => boolean) | null = null;
-                for (const issueGroup of SEO_ISSUES_TAXONOMY) {
+                for (const issueGroup of filteredIssuePages) {
                     const issue = issueGroup.issues.find((entry) => entry.id === activeMacro);
                     if (issue) {
                         issueCondition = issue.condition;
@@ -2317,7 +2454,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         }
 
         return list;
-    }, [pagesWithDerivedSignals, activeCategories, deferredSearchQuery, activeMacro, sortConfig, MACRO_FILTERS, ignoredUrls, rootHostname]);
+    }, [pagesWithDerivedSignals, activeCategories, deferredSearchQuery, activeMacro, sortConfig, MACRO_FILTERS, ignoredUrls, rootHostname, filteredIssuePages]);
 
     const handleImport = async (file: File) => {
         try {
@@ -2519,14 +2656,34 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
 
     const healthScore = useMemo(() => {
         if (analysisPages.length === 0) return { score: 0, grade: '--' };
-        const raw = Math.max(0, Math.min(100, 100 - (stats.broken * 5) - (stats.missingTitles * 2) - (stats.serverErrors * 10) - (stats.missingMetaDesc * 1) - (stats.slowPages * 3) - (stats.nonIndexable * 1)));
+
+        const isIssueEnabled = (issueId: string) => {
+            const checkId = ISSUE_TO_CHECK_MAP[issueId] || issueId;
+            return activeCheckIds.has(checkId);
+        };
+
+        const brokenPenalty = (isIssueEnabled('404') || isIssueEnabled('500')) ? (stats.broken * 5) : 0;
+        const serverPenalty = isIssueEnabled('500') ? (stats.serverErrors * 10) : 0;
+        const titlePenalty = isIssueEnabled('title_missing') ? (stats.missingTitles * 2) : 0;
+        const metaPenalty = isIssueEnabled('meta_missing') ? (stats.missingMetaDesc * 1) : 0;
+        const speedPenalty = isIssueEnabled('slow_response') ? (stats.slowPages * 3) : 0;
+        const indexPenalty = (isIssueEnabled('noindex') || isIssueEnabled('blocked_robots')) ? (stats.nonIndexable * 1) : 0;
+
+        const raw = Math.max(
+            0,
+            Math.min(
+                100,
+                100 - brokenPenalty - serverPenalty - titlePenalty - metaPenalty - speedPenalty - indexPenalty
+            )
+        );
+
         let grade = 'F';
         if (raw >= 90) grade = 'A';
         else if (raw >= 80) grade = 'B';
         else if (raw >= 65) grade = 'C';
         else if (raw >= 50) grade = 'D';
         return { score: raw, grade };
-    }, [analysisPages.length, stats]);
+    }, [analysisPages.length, stats, activeCheckIds]);
 
     const persistSessionCheckpoint = useCallback(async (
         statusOverride?: 'running' | 'completed' | 'paused' | 'failed',
@@ -2560,14 +2717,16 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
             urlTags,
             columnWidths,
             robotsTxt,
-            sitemapData
+            sitemapData,
+            auditModes: auditFilter.modes,
+            industryFilter: auditFilter.industry
         };
 
         await saveSession(session);
         if (options?.includePages !== false) {
             await upsertPages(sessionId, pagesRef.current);
         }
-    }, [crawlingMode, listUrls, urlInput, crawlStartTime, stats.totalIssues, healthScore.score, healthScore.grade, config, isCrawling, crawlRuntime, ignoredUrls, urlTags, columnWidths, robotsTxt, sitemapData]);
+    }, [crawlingMode, listUrls, urlInput, crawlStartTime, stats.totalIssues, healthScore.score, healthScore.grade, config, isCrawling, crawlRuntime, ignoredUrls, urlTags, columnWidths, robotsTxt, sitemapData, auditFilter.industry, auditFilter.modes]);
 
     // Periodic checkpoint during crawl — save metadata every 1.5s, pages every 30s
     const lastPagesCheckpointRef = useRef<number>(0);
@@ -2618,8 +2777,13 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
     const auditInsights = useMemo(() => {
         if (analysisPages.length === 0) return [];
         const insights: any[] = [];
+
+        const isIssueEnabled = (issueId: string) => {
+            const checkId = ISSUE_TO_CHECK_MAP[issueId] || issueId;
+            return activeCheckIds.has(checkId);
+        };
         
-        if (stats.broken > 0) {
+        if (stats.broken > 0 && (isIssueEnabled('404') || isIssueEnabled('500'))) {
             insights.push({
                 id: 'broken',
                 track: 'Technical',
@@ -2631,7 +2795,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
             });
         }
         
-        if (stats.missingTitles > 0) {
+        if (stats.missingTitles > 0 && isIssueEnabled('title_missing')) {
             insights.push({
                 id: 'missingTitles',
                 track: 'Content',
@@ -2643,7 +2807,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
             });
         }
 
-        if (stats.slowPages > 0) {
+        if (stats.slowPages > 0 && isIssueEnabled('slow_response')) {
             insights.push({
                 id: 'slow',
                 track: 'Performance',
@@ -2655,7 +2819,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
             });
         }
 
-        if (stats.nonIndexable > 0) {
+        if (stats.nonIndexable > 0 && (isIssueEnabled('noindex') || isIssueEnabled('blocked_robots'))) {
             insights.push({
                 id: 'nonIndexable',
                 track: 'Indexability',
@@ -2667,7 +2831,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
             });
         }
 
-        if (stats.missingMetaDesc > 0) {
+        if (stats.missingMetaDesc > 0 && isIssueEnabled('meta_missing')) {
             insights.push({
                 id: 'missingMetaDesc',
                 track: 'Content',
@@ -2683,7 +2847,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
             const impactOrder: any = { 'High': 3, 'Medium': 2, 'Low': 1 };
             return impactOrder[b.impact] - impactOrder[a.impact];
         });
-    }, [analysisPages.length, stats]);
+    }, [analysisPages.length, stats, activeCheckIds]);
 
     const strategicOpportunities = useMemo(() => {
         if (pagesWithDerivedSignals.length === 0) return [];
@@ -2841,6 +3005,12 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
                     entryUrls
                 );
                 setConfig(sess.config || config);
+                setAuditFilter({
+                    modes: Array.isArray(sess.auditModes) && sess.auditModes.length > 0
+                        ? (sess.auditModes as AuditMode[])
+                        : ['full'],
+                    industry: (sess.industryFilter as IndustryFilter) || 'all'
+                });
                 setIgnoredUrls(new Set(sess.ignoredUrls || []));
                 setUrlTags(sess.urlTags || {});
                 setColumnWidths(sess.columnWidths || {});
@@ -3260,7 +3430,10 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         isCrawling, setIsCrawling, pages: pagesWithDerivedSignals, logs, setLogs, crawlStartTime, setCrawlStartTime,
         crawlDb,
         activeCategories, setActiveCategories,
-        activeCategory, setActiveCategory, openCategories, setOpenCategories, searchQuery, setSearchQuery,
+        activeCategory, setActiveCategory,
+        auditFilter, activeCheckIds, activeCheckCategories, filteredIssuePages,
+        customPresets, applyAuditMode, saveCustomPreset, loadCustomPreset,
+        openCategories, setOpenCategories, searchQuery, setSearchQuery,
         selectedPage, setSelectedPage, activeTab, setActiveTab, inspectorCollapsed, setInspectorCollapsed, showAuditSidebar, setShowAuditSidebar,
         activeAuditTab, setActiveAuditTab, showSettings, setShowSettings, activeMacro, setActiveMacro,
         sortConfig, setSortConfig, showColumnPicker, setShowColumnPicker, visibleColumns, setVisibleColumns,
@@ -3275,6 +3448,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         isFixing, setIsFixing, autoFixProgress, setAutoFixProgress, stats, setStats, columns, config, setConfig, settingsTab, setSettingsTab,
         theme, setTheme, integrationConnections, integrationsLoading, integrationsSource, saveIntegrationConnection, removeIntegrationConnection, wsRef, addLog, toggleCategory, handleStartPause,
         clearCrawlerWorkspace,
+        showTrialLimitAlert, setShowTrialLimitAlert,
         dynamicClusters, categoryCounts, healthScore, auditInsights, strategicOpportunities, crawlRate, crawlRuntime, elapsedTime, setElapsedTime,
         formatBytes, handleExport, handleExportRawDB, handleImport, filteredPages, handleSort, graphData, handleNodeClick,
         crawlHistory, currentSessionId, compareSessionId, diffResult, isLoadingHistory,

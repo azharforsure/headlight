@@ -5,7 +5,6 @@ import {
     RefreshCw, BarChart3, FileText, Map as MapIcon, Globe
 } from 'lucide-react';
 import { useSeoCrawler } from '../../contexts/SeoCrawlerContext';
-import { SEO_ISSUES_TAXONOMY } from './constants';
 
 export default function AuditSidebar() {
     const {
@@ -25,7 +24,8 @@ export default function AuditSidebar() {
         sidebarCollapsed, setSidebarCollapsed,
         auditInsights,
         strategicOpportunities,
-        robotsTxt, sitemapData
+        robotsTxt, sitemapData,
+        filteredIssuePages
     } = useSeoCrawler();
 
     const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null);
@@ -35,7 +35,7 @@ export default function AuditSidebar() {
     );
 
     const issueGroups = useMemo(() => {
-        return SEO_ISSUES_TAXONOMY.map((group) => {
+        return filteredIssuePages.map((group) => {
             const issues = group.issues
                 .map((issue) => ({
                     ...issue,
@@ -45,7 +45,7 @@ export default function AuditSidebar() {
 
             return { ...group, issues };
         }).filter((group) => group.issues.length > 0);
-    }, [pages]);
+    }, [pages, filteredIssuePages]);
 
     const totalIssueCount = useMemo(() => {
         return issueGroups.reduce((sum, group) => {

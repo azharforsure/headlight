@@ -5,6 +5,8 @@ import {
     Keyboard, Database, Sparkles
 } from 'lucide-react';
 import { useSeoCrawler } from '../../contexts/SeoCrawlerContext';
+import AuditModeSelector from './AuditModeSelector';
+import { AUDIT_MODES, INDUSTRY_FILTERS } from '../../services/AuditModeConfig';
 
 export default function CrawlerHeader() {
     const {
@@ -23,15 +25,23 @@ export default function CrawlerHeader() {
         integrationConnections,
         integrationsSource,
         runFullEnrichment,
-        runIncrementalEnrichment
+        runIncrementalEnrichment,
+        auditFilter, applyAuditMode, saveCustomPreset
     } = useSeoCrawler();
 
     const [showShortcuts, setShowShortcuts] = useState(false);
+    const [showModeSelector, setShowModeSelector] = useState(false);
     const isPausedSession = !isCrawling && crawlRuntime.stage === 'paused' && pages.length > 0;
     const isActiveSession = isCrawling || crawlRuntime.stage === 'crawling' || crawlRuntime.stage === 'connecting';
     const crawlButtonLabel = isActiveSession ? 'Pause Scan' : isPausedSession ? 'Resume Scan' : 'Start Scan';
     const connectedIntegrations = Object.values(integrationConnections).filter(Boolean);
     const showNoIntegrationsState = integrationsSource === 'project' && connectedIntegrations.length === 0;
+    const currentModeLabel = auditFilter.modes.includes('full')
+        ? 'Full Audit'
+        : auditFilter.modes
+            .map((modeId) => AUDIT_MODES.find((mode) => mode.id === modeId)?.label || modeId)
+            .join(' + ');
+    const currentIndustryLabel = INDUSTRY_FILTERS.find((industry) => industry.id === auditFilter.industry)?.label || 'All Industries';
 
     return (
         <header className="h-[52px] border-b border-[#222] bg-[#141414] flex items-center px-4 justify-between shrink-0 relative z-40">
@@ -65,6 +75,23 @@ export default function CrawlerHeader() {
                             <m.icon size={12}/> {m.label}
                         </button>
                     ))}
+                </div>
+
+                <div className="hidden xl:flex items-center gap-2">
+                    <button
+                        onClick={() => setShowModeSelector(true)}
+                        className="px-2.5 py-1 bg-[#0f0f0f] border border-[#222] rounded text-[11px] text-[#ccc] hover:border-[#333] hover:text-white transition-colors"
+                    >
+                        Mode: {currentModeLabel}
+                        <span className="text-[#555] ml-1">▾</span>
+                    </button>
+                    <button
+                        onClick={() => setShowModeSelector(true)}
+                        className="px-2.5 py-1 bg-[#0f0f0f] border border-[#222] rounded text-[11px] text-[#ccc] hover:border-[#333] hover:text-white transition-colors"
+                    >
+                        Industry: {currentIndustryLabel}
+                        <span className="text-[#555] ml-1">▾</span>
+                    </button>
                 </div>
 
 
@@ -211,6 +238,15 @@ export default function CrawlerHeader() {
                     </button>
                 )}
             </div>
+
+            <AuditModeSelector
+                isOpen={showModeSelector}
+                onClose={() => setShowModeSelector(false)}
+                currentModes={auditFilter.modes}
+                currentIndustry={auditFilter.industry}
+                onApply={applyAuditMode}
+                onSavePreset={saveCustomPreset}
+            />
         </header>
     );
 }

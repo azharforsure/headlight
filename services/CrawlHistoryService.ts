@@ -38,6 +38,8 @@ export interface CrawlSession {
     columnWidths?: Record<string, number>;
     robotsTxt?: { raw: string; sitemaps: string[]; crawlDelay: number } | null;
     sitemapData?: { totalUrls: number; sources: string[]; coverageParsed?: boolean } | null;
+    auditModes?: string[];
+    industryFilter?: string;
 }
 
 export interface CrawlPageSnapshot {
@@ -105,8 +107,15 @@ async function syncSessionToCloud(session: CrawlSession) {
     if (!isCloudSyncEnabled) return;
     try {
         await turso().execute({
-            sql: `INSERT OR REPLACE INTO crawl_sessions (id, url, status, metadata) VALUES (?, ?, ?, ?)`,
-            args: [session.id, session.url, session.status, JSON.stringify(session)]
+            sql: `INSERT OR REPLACE INTO crawl_sessions (id, url, status, metadata, audit_modes, industry_filter) VALUES (?, ?, ?, ?, ?, ?)`,
+            args: [
+                session.id,
+                session.url,
+                session.status,
+                JSON.stringify(session),
+                JSON.stringify(session.auditModes || []),
+                session.industryFilter || null
+            ]
         });
     } catch (err) {
         console.warn('Cloud sync failed (offline?):', err);
