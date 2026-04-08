@@ -47,6 +47,19 @@ import { GoogleSelectionResolver, EffectiveGoogleSelection } from '../services/g
 import { UrlNormalization } from '../services/UrlNormalization';
 import { refreshWithLock } from '../services/TokenRefreshLock';
 
+export type InspectorTab =
+    | 'general'
+    | 'seo'
+    | 'content'
+    | 'links'
+    | 'schema'
+    | 'performance'
+    | 'images'
+    | 'social'
+    | 'gsc'
+    | 'ga4'
+    | 'ai';
+
 export interface CrawlerContextType {
     crawlingMode: 'spider' | 'list' | 'sitemap';
     setCrawlingMode: (m: 'spider' | 'list' | 'sitemap') => void;
@@ -73,8 +86,10 @@ export interface CrawlerContextType {
     setSearchQuery: (s: string) => void;
     selectedPage: any | null;
     setSelectedPage: (p: any | null) => void;
-    activeTab: string;
-    setActiveTab: (t: string) => void;
+    activeTab: InspectorTab;
+    setActiveTab: (t: InspectorTab) => void;
+    inspectorCollapsed: boolean;
+    setInspectorCollapsed: (c: boolean) => void;
     showAuditSidebar: boolean;
     setShowAuditSidebar: (s: boolean) => void;
     activeAuditTab: 'overview' | 'issues' | 'opportunities' | 'history' | 'logs' | 'robots' | 'sitemap';
@@ -529,7 +544,8 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
     const [openCategories, setOpenCategories] = useState<string[]>(() => CATEGORIES.map((category) => category.id));
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedPage, setSelectedPage] = useState<any | null>(null);
-    const [activeTab, setActiveTab] = useState('details'); // used by PageDetails
+    const [activeTab, setActiveTab] = useState<InspectorTab>('general');
+    const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
     const [showAuditSidebar, setShowAuditSidebar] = useState(false); 
     const [activeAuditTab, setActiveAuditTab] = useState<'overview' | 'issues' | 'opportunities' | 'history' | 'logs' | 'robots' | 'sitemap'>('overview');
     const [showSettings, setShowSettings] = useState(false);
@@ -3245,7 +3261,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         crawlDb,
         activeCategories, setActiveCategories,
         activeCategory, setActiveCategory, openCategories, setOpenCategories, searchQuery, setSearchQuery,
-        selectedPage, setSelectedPage, activeTab, setActiveTab, showAuditSidebar, setShowAuditSidebar,
+        selectedPage, setSelectedPage, activeTab, setActiveTab, inspectorCollapsed, setInspectorCollapsed, showAuditSidebar, setShowAuditSidebar,
         activeAuditTab, setActiveAuditTab, showSettings, setShowSettings, activeMacro, setActiveMacro,
         sortConfig, setSortConfig, showColumnPicker, setShowColumnPicker, visibleColumns, setVisibleColumns,
         viewMode, setViewMode, showAiInsights, setShowAiInsights, graphDimensions, setGraphDimensions,

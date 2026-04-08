@@ -5,7 +5,8 @@ import {
 } from 'lucide-react';
 import { useSeoCrawler } from '../../contexts/SeoCrawlerContext';
 import { ALL_COLUMNS, formatBytes } from './constants';
-import PageDetails from './PageDetails';
+import InspectorShell from './inspector/InspectorShell';
+import FullDetailDrawer from './inspector/FullDetailDrawer';
 
 const ForceGraph3D = lazy(() => import('react-force-graph-3d'));
 
@@ -47,6 +48,7 @@ export default function MainDataView() {
     )>(null);
     const architectureCanvasRef = useRef<HTMLDivElement | null>(null);
     const [showExportMenu, setShowExportMenu] = useState(false);
+    const [showFullDetailDrawer, setShowFullDetailDrawer] = useState(false);
     
     const {
         stats, activeMacro, setActiveMacro,
@@ -71,6 +73,12 @@ export default function MainDataView() {
         runSelectedEnrichment,
         integrationConnections
     } = useSeoCrawler();
+
+    useEffect(() => {
+        if (!selectedPage) {
+            setShowFullDetailDrawer(false);
+        }
+    }, [selectedPage]);
 
     const [SpriteText, setSpriteText] = useState<any>(null);
     const [THREE, setTHREE] = useState<any>(null);
@@ -1011,7 +1019,14 @@ export default function MainDataView() {
                                             return (
                                                 <tr 
                                                     key={i} 
-                                                    onClick={() => setSelectedPage(page)}
+                                                    onClick={() => {
+                                                        setSelectedPage(page);
+                                                        setShowFullDetailDrawer(false);
+                                                    }}
+                                                    onDoubleClick={() => {
+                                                        setSelectedPage(page);
+                                                        setShowFullDetailDrawer(true);
+                                                    }}
                                                     className={`cursor-default transition-none border-b border-[#1a1a1a] ${isSelected ? 'bg-[#1e2333] border-[#3a4466]' : 'hover:bg-[#141414]'}`}
                                                 >
                                     <td className={`py-1.5 px-1.5 text-center border-r border-[#222] sticky left-0 z-10 ${isSelected ? 'bg-[#1e2333]' : 'bg-[#111]'}`}>
@@ -1332,7 +1347,12 @@ export default function MainDataView() {
 
             {isMapWorkspaceOpen && renderMapView(true)}
 
-            <PageDetails />
+            <InspectorShell />
+            <FullDetailDrawer
+                page={selectedPage}
+                open={showFullDetailDrawer}
+                onClose={() => setShowFullDetailDrawer(false)}
+            />
         </main>
     );
 }
