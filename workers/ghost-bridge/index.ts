@@ -4,6 +4,8 @@ interface Env {
 	STRIPE_WEBHOOK_SECRET?: string;
 	CLERK_SECRET_KEY?: string;
 	CLERK_API_URL?: string;
+	TURSO_DATABASE_URL?: string;
+	TURSO_AUTH_TOKEN?: string;
 }
 
 type BillingCheckoutBody = {
@@ -95,6 +97,74 @@ const verifyClerkToken = async (request: Request, env: Env): Promise<AuthContext
 		email: payload?.response?.last_active_organization_id || undefined,
 		sessionId: payload?.response?.id || payload?.id || undefined
 	};
+};
+
+const queryTurso = async (env: Env, sql: string, args: any[] = []) => {
+	if (!env.TURSO_DATABASE_URL || !env.TURSO_AUTH_TOKEN) {
+		throw new Error('Turso is not configured on the Worker.');
+	}
+
+	const response = await fetch(`${env.TURSO_DATABASE_URL}/v2/pipeline`, {
+		method: 'POST',
+		headers: {
+			Authorization: `Bearer ${env.TURSO_AUTH_TOKEN}`,
+			'Content-Type': 'application/json'
+		},
+		body: JSON.stringify({
+			requests: [
+				{ type: 'execute', stmt: { sql, args: args.map(arg => {
+					if (typeof arg === 'string') return { type: 'text', value: arg };
+					if (typeof arg === 'number') return { type: 'integer', value: String(arg) };
+					if (arg === null) return { type: 'null' };
+					return { type: 'text', value: String(arg) };
+				}) } },
+				{ type: 'close' }
+			]
+		})
+	});
+
+	const payload = await response.json() as any;
+	if (!response.ok) {
+		throw new Error(payload?.error || 'Turso request failed.');
+	}
+
+	const result = payload?.results?.[0]?.response?.result;
+	if (!result) return { rows: [] };
+
+	const columns = result.cols.map((c: any) => c.name);
+	const rows = result.rows.map((row: any) => {
+		const obj: any = {};
+		row.forEach((cell: any, i: number) => {
+			obj[columns[i]] = cell.value;
+		});
+		return obj;
+	});
+
+	return { rows };
+};
+
+const handlePublicReport = async (request: Request, env: Env) => {
+	const { pathname } = new URL(request.url);
+	const shareToken = pathname.split('/api/report/')[1];
+	if (!shareToken) return json(request, { error: 'Missing share token.' }, 400);
+
+	try {
+		const result = await queryTurso(env, 'SELECT * FROM shared_reports WHERE share_token = ?', [shareToken]);
+		if (result.rows.length === 0) return json(request, { error: 'Report not found.' }, 404);
+
+		const report = result.rows[0];
+		if (!report.is_active) return json(request, { error: 'Report is revoked.' }, 403);
+		if (report.expires_at && new Date(report.expires_at) < new Date()) {
+			return json(request, { error: 'Report expired.' }, 410);
+		}
+
+		// Increment view count
+		await queryTurso(env, 'UPDATE shared_reports SET view_count = view_count + 1 WHERE id = ?', [report.id]);
+
+		return json(request, { report });
+	} catch (error: any) {
+		return json(request, { error: error.message }, 500);
+	}
 };
 
 const patchClerkMetadata = async (
@@ -370,6 +440,10 @@ export default {
 
 			if (pathname === '/api/webhooks/stripe' && request.method === 'POST') {
 				return await handleStripeWebhook(request, env);
+			}
+
+			if (pathname.startsWith('/api/report/') && request.method === 'GET') {
+				return await handlePublicReport(request, env);
 			}
 
 			return await handleGhostBridge(request);

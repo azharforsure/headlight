@@ -12,9 +12,11 @@ const Board = React.lazy(() => import('./pages/Board'));
 const Auth = React.lazy(() => import('./pages/Auth'));
 const SeoCrawler = React.lazy(() => import('./pages/SeoCrawler'));
 const TasksPage = React.lazy(() => import('./pages/Tasks'));
+const PublicReport = React.lazy(() => import('./pages/PublicReport').then(m => ({ default: m.PublicReport })));
 const GoogleOAuthCallback = React.lazy(() => import('./pages/oauth/google/callback'));
 import { AuthProvider, useAuth } from './services/AuthContext';
 import { ProjectProvider } from './services/ProjectContext';
+import { CrawlerManager } from './components/CrawlerManager';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
     const { session, loading } = useAuth();
@@ -33,6 +35,7 @@ const App: React.FC = () => {
         <GoogleOAuthProvider clientId={import.meta.env.VITE_GOOGLE_CLIENT_ID || 'placeholder-client-id'}>
             <AuthProvider>
                 <ProjectProvider>
+                    <CrawlerManager />
                     <BrowserRouter>
                         <React.Suspense fallback={<div className="h-screen bg-[#080808] text-white flex items-center justify-center">Loading...</div>}>
                             <Routes>
@@ -52,6 +55,7 @@ const App: React.FC = () => {
                                         <TasksPage />
                                     </ProtectedRoute>
                                 } />
+                                <Route path="/report/:shareToken" element={<PublicReport />} />
                                 <Route path="/oauth/google/callback" element={<GoogleOAuthCallback />} />
                                 <Route path="*" element={<Navigate to="/" replace />} />
                             </Routes>

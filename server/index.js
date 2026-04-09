@@ -370,8 +370,11 @@ wss.on('connection', (ws) => {
                     }
                 }
 
+                const strategy = payload.strategy || 'full';
                 const normalizedConfig = {
                     ...rawConfig,
+                    strategy,
+                    projectId: payload.projectId,
                     gscApiKey: rawConfig.gscApiKey || googleConfig.accessToken || '',
                     gscRefreshToken: rawConfig.gscRefreshToken || googleConfig.refreshToken || '',
                     gscSiteUrl: rawConfig.gscSiteUrl || googleConfig.gscSiteUrl || googleConfig.selection?.siteUrl || '',
@@ -379,6 +382,57 @@ wss.on('connection', (ws) => {
                     ga4PropertyId: rawConfig.ga4PropertyId || googleConfig.ga4PropertyId || googleConfig.selection?.propertyId || '',
                     bingAccessToken: rawConfig.bingAccessToken || bingConfig.accessToken || ''
                 };
+
+                // ── Strategy Pre-processing ──
+                if (payload.projectId) {
+                    if (strategy === 'priority') {
+                        try {
+                            const latestRun = await turso.execute({
+                                sql: `SELECT session_id FROM crawl_runs WHERE project_id = ? ORDER BY created_at DESC LIMIT 1`,
+                                args: [payload.projectId]
+                            });
+                            if (latestRun.rows.length > 0) {
+                                const sessionId = latestRun.rows[0].session_id;
+                                const topPages = await turso.execute({
+                                    sql: `SELECT url FROM crawl_pages WHERE session_id = ? AND (gsc_impressions > 1000 OR health_score < 60) LIMIT 50`,
+                                    args: [sessionId]
+                                });
+                                if (topPages.rows.length > 0) {
+                                    normalizedConfig.startUrls = topPages.rows.map(r => String(r.url));
+                                    normalizedConfig.mode = 'list'; // Only crawl these
+                                }
+                            }
+                        } catch (err) {
+                            console.error('Priority strategy failed:', err);
+                        }
+                    } else if (strategy === 'incremental') {
+                        try {
+                            const latestRun = await turso.execute({
+                                sql: `SELECT session_id FROM crawl_runs WHERE project_id = ? ORDER BY created_at DESC LIMIT 1`,
+                                args: [payload.projectId]
+                            });
+                            if (latestRun.rows.length > 0) {
+                                const sessionId = latestRun.rows[0].session_id;
+                                const previousPages = await turso.execute({
+                                    sql: `SELECT url, last_modified, etag FROM crawl_pages WHERE session_id = ?`,
+                                    args: [sessionId]
+                                });
+                                normalizedConfig.previousRunData = Object.fromEntries(
+                                    previousPages.rows.map(r => [r.url, { lastModified: r.last_modified, etag: r.etag }])
+                                );
+                            }
+                        } catch (err) {
+                            console.error('Incremental strategy data fetch failed:', err);
+                        }
+                    } else if (strategy === 'sitemap_diff') {
+                        // For simplicity, we'll mark it to be handled in runCrawler if needed
+                        // or just ensure we fetch sitemaps
+                    } else if (strategy === 'competitor_snapshot' && payload.competitorUrl) {
+                        normalizedConfig.startUrls = [payload.competitorUrl];
+                        normalizedConfig.limit = 20;
+                        normalizedConfig.maxDepth = 2;
+                    }
+                }
 
                 crawlerInstance = runCrawler(normalizedConfig, async (event, payload) => {
                     // ── NEW: Handle Token Refreshed from crawler ──

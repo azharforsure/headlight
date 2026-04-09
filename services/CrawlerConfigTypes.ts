@@ -139,6 +139,7 @@ export interface CrawlerConfig {
   exportOnCrawl: 'none' | 'csv' | 'json' | 'google-sheets';
   retentionSessions: number;
   autoBackupDestination: 'none' | 'google-drive' | 'r2' | 'github';
+  githubBackupRepo: string; // "owner/repo"
   
   // Computed (not persisted)
   _localStorageUsed?: number;

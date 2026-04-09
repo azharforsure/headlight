@@ -68,6 +68,8 @@ import { dispatchAlert, AlertPayload } from '../services/AlertDispatcher';
 import { getPageIssues } from '../components/seo-crawler/IssueTaxonomy';
 import type { PageAIResult } from '../services/ai/AIAnalysisEngine';
 import type { CrawlerConfig, SettingsTabId } from '../services/CrawlerConfigTypes';
+import { exportToGoogleDrive } from '../services/GoogleDriveExportService';
+import { exportToGitHub } from '../services/GitHubExportService';
 
 // Collaboration Services (P5)
 import { getTasks, createTask as createTaskService, updateTask as updateTaskService } from '../services/TaskService';
@@ -2247,6 +2249,31 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
                                     // 1. Save analyzed pages to local DB
                                     await crawlDb.pages.bulkPut(updated);
                                     addLog('Strategic analysis complete.', 'success', { source: 'analysis' });
+
+                                    // ── AUTO-BACKUP ──
+                                    if (config.autoBackupDestination !== 'none' && activeProject) {
+                                        const exportContent = JSON.stringify(updated);
+                                        const projectName = activeProject.name;
+                                        const sessionId = currentSessionIdRef.current;
+
+                                        try {
+                                            if (config.autoBackupDestination === 'google-drive') {
+                                                const googleToken = localStorage.getItem('headlight:google-token');
+                                                if (googleToken) {
+                                                    await exportToGoogleDrive(googleToken, { sessionId, projectName, content: exportContent });
+                                                    addLog('Auto-backup to Google Drive complete.', 'success', { source: 'system' });
+                                                }
+                                            } else if (config.autoBackupDestination === 'github' && config.githubBackupRepo) {
+                                                const githubToken = localStorage.getItem('headlight:github-token');
+                                                if (githubToken) {
+                                                    await exportToGitHub(githubToken, config.githubBackupRepo, { sessionId, projectName, content: exportContent });
+                                                    addLog('Auto-backup to GitHub complete.', 'success', { source: 'system' });
+                                                }
+                                            }
+                                        } catch (backupErr: any) {
+                                            addLog(`Auto-backup failed: ${backupErr.message}`, 'error', { source: 'system' });
+                                        }
+                                    }
 
                                     // 2. Enrichment
                                     const googleConn = integrationConnections.google;

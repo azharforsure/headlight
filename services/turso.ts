@@ -49,7 +49,9 @@ export async function initializeDatabase(): Promise<void> {
             url TEXT NOT NULL,
             status TEXT DEFAULT 'idle',
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            metadata TEXT
+            metadata TEXT,
+            audit_modes TEXT,
+            industry_filter TEXT
         )
     `);
 
@@ -66,7 +68,12 @@ export async function initializeDatabase(): Promise<void> {
             internal_pagerank REAL DEFAULT 0,
             health_score INTEGER DEFAULT 100,
             content_hash TEXT,
+            last_modified TEXT,
+            etag TEXT,
             metadata TEXT,
+            ssl_valid INTEGER,
+            dom_node_count INTEGER,
+            has_hsts INTEGER,
             FOREIGN KEY (session_id) REFERENCES crawl_sessions(id)
         )
     `);
@@ -357,6 +364,30 @@ export async function initializeDatabase(): Promise<void> {
         )
     `);
 
+    await client.execute(`
+        CREATE TABLE IF NOT EXISTS shared_reports (
+            id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            session_id TEXT NOT NULL,
+            share_token TEXT NOT NULL UNIQUE,
+            title TEXT NOT NULL,
+            created_by TEXT NOT NULL,
+            expires_at DATETIME,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            white_label INTEGER NOT NULL DEFAULT 0,
+            custom_logo_url TEXT,
+            custom_company_name TEXT,
+            include_sections_json TEXT NOT NULL DEFAULT '["summary","issues","performance","content","recommendations"]',
+            password_hash TEXT,
+            view_count INTEGER NOT NULL DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    `);
+
+    await client.execute(`
+        CREATE INDEX IF NOT EXISTS idx_shared_reports_token ON shared_reports(share_token);
+    `);
+
     // ─── Schema Migrations (Add missing columns to existing tables) ───
     const migrate = async (sql: string) => {
         try {
@@ -384,4 +415,6 @@ export async function initializeDatabase(): Promise<void> {
     await migrate('ALTER TABLE crawl_pages ADD COLUMN ssl_valid INTEGER');
     await migrate('ALTER TABLE crawl_pages ADD COLUMN dom_node_count INTEGER');
     await migrate('ALTER TABLE crawl_pages ADD COLUMN has_hsts INTEGER');
+    await migrate('ALTER TABLE crawl_pages ADD COLUMN last_modified TEXT');
+    await migrate('ALTER TABLE crawl_pages ADD COLUMN etag TEXT');
 }
