@@ -1,6 +1,7 @@
 import React, { ChangeEvent, useMemo, useRef, useState } from 'react';
 import { FileText, Globe, ListPlus, Play, Search, Sparkles, Upload } from 'lucide-react';
 import { useSeoCrawler } from '../../contexts/SeoCrawlerContext';
+import { useCrawlerUI } from '../../contexts/CrawlerUIContext';
 import { AUDIT_MODES, INDUSTRY_FILTERS } from '../../services/AuditModeConfig';
 import type { AuditMode, IndustryFilter } from '../../services/CheckRegistry';
 
@@ -41,12 +42,15 @@ export default function CrawlerEmptyState() {
         config,
         setConfig,
         applyAuditMode,
-        setShowSettings,
-        setSettingsTab,
-        setShowListModal,
         handleImport,
         addLog
     } = useSeoCrawler();
+
+    const {
+        setShowSettings,
+        setSettingsTab,
+        setShowListModal,
+    } = useCrawlerUI();
 
     const sitemapInputRef = useRef<HTMLInputElement | null>(null);
     const csvInputRef = useRef<HTMLInputElement | null>(null);

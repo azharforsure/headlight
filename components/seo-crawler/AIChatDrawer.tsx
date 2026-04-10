@@ -1,10 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { X, Send, Sparkles, AlertCircle } from 'lucide-react';
 import { useSeoCrawler } from '../../contexts/SeoCrawlerContext';
+import { useCrawlerUI } from '../../contexts/CrawlerUIContext';
 import { ChatContextBuilder } from '../../services/ai/ChatContextBuilder';
 
 export default function AIChatDrawer({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
-    const { pages, stats, healthScore, config, selectedPage, setSelectedPage } = useSeoCrawler();
+    const { pages, stats, healthScore, config } = useSeoCrawler();
+    const { selectedPage, setSelectedPage } = useCrawlerUI();
     const [messages, setMessages] = useState<Array<{role: 'user' | 'ai', content: string}>>([]);
     const [input, setInput] = useState('');
     const [isTyping, setIsTyping] = useState(false);

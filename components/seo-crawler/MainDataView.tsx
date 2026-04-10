@@ -5,6 +5,7 @@ import {
     MessageSquare, CheckSquare, BarChart3
 } from 'lucide-react';
 import { useSeoCrawler } from '../../contexts/SeoCrawlerContext';
+import { useCrawlerUI } from '../../contexts/CrawlerUIContext';
 import { ALL_COLUMNS, formatBytes } from './constants';
 import InspectorShell from './inspector/InspectorShell';
 import FullDetailDrawer from './inspector/FullDetailDrawer';
@@ -63,29 +64,31 @@ export default function MainDataView() {
     
     const {
         stats, activeMacro, setActiveMacro,
+        pages, filteredPages, isCrawling,
+        graphContainerRef, graphDimensions, fgRef, graphData,
+        columns, handleSort, sortConfig,
+        ignoredUrls, setIgnoredUrls, urlTags, setUrlTags,
+        handleExport,
+        handleExportRawDB,
+        handleNodeClick,
+        runSelectedEnrichment,
+        integrationConnections,
+    } = useSeoCrawler();
+
+    const {
         showColumnPicker, setShowColumnPicker,
         visibleColumns, setVisibleColumns,
         viewMode, setViewMode,
         searchQuery, setSearchQuery,
-        crawlRuntime,
-        pages, filteredPages, isCrawling,
-        graphContainerRef, graphDimensions, fgRef, graphData,
         selectedRows, setSelectedRows,
-        columns, handleSort, sortConfig,
         selectedPage, setSelectedPage,
-        ignoredUrls, setIgnoredUrls, urlTags, setUrlTags,
         columnWidths, setColumnWidths,
         gridScrollOffset, setGridScrollOffset,
         setAutoFixItems, setShowAutoFixModal,
-        handleExport,
-        handleExportRawDB,
         setShowExportDialog,
-        handleNodeClick,
         showTrialLimitAlert, setShowTrialLimitAlert,
-        runSelectedEnrichment,
-        integrationConnections,
-        setShowCollabOverlay, setCollabOverlayTarget
-    } = useSeoCrawler();
+        setShowCollabOverlay, setCollabOverlayTarget,
+    } = useCrawlerUI();
 
     const isCompactLayout = isMobile || isTablet;
     const displayColumns = useMemo(

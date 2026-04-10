@@ -1,6 +1,7 @@
 import React, { ChangeEvent, useMemo, useState } from 'react';
 import { Download, ExternalLink, Loader2, X } from 'lucide-react';
 import { useSeoCrawler } from '../../contexts/SeoCrawlerContext';
+import { useCrawlerUI } from '../../contexts/CrawlerUIContext';
 import { useOptionalProject } from '../../services/ProjectContext';
 import { getCrawlerIntegrationSecret, getCrawlerSecretScope } from '../../services/CrawlerSecretVault';
 import { refreshWithLock } from '../../services/TokenRefreshLock';
@@ -35,8 +36,6 @@ export default function ExportDialog({ onClose }: ExportDialogProps) {
     const {
         pages,
         filteredPages,
-        visibleColumns,
-        selectedRows,
         stats,
         healthScore,
         auditInsights,
@@ -46,6 +45,11 @@ export default function ExportDialog({ onClose }: ExportDialogProps) {
         integrationConnections,
         addLog
     } = useSeoCrawler();
+
+    const {
+        visibleColumns,
+        selectedRows,
+    } = useCrawlerUI();
 
     const [format, setFormat] = useState<ExportFormat>('csv');
     const [scope, setScope] = useState<ExportScope>('all');

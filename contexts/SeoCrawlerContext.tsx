@@ -78,24 +78,7 @@ import { getMembers } from '../services/TeamService';
 import { getComments, createComment as createCommentService } from '../services/CollaborationService';
 import type { CrawlTask, CommentTargetType, ProjectMember } from '../services/app-types';
 
-export type InspectorTab =
-    | 'general'
-    | 'seo'
-    | 'content'
-    | 'links'
-    | 'schema'
-    | 'performance'
-    | 'images'
-    | 'social'
-    | 'gsc'
-    | 'ga4'
-    | 'ai'
-    | 'details'
-    | 'headers'
-    | 'serp'
-    | 'source'
-    | 'jsdiff'
-    | 'visual';
+export { type InspectorTab, type AuditTabId, type ViewMode } from './CrawlerUIContext';
 
 type RobotsTxtState = {
     raw: string;
@@ -120,8 +103,7 @@ export interface CrawlerContextType {
     setUrlInput: (u: string) => void;
     listUrls: string;
     setListUrls: (u: string) => void;
-    showListModal: boolean;
-    setShowListModal: (s: boolean) => void;
+
     isCrawling: boolean;
     setIsCrawling: (s: boolean) => void;
     pages: any[];
@@ -141,28 +123,16 @@ export interface CrawlerContextType {
     applyAuditMode: (modes: AuditMode[], industry: IndustryFilter) => void;
     saveCustomPreset: (name: string, modes: AuditMode[], industry: IndustryFilter) => void;
     loadCustomPreset: (preset: CustomAuditPreset) => void;
-    openCategories: string[];
-    setOpenCategories: (c: string[]) => void;
+
     searchQuery: string;
     setSearchQuery: (s: string) => void;
-    selectedPage: any | null;
-    setSelectedPage: (p: any | null) => void;
-    activeTab: InspectorTab;
-    setActiveTab: (t: InspectorTab) => void;
-    inspectorCollapsed: boolean;
-    setInspectorCollapsed: (c: boolean) => void;
-    showAuditSidebar: boolean;
-    setShowAuditSidebar: (s: boolean) => void;
-    activeAuditTab: 'overview' | 'issues' | 'opportunities' | 'geo' | 'tasks' | 'comments' | 'ai' | 'monitor' | 'migration' | 'history' | 'logs' | 'robots' | 'sitemap' | 'visual';
-    setActiveAuditTab: (t: 'overview' | 'issues' | 'opportunities' | 'geo' | 'tasks' | 'comments' | 'ai' | 'monitor' | 'migration' | 'history' | 'logs' | 'robots' | 'sitemap' | 'visual') => void;
-    showSettings: boolean;
-    setShowSettings: (s: boolean) => void;
+
+
     activeMacro: string | null;
     setActiveMacro: (m: string | null) => void;
     sortConfig: { key: string; direction: 'asc' | 'desc' } | null;
     setSortConfig: (c: { key: string; direction: 'asc' | 'desc' } | null) => void;
-    showColumnPicker: boolean;
-    setShowColumnPicker: (s: boolean) => void;
+
     visibleColumns: string[];
     setVisibleColumns: React.Dispatch<React.SetStateAction<string[]>>;
     viewMode: 'grid' | 'map' | 'charts';
@@ -178,43 +148,14 @@ export interface CrawlerContextType {
     categorySearch: string;
     setCategorySearch: (s: string) => void;
     leftSidebarPreset: string | null;
-    setLeftSidebarPreset: (p: string | null) => void;
-    logSearch: string;
-    setLogSearch: (s: string) => void;
-    logTypeFilter: 'all' | 'info' | 'warn' | 'error' | 'success';
-    setLogTypeFilter: (f: 'all' | 'info' | 'warn' | 'error' | 'success') => void;
-    selectedRows: Set<string>;
-    setSelectedRows: (s: Set<string>) => void;
-    gridScrollTop: number;
-    setGridScrollTop: (t: number) => void;
-    ROW_HEIGHT: number;
-    VISIBLE_BUFFER: number;
-    leftSidebarWidth: number;
-    setLeftSidebarWidth: (w: number) => void;
-    auditSidebarWidth: number;
-    setAuditSidebarWidth: (w: number) => void;
+
+
     crawlDb: typeof crawlDb;
     runFullEnrichment: () => Promise<void>;
     runIncrementalEnrichment: () => Promise<void>;
     runSelectedEnrichment: (urls: string[]) => Promise<void>;
-    detailsHeight: number;
-    setDetailsHeight: (h: number) => void;
-    gridScrollOffset: number;
-    setGridScrollOffset: (o: number) => void;
-    isDraggingLeftSidebar: boolean;
-    setIsDraggingLeftSidebar: (d: boolean) => void;
-    isDraggingSidebar: boolean;
-    setIsDraggingSidebar: (d: boolean) => void;
-    isDraggingDetails: boolean;
-    setIsDraggingDetails: (d: boolean) => void;
-    showAutoFixModal: boolean;
-    setShowAutoFixModal: (s: boolean) => void;
-    autoFixItems: any[];
-    setAutoFixItems: React.Dispatch<React.SetStateAction<any[]>>;
-    isFixing: boolean;
-    setIsFixing: (f: boolean) => void;
-    autoFixProgress: number;
-    setAutoFixProgress: (p: number) => void;
+
+
     stats: any;
     setStats: (s: any) => void;
     dynamicClusters: string[];
@@ -253,10 +194,7 @@ export interface CrawlerContextType {
     currentSessionId: string | null;
     compareSessionId: string | null;
     diffResult: any | null;
-    showComparisonView: boolean;
-    setShowComparisonView: React.Dispatch<React.SetStateAction<boolean>>;
-    showExportDialog: boolean;
-    setShowExportDialog: React.Dispatch<React.SetStateAction<boolean>>;
+
     isLoadingHistory: boolean;
     saveCrawlSession: (status?: 'completed' | 'paused' | 'failed') => Promise<void>;
     loadSession: (id: string) => Promise<void>;
@@ -287,10 +225,8 @@ export interface CrawlerContextType {
     columns: any[];
     config: any;
     setConfig: (c: any) => void;
-    settingsTab: string;
-    setSettingsTab: React.Dispatch<React.SetStateAction<string>>;
-    theme: string;
-    setTheme: React.Dispatch<React.SetStateAction<string>>;
+
+
     integrationConnections: Partial<Record<CrawlerIntegrationProvider, CrawlerIntegrationConnection>>;
     integrationsLoading: boolean;
     integrationsSource: 'anonymous' | 'project' | 'project-cache' | 'none';
@@ -301,8 +237,7 @@ export interface CrawlerContextType {
     toggleCategory: (c: string) => void;
     handleStartPause: (forceResume?: boolean) => void;
     clearCrawlerWorkspace: () => void;
-    showTrialLimitAlert: boolean;
-    setShowTrialLimitAlert: (s: boolean) => void;
+    registerUIReset: (fn: () => void) => void;
 
     // AI Layer
     aiResults: Map<string, PageAIResult>;
@@ -315,12 +250,7 @@ export interface CrawlerContextType {
     tasks: CrawlTask[];
     setTasks: React.Dispatch<React.SetStateAction<CrawlTask[]>>;
     teamMembers: ProjectMember[];
-    showCollabOverlay: boolean;
-    setShowCollabOverlay: (s: boolean) => void;
-    collabOverlayTarget: { type: CommentTargetType, id: string, title: string } | null;
-    setCollabOverlayTarget: (t: { type: CommentTargetType, id: string, title: string } | null) => void;
-    activeCommentTarget: { type: CommentTargetType, id: string } | null;
-    setActiveCommentTarget: (t: { type: CommentTargetType, id: string } | null) => void;
+
     exportSubset: (category: { group: string; sub: string; condition?: (p: any) => boolean }) => void;
     createTaskForCategory: (category: { group: string; sub: string; condition?: (p: any) => boolean }) => Promise<void>;
     bulkAIAnalyzeCategory: (category: { group: string; sub: string; condition?: (p: any) => boolean }) => Promise<void>;
@@ -709,7 +639,12 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         return '';
     });
     const [listUrls, setListUrls] = useState<string>('');
-    const [showListModal, setShowListModal] = useState(false);
+    
+    // UI Bridge
+    const uiResetRef = useRef<(() => void) | null>(null);
+    const registerUIReset = useCallback((fn: () => void) => {
+        uiResetRef.current = fn;
+    }, []);
     
     // Engine States
     const [isCrawling, setIsCrawling] = useState(false);
@@ -844,7 +779,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
 
     // Config & Settings
     const [config, setConfig] = useState<CrawlerConfig>(DEFAULT_CONFIG);
-    const [settingsTab, setSettingsTab] = useState<SettingsTabId>('general');
+
 
     const CONFIG_STORAGE_KEY = 'headlight:crawler-config';
 
@@ -1384,43 +1319,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         loadCrawlHistory();
     }, [loadCrawlHistory]);
 
-    // ─── Keyboard shortcuts ───
-    useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => {
-            // Cmd/Ctrl+F → focus search
-            if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
-                e.preventDefault();
-                const searchInput = document.getElementById('headlight-grid-search');
-                if (searchInput) searchInput.focus();
-            }
-            // Escape → clear selection / close panels
-            if (e.key === 'Escape') {
-                if (showSettings) { setShowSettings(false); return; }
-                if (showAutoFixModal) { if (!isFixing) setShowAutoFixModal(false); return; }
-                if (showListModal) { setShowListModal(false); return; }
-                if (showScheduleModal) { setShowScheduleModal(false); return; }
-                if (showColumnPicker) { setShowColumnPicker(false); return; }
-                if (selectedPage) { setSelectedPage(null); return; }
-                if (searchQuery) { setSearchQuery(''); return; }
-            }
-            // Cmd/Ctrl+E → export
-            if ((e.metaKey || e.ctrlKey) && e.key === 'e') {
-                e.preventDefault();
-                handleExport();
-            }
-            if ((e.metaKey || e.ctrlKey) && e.key === 's') {
-                e.preventDefault();
-                saveCrawlSession('completed');
-            }
-            // Cmd/Ctrl+Enter → start/pause crawl
-            if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-                e.preventDefault();
-                handleStartPause();
-            }
-        };
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [showSettings, showAutoFixModal, showListModal, showScheduleModal, showColumnPicker, selectedPage, searchQuery, isFixing]);
+
 
 
     const flushPendingPageUpdates = useCallback(() => {
@@ -1552,14 +1451,10 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         setIsCrawling(false);
         setAnalysisPages([]);
         setLogs([]);
-        setSelectedPage(null);
-        setSelectedRows(new Set());
         setCurrentSessionId(null);
         currentSessionIdRef.current = null;
         setCompareSessionId(null);
         setDiffResult(null);
-        setShowComparisonView(false);
-        setShowExportDialog(false);
         setActiveMacro('all');
         setSearchQuery('');
         setRobotsTxt(null);
@@ -1583,6 +1478,9 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
             rate: 0,
             workerUtilization: 0
         });
+
+        // Reset all UI state via the bridge
+        uiResetRef.current?.();
 
         try {
             if (typeof window !== 'undefined') {
@@ -3972,7 +3870,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
     }, [pagesWithDerivedSignals, runAIAnalysis, addLog, rootHostname]);
 
     const value = {
-        crawlingMode, setCrawlingMode, urlInput, setUrlInput, listUrls, setListUrls, showListModal, setShowListModal,
+        crawlingMode, setCrawlingMode, urlInput, setUrlInput, listUrls, setListUrls,
         isCrawling, setIsCrawling, pages: pagesWithDerivedSignals, logs, setLogs, crawlStartTime, setCrawlStartTime,
         crawlDb,
         activeCategories, setActiveCategories,
@@ -3980,39 +3878,27 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         auditFilter, activeCheckIds, activeCheckCategories, filteredIssuePages,
         customPresets, applyAuditMode, saveCustomPreset, loadCustomPreset,
         openCategories, setOpenCategories, searchQuery, setSearchQuery,
-        selectedPage, setSelectedPage, activeTab, setActiveTab, inspectorCollapsed, setInspectorCollapsed, showAuditSidebar, setShowAuditSidebar,
-        activeAuditTab, setActiveAuditTab, showSettings, setShowSettings, activeMacro, setActiveMacro,
-        sortConfig, setSortConfig, showColumnPicker, setShowColumnPicker, visibleColumns, setVisibleColumns,
-        viewMode, setViewMode, showAiInsights, setShowAiInsights, showAiChat, setShowAiChat, graphDimensions, setGraphDimensions,
-        graphContainerRef, fgRef, categorySearch, setCategorySearch, leftSidebarPreset, setLeftSidebarPreset,
-        logSearch, setLogSearch, logTypeFilter, setLogTypeFilter, selectedRows, setSelectedRows,
-        gridScrollTop, setGridScrollTop, ROW_HEIGHT, VISIBLE_BUFFER, leftSidebarWidth, setLeftSidebarWidth,
-        auditSidebarWidth, setAuditSidebarWidth, detailsHeight, setDetailsHeight, 
-        gridScrollOffset, setGridScrollOffset, isDraggingLeftSidebar, setIsDraggingLeftSidebar, isDraggingSidebar, setIsDraggingSidebar,
-        isDraggingDetails, setIsDraggingDetails, 
-        showAutoFixModal, setShowAutoFixModal, autoFixItems, setAutoFixItems,
-        isFixing, setIsFixing, autoFixProgress, setAutoFixProgress, stats, setStats, columns, config, setConfig, settingsTab, setSettingsTab,
-        theme, setTheme, integrationConnections, integrationsLoading, integrationsSource, saveIntegrationConnection, removeIntegrationConnection, wsRef, addLog, toggleCategory, handleStartPause,
+        activeMacro, setActiveMacro,
+        sortConfig, setSortConfig, visibleColumns, setVisibleColumns,
+        stats, setStats, columns, config, setConfig,
+        integrationConnections, integrationsLoading, integrationsSource, saveIntegrationConnection, removeIntegrationConnection, wsRef, addLog, toggleCategory, handleStartPause,
         clearCrawlerWorkspace,
-        showTrialLimitAlert, setShowTrialLimitAlert,
         dynamicClusters, categoryCounts, healthScore, auditInsights, strategicOpportunities, crawlRate, crawlRuntime, elapsedTime, setElapsedTime,
         formatBytes, handleExport, handleExportRawDB, handleImport, filteredPages, handleSort, graphData, handleNodeClick,
-        crawlHistory, currentSessionId, compareSessionId, diffResult, showComparisonView, setShowComparisonView, showExportDialog, setShowExportDialog, isLoadingHistory,
+        crawlHistory, currentSessionId, compareSessionId, diffResult, isLoadingHistory,
         saveCrawlSession, loadSession, resumeCrawlSession, compareSessions, deleteCrawlSession, loadCrawlHistory,
         detectedGscSite, setDetectedGscSite, detectedGa4Property, setDetectedGa4Property,
         runFullEnrichment, runIncrementalEnrichment, runSelectedEnrichment,
         isAuthenticated, user, profile, signOut, trialPagesLimit,
         prioritizedCategories, prioritizeByIssues, setPrioritizeByIssues,
-        sidebarCollapsed, setSidebarCollapsed,
-        showScheduleModal, setShowScheduleModal,
         ignoredUrls, setIgnoredUrls, urlTags, setUrlTags,
         robotsTxt, sitemapData,
-        columnWidths, setColumnWidths,
         aiResults, aiProgress, aiNarrative, isAnalyzingAI, runAIAnalysis,
         // Collaboration & Tasks (P5)
         tasks, setTasks, teamMembers, showCollabOverlay, setShowCollabOverlay,
-        collabOverlayTarget, setCollabOverlayTarget, activeCommentTarget, setActiveCommentTarget,
-        exportSubset, createTaskForCategory, bulkAIAnalyzeCategory
+        exportSubset, createTaskForCategory, bulkAIAnalyzeCategory,
+        registerUIReset,
+        columnWidths, setColumnWidths
     };
 
     return (

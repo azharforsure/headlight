@@ -6,6 +6,7 @@ import {
     MessageSquare, CheckSquare, User, Upload, Radar, Route
 } from 'lucide-react';
 import { useSeoCrawler } from '../../contexts/SeoCrawlerContext';
+import { useCrawlerUI } from '../../contexts/CrawlerUIContext';
 import LogFileAnalysisService from '../../services/LogFileAnalysisService';
 import ChangeMonitorService from '../../services/ChangeMonitorService';
 import TechDebtService from '../../services/TechDebtService';
@@ -17,28 +18,32 @@ interface AuditSidebarProps {
 
 export default function AuditSidebar({ embedded = false }: AuditSidebarProps) {
     const {
-        showAuditSidebar, setShowAuditSidebar,
-        auditSidebarWidth, setIsDraggingSidebar,
-        activeAuditTab, setActiveAuditTab,
         stats, pages, healthScore,
         isCrawling, elapsedTime, crawlRate, crawlRuntime,
         setSearchQuery, setActiveMacro,
-        logs, setLogs, logSearch, setLogSearch,
-        logTypeFilter, setLogTypeFilter,
+        logs, setLogs,
         // History
         crawlHistory, loadSession, resumeCrawlSession, deleteCrawlSession, compareSessions, 
         diffResult, isLoadingHistory, currentSessionId,
         crawlingMode,
-        // Pill mode
-        sidebarCollapsed, setSidebarCollapsed,
         auditInsights,
         strategicOpportunities,
         robotsTxt, sitemapData,
         filteredIssuePages,
         aiNarrative, isAnalyzingAI,
-        tasks, setShowCollabOverlay, setCollabOverlayTarget,
+        tasks,
         crawlDb, addLog
     } = useSeoCrawler();
+
+    const {
+        showAuditSidebar, setShowAuditSidebar,
+        auditSidebarWidth, setIsDraggingSidebar,
+        activeAuditTab, setActiveAuditTab,
+        sidebarCollapsed, setSidebarCollapsed,
+        logSearch, setLogSearch,
+        logTypeFilter, setLogTypeFilter,
+        setShowCollabOverlay, setCollabOverlayTarget,
+    } = useCrawlerUI();
 
     const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null);
     const [logAnalysis, setLogAnalysis] = useState<{ fileName: string; totalBotRequests: number; googlebot: number; aiBots: number } | null>(null);

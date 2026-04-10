@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo } from 'react';
 import { ExternalLink, Maximize2, MessageCircle, Minimize2, UserPlus, ListTodo } from 'lucide-react';
-import { useSeoCrawler, type InspectorTab } from '../../../contexts/SeoCrawlerContext';
+import { useSeoCrawler } from '../../../contexts/SeoCrawlerContext';
+import { useCrawlerUI, type InspectorTab } from '../../../contexts/CrawlerUIContext';
 import GeneralTab from './GeneralTab';
 import SeoTab from './SeoTab';
 import ContentTab from './ContentTab';
@@ -53,12 +54,15 @@ const TAB_COMPONENTS: Record<InspectorTab, React.FC<{ page: any }>> = {
 
 export default function InspectorShell() {
     const {
+    } = useSeoCrawler();
+
+    const {
         selectedPage, setSelectedPage,
         detailsHeight, setIsDraggingDetails,
         activeTab, setActiveTab,
         inspectorCollapsed, setInspectorCollapsed,
         setCollabOverlayTarget, setActiveAuditTab, setShowAuditSidebar
-    } = useSeoCrawler();
+    } = useCrawlerUI();
 
     const ActiveTabComponent = useMemo(() => TAB_COMPONENTS[activeTab] || GeneralTab, [activeTab]);
 

@@ -1,5 +1,6 @@
 import React from 'react';
 import { useSeoCrawler } from '../../../contexts/SeoCrawlerContext';
+import { useCrawlerUI } from '../../../contexts/CrawlerUIContext';
 import { Settings, Globe, Zap, Network, Wand2, Filter, Code, Calendar, Database, X, Webhook } from 'lucide-react';
 import GeneralTab from './GeneralTab';
 import PerformanceTab from './PerformanceTab';
@@ -27,7 +28,8 @@ const SETTINGS_TABS: { id: SettingsTabId; label: string; icon: React.ReactNode }
 import { importConfig, exportConfig } from '../../../services/CrawlerConfigService';
 
 export default function SettingsPanel() {
-  const { showSettings, setShowSettings, settingsTab, setSettingsTab, config, setConfig } = useSeoCrawler();
+  const { config, setConfig } = useSeoCrawler();
+  const { showSettings, setShowSettings, settingsTab, setSettingsTab } = useCrawlerUI();
   
   if (!showSettings) return null;
 

@@ -16,6 +16,8 @@ import AIChatDrawer from '../components/seo-crawler/AIChatDrawer';
 import { PanelErrorBoundary } from '../components/PanelErrorBoundary';
 import OnboardingTour from '../components/seo-crawler/OnboardingTour';
 import { useSeoCrawler } from '../contexts/SeoCrawlerContext';
+import { CrawlerUIProvider, useCrawlerUI } from '../contexts/CrawlerUIContext';
+import CrawlerKeyboardHandler from '../components/seo-crawler/CrawlerKeyboardHandler';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 
@@ -64,11 +66,28 @@ class SeoCrawlerErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundar
     }
 }
 
+function SeoCrawlerUIBridge() {
+    const { registerUIReset } = useSeoCrawler();
+    const { resetUIState } = useCrawlerUI();
+
+    React.useEffect(() => {
+        if (registerUIReset) {
+            registerUIReset(resetUIState);
+        }
+    }, [registerUIReset, resetUIState]);
+
+    return null;
+}
+
 export default function SeoCrawlerWrapper() {
     return (
         <SeoCrawlerErrorBoundary>
             <SeoCrawlerProvider>
-                <SeoCrawlerLayout />
+                <CrawlerUIProvider>
+                    <SeoCrawlerUIBridge />
+                    <CrawlerKeyboardHandler />
+                    <SeoCrawlerLayout />
+                </CrawlerUIProvider>
             </SeoCrawlerProvider>
         </SeoCrawlerErrorBoundary>
     );
@@ -80,18 +99,21 @@ function SeoCrawlerLayout() {
     const [showMobileExplorer, setShowMobileExplorer] = React.useState(false);
     const [showMobileAudit, setShowMobileAudit] = React.useState(false);
     const {
-        showCollabOverlay,
-        setShowCollabOverlay,
         pages,
         isCrawling,
         crawlHistory,
+    } = useSeoCrawler();
+
+    const {
+        showCollabOverlay,
+        setShowCollabOverlay,
         showComparisonView,
         setShowComparisonView,
         showExportDialog,
         setShowExportDialog,
         showAiChat,
         setShowAiChat
-    } = useSeoCrawler();
+    } = useCrawlerUI();
 
     const shouldShowEmptyState = pages.length === 0 && !isCrawling && crawlHistory.length === 0;
     const isCompactLayout = isMobile || isTablet;

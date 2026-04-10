@@ -1,6 +1,7 @@
 import React from 'react';
 import { Clock, Layers, Keyboard, Cpu, Route } from 'lucide-react';
 import { useSeoCrawler } from '../../contexts/SeoCrawlerContext';
+import { useCrawlerUI } from '../../contexts/CrawlerUIContext';
 
 const getSafeHostname = (url: string | undefined | null) => {
     if (!url) return '';
@@ -13,8 +14,12 @@ const getSafeHostname = (url: string | undefined | null) => {
 
 export default function StatusBar() {
     const { 
-        isCrawling, elapsedTime, crawlRate, crawlRuntime, isAuthenticated, viewMode, pages, trialPagesLimit, crawlHistory
+        isCrawling, elapsedTime, crawlRate, crawlRuntime, isAuthenticated, pages, trialPagesLimit, crawlHistory
     } = useSeoCrawler();
+
+    const {
+        viewMode
+    } = useCrawlerUI();
 
     const statusMeta = (() => {
         if (isCrawling || crawlRuntime.stage === 'crawling' || crawlRuntime.stage === 'connecting') {

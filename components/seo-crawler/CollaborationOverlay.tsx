@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Send, CheckCircle, Clock, User, MessageSquare, Plus, Trash2, Smile, AlertCircle } from 'lucide-react';
 import { useSeoCrawler } from '../../contexts/SeoCrawlerContext';
+import { useCrawlerUI } from '../../contexts/CrawlerUIContext';
 import { useAuth } from '../../services/AuthContext';
 import { useProject } from '../../services/ProjectContext';
 import { getComments, createComment, resolveComment, addReaction } from '../../services/CollaborationService';
@@ -15,7 +16,8 @@ interface CollaborationOverlayProps {
 }
 
 export const CollaborationOverlay: React.FC<CollaborationOverlayProps> = ({ isOpen, onClose }) => {
-    const { collabOverlayTarget, teamMembers, tasks, setTasks } = useSeoCrawler();
+    const { teamMembers, tasks, setTasks } = useSeoCrawler();
+    const { collabOverlayTarget } = useCrawlerUI();
     const { activeProject } = useProject();
     const { user, profile } = useAuth();
     

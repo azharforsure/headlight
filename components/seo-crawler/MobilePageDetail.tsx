@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { ArrowLeft, MessageSquare, Share2, Sparkles, UserPlus } from 'lucide-react';
 import { getPageIssues } from './IssueTaxonomy';
 import { useSeoCrawler } from '../../contexts/SeoCrawlerContext';
+import { useCrawlerUI } from '../../contexts/CrawlerUIContext';
 
 type DetailTab = 'seo' | 'links' | 'perf' | 'ai' | 'more';
 
@@ -26,7 +27,8 @@ const Metric = ({ label, value }: { label: string; value: React.ReactNode }) => 
 );
 
 export default function MobilePageDetail({ page, onClose }: MobilePageDetailProps) {
-    const { setAutoFixItems, setShowAutoFixModal, setShowCollabOverlay, setCollabOverlayTarget } = useSeoCrawler();
+    const { } = useSeoCrawler();
+    const { setAutoFixItems, setShowAutoFixModal, setShowCollabOverlay, setCollabOverlayTarget } = useCrawlerUI();
     const [activeTab, setActiveTab] = useState<DetailTab>('seo');
     const issues = useMemo(() => getPageIssues(page), [page]);
 

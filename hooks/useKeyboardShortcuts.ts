@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { useSeoCrawler } from '../contexts/SeoCrawlerContext';
+import { useCrawlerUI } from '../contexts/CrawlerUIContext';
 
 type ShortcutHandlers = Partial<Record<
     'escape' | 'help' | 'up' | 'down' | 'enter' | 'space' | 'search' | 'commandPalette' | 'export',
@@ -9,11 +10,14 @@ type ShortcutHandlers = Partial<Record<
 export function useKeyboardShortcuts(handlers: ShortcutHandlers = {}) {
     const {
         setSearchQuery,
+    } = useSeoCrawler();
+
+    const {
         setShowExportDialog,
         setLeftSidebarWidth,
         leftSidebarWidth,
         setSelectedPage,
-    } = useSeoCrawler();
+    } = useCrawlerUI();
 
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {

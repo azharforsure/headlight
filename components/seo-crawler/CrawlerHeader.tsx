@@ -5,6 +5,7 @@ import {
     Keyboard, Database, Sparkles, Download, GitCompare, Bot
 } from 'lucide-react';
 import { useSeoCrawler } from '../../contexts/SeoCrawlerContext';
+import { useCrawlerUI } from '../../contexts/CrawlerUIContext';
 import AuditModeSelector from './AuditModeSelector';
 import { AUDIT_MODES, INDUSTRY_FILTERS } from '../../services/AuditModeConfig';
 import { NotificationBell } from '../NotificationBell';
@@ -13,14 +14,11 @@ export default function CrawlerHeader() {
     const {
         crawlingMode, setCrawlingMode,
         urlInput, setUrlInput,
-        listUrls, showListModal, setShowListModal,
+        listUrls,
         isCrawling, handleStartPause,
         pages,
-        setAutoFixItems, setShowAutoFixModal,
-        showSettings, setShowSettings,
         saveCrawlSession, currentSessionId, crawlHistory,
-        isAuthenticated, user, profile, trialPagesLimit,
-        showScheduleModal, setShowScheduleModal,
+        isAuthenticated, user, profile,
         crawlRuntime, elapsedTime, crawlRate,
         clearCrawlerWorkspace,
         integrationConnections,
@@ -29,9 +27,16 @@ export default function CrawlerHeader() {
         runIncrementalEnrichment,
         auditFilter, applyAuditMode, saveCustomPreset,
         runAIAnalysis, isAnalyzingAI, aiProgress,
-        setShowComparisonView, setShowExportDialog,
-        setShowAiChat
     } = useSeoCrawler();
+
+    const {
+        showListModal, setShowListModal,
+        showSettings, setShowSettings,
+        showScheduleModal, setShowScheduleModal,
+        setShowComparisonView, setShowExportDialog,
+        setShowAiChat,
+        setAutoFixItems, setShowAutoFixModal,
+    } = useCrawlerUI();
 
     const [showShortcuts, setShowShortcuts] = useState(false);
     const [showModeSelector, setShowModeSelector] = useState(false);

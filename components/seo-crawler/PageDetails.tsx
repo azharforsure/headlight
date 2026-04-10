@@ -5,6 +5,7 @@ import {
     Repeat, Layers, FileJson, Hash
 } from 'lucide-react';
 import { useSeoCrawler } from '../../contexts/SeoCrawlerContext';
+import { useCrawlerUI } from '../../contexts/CrawlerUIContext';
 
 const getSafeHostname = (url: string | undefined | null) => {
     if (!url) return 'example.com';
@@ -17,11 +18,14 @@ const getSafeHostname = (url: string | undefined | null) => {
 
 export default function PageDetails() {
     const {
+        pages, diffResult, crawlHistory
+    } = useSeoCrawler();
+
+    const {
         selectedPage, setSelectedPage,
         detailsHeight, setIsDraggingDetails,
         activeTab, setActiveTab,
-        pages, diffResult, crawlHistory
-    } = useSeoCrawler();
+    } = useCrawlerUI();
 
     const [linksSubTab, setLinksSubTab] = useState<'inlinks' | 'outlinks' | 'images'>('inlinks');
 

@@ -5,6 +5,7 @@ import {
     Play, Repeat, Bell, Shield, Upload, Sparkles
 } from 'lucide-react';
 import { useSeoCrawler } from '../../contexts/SeoCrawlerContext';
+import { useCrawlerUI } from '../../contexts/CrawlerUIContext';
 import { IntegrationsTab } from './IntegrationsTab';
 import SettingsPanel from './settings/SettingsPanel';
 
@@ -21,22 +22,26 @@ export default function CrawlerModals() {
         String(googleClientId).includes('.apps.googleusercontent.com')
     );
     const hasBingOAuthConfig = Boolean(bingClientId);
+    
+    const {
+        config, setConfig,
+        integrationConnections, saveIntegrationConnection, removeIntegrationConnection,
+        isFixing, setIsFixing,
+        autoFixProgress, setAutoFixProgress,
+        setCrawlingMode, crawlDb, pages,
+        addLog
+    } = useSeoCrawler();
+
     const {
         showListModal, setShowListModal,
         listUrls, setListUrls,
         showSettings, setShowSettings,
         settingsTab, setSettingsTab,
-        config, setConfig,
         theme, setTheme,
-        integrationConnections, saveIntegrationConnection, removeIntegrationConnection,
         showAutoFixModal, setShowAutoFixModal,
         autoFixItems, setAutoFixItems,
-        isFixing, setIsFixing,
-        autoFixProgress, setAutoFixProgress,
-        setCrawlingMode, crawlDb, pages,
         showScheduleModal, setShowScheduleModal,
-        addLog
-    } = useSeoCrawler();
+    } = useCrawlerUI();
 
     const [scheduleFrequency, setScheduleFrequency] = useState('weekly');
     const [scheduleDay, setScheduleDay] = useState('monday');

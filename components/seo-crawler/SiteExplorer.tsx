@@ -1,6 +1,7 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { Search, ChevronDown, ChevronRight, Wand2 } from 'lucide-react';
 import { useSeoCrawler } from '../../contexts/SeoCrawlerContext';
+import { useCrawlerUI } from '../../contexts/CrawlerUIContext';
 import { AI_INSIGHTS_CATEGORY, CATEGORIES, SMART_PRESETS, matchesCategoryFilter } from './constants';
 import CategoryTreeContextMenu from './CategoryTreeContextMenu';
 
@@ -18,11 +19,6 @@ interface SiteExplorerProps {
 
 export default function SiteExplorer({ embedded = false }: SiteExplorerProps) {
     const {
-        categorySearch, setCategorySearch,
-        leftSidebarPreset, setLeftSidebarPreset,
-        leftSidebarWidth, setIsDraggingLeftSidebar,
-        openCategories, setOpenCategories,
-        setVisibleColumns, setActiveMacro,
         dynamicClusters, categoryCounts,
         pages, toggleCategory,
         activeCategories, setActiveCategories,
@@ -31,6 +27,14 @@ export default function SiteExplorer({ embedded = false }: SiteExplorerProps) {
         auditFilter,
         exportSubset, createTaskForCategory, bulkAIAnalyzeCategory
     } = useSeoCrawler();
+
+    const {
+        categorySearch, setCategorySearch,
+        leftSidebarPreset, setLeftSidebarPreset,
+        leftSidebarWidth, setIsDraggingLeftSidebar,
+        openCategories, setOpenCategories,
+        setActiveMacro,
+    } = useCrawlerUI();
 
     const [contextMenu, setContextMenu] = useState<CategoryMenuState | null>(null);
 
