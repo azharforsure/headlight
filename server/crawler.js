@@ -11,6 +11,7 @@ import { lookup } from 'dns';
 import { promisify } from 'util';
 import { brotliDecompressSync, gunzipSync, inflateSync } from 'zlib';
 import tls from 'tls';
+import { normalizeHref, toSitemapKey } from '../shared/url-normalization.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -96,47 +97,7 @@ async function cachedDnsLookup(hostname) {
 }
 
 // ─── URL Normalization ───────────────────────────────────────
-function normalizeUrl(rawUrl, baseUrl = undefined, options = {}) {
-    try {
-        const url = baseUrl ? new URL(rawUrl, baseUrl) : new URL(rawUrl);
-        url.hash = '';
-        if (options.ignoreQueryParams) {
-            url.search = '';
-        }
-        if ((url.protocol === 'http:' && url.port === '80') || (url.protocol === 'https:' && url.port === '443')) {
-            url.port = '';
-        }
-        return url.href;
-    } catch {
-        return null;
-    }
-}
 
-function toSitemapKey(rawUrl, baseUrl = undefined) {
-    const normalized = normalizeUrl(rawUrl, baseUrl, { ignoreQueryParams: true });
-    if (!normalized) return '';
-
-    try {
-        const url = new URL(normalized);
-        let key = url.hostname.replace(/^www\./i, '').toLowerCase() + url.pathname.toLowerCase();
-        
-        // Strip trailing slash if not root
-        if (key.length > 1 && key.endsWith('/')) {
-            key = key.slice(0, -1);
-        }
-        
-        return key;
-    } catch {
-        // Fallback for invalid URLs that might still be string-matchable
-        return String(normalized)
-            .toLowerCase()
-            .replace(/^https?:\/\//i, '')
-            .replace(/^www\./i, '')
-            .split('?')[0]
-            .split('#')[0]
-            .replace(/\/+$/, '');
-    }
-}
 
 function escapeRegExp(value) {
     return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -268,7 +229,7 @@ function extractHtmlLinkSets(html = '', currentUrl, baseHostname, options = {}) 
         const href = $(el).attr('href');
         if (!href || href.startsWith('javascript:') || href.startsWith('mailto:') || href.startsWith('tel:')) return;
 
-        const absoluteHref = normalizeUrl(href, currentUrl, options);
+        const absoluteHref = normalizeHref(href, currentUrl, options);
         if (!absoluteHref) return;
 
         try {
@@ -608,7 +569,7 @@ async function fetchSitemapUrls(sitemapUrl, requestHeaders, maxUrls = 500000) {
 
     function addUrlEntry(loc, meta = {}) {
         if (!loc || urls.length >= maxUrls) return;
-        const normalizedLoc = normalizeUrl(loc, sitemapUrl);
+        const normalizedLoc = normalizeHref(loc, sitemapUrl);
         if (!normalizedLoc || seenUrlEntries.has(normalizedLoc)) return;
         seenUrlEntries.add(normalizedLoc);
         urls.push({
@@ -696,7 +657,7 @@ async function fetchSitemapUrls(sitemapUrl, requestHeaders, maxUrls = 500000) {
                     .filter(Boolean);
 
                 for (const loc of locMatches) {
-                    const normalizedLoc = normalizeUrl(loc, url);
+                    const normalizedLoc = normalizeHref(loc, url);
                     if (!normalizedLoc) continue;
                     if (/sitemap|\.xml(\?|$)|format=xml/i.test(normalizedLoc)) {
                         await parseSitemap(normalizedLoc);

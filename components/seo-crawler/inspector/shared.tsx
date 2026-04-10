@@ -2,6 +2,7 @@ import React from 'react';
 import { ListTodo } from 'lucide-react';
 import { useSeoCrawler } from '../../../contexts/SeoCrawlerContext';
 import { SEO_ISSUES_TAXONOMY, getPageIssues } from '../IssueTaxonomy';
+import { UrlNormalization } from '../../../services/UrlNormalization';
 
 export const EMPTY_VALUE = '—';
 
@@ -34,14 +35,7 @@ export const formatBytes = (bytes: any) => {
     return `${(value / 1024 / 1024 / 1024).toFixed(2)} GB`;
 };
 
-export const getSafeHostname = (url: string | undefined | null) => {
-    if (!url) return 'example.com';
-    try {
-        return new URL(url).hostname;
-    } catch {
-        return url;
-    }
-};
+export const getSafeHostname = UrlNormalization.getSafeHostname;
 
 export const DataRow = ({ label, value, status, mono = false }: {
     label: string;

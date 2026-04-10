@@ -1,4 +1,4 @@
-import { normalizeUrl } from './UrlUtils';
+
 import { crawlDb, upsertPages, type CrawledPage } from './CrawlDatabase';
 import { UrlNormalization } from './UrlNormalization';
 
@@ -472,7 +472,7 @@ export class GhostCrawler {
         const allLinks = Array.from(doc.querySelectorAll('a'))
             .map(a => (a as HTMLAnchorElement).getAttribute('href'))
             .filter(Boolean)
-            .map(href => normalizeUrl(href!, url))
+            .map(href => UrlNormalization.normalizeHref(href!, url))
             .filter(Boolean) as string[];
 
         const internalLinks: string[] = [];
@@ -517,7 +517,7 @@ export class GhostCrawler {
                 ...Array.from(doc.querySelectorAll('img')).map(img => img.getAttribute('src')),
                 ...Array.from(doc.querySelectorAll('script')).map(s => s.getAttribute('src')),
                 ...Array.from(doc.querySelectorAll('link[rel="stylesheet"]')).map(l => l.getAttribute('href'))
-            ].filter(Boolean).map(src => normalizeUrl(src!, url)).filter(Boolean) as string[] : []
+            ].filter(Boolean).map(src => UrlNormalization.normalizeHref(src!, url)).filter(Boolean) as string[] : []
         };
     }
 

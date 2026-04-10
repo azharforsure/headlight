@@ -311,15 +311,7 @@ export type CategoryFilterContext = {
 
 export type CategoryFilterFn = (page: any, context: CategoryFilterContext) => boolean;
 
-const normalizeHostname = (hostname: string | null | undefined) => String(hostname || '').replace(/^www\./i, '').toLowerCase();
-
-const extractHostname = (url: string | null | undefined) => {
-    try {
-        return normalizeHostname(new URL(String(url || '')).hostname);
-    } catch {
-        return '';
-    }
-};
+import { UrlNormalization } from '../../services/UrlNormalization';
 
 const containsSchemaType = (page: any, expectedTypes: string[]) => {
     const normalizedExpected = expectedTypes.map((type) => type.toLowerCase());
@@ -510,8 +502,8 @@ export const matchesCategoryFilter = (
     }
 
     if (group === 'external') {
-        const rootHost = normalizeHostname(context.rootHostname);
-        const pageHost = extractHostname(page?.url);
+        const rootHost = UrlNormalization.extractHostname(context.rootHostname);
+        const pageHost = UrlNormalization.extractHostname(page?.url);
         if (!rootHost || !pageHost) return false;
         if (sub === 'All') return pageHost !== rootHost;
         return pageHost !== rootHost;

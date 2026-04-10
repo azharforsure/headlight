@@ -1,5 +1,6 @@
 import { turso, isCloudSyncEnabled } from './turso';
 import { SEO_ISSUES_TAXONOMY } from '../components/seo-crawler/IssueTaxonomy';
+import { UrlNormalization } from './UrlNormalization';
 
 const DB_NAME = 'headlight_crawler';
 const DB_VERSION = 3;
@@ -97,21 +98,6 @@ const normalizeComparableValue = (value: any) => {
     return value ?? null;
 };
 
-const normalizeDiffUrl = (rawUrl: string) => {
-    try {
-        const url = new URL(String(rawUrl || '').trim());
-        const hostname = url.hostname.replace(/^www\./i, '').toLowerCase();
-        const pathname = (url.pathname || '/').replace(/\/+$/, '') || '/';
-        return `${hostname}${pathname}`;
-    } catch {
-        return String(rawUrl || '')
-            .trim()
-            .toLowerCase()
-            .replace(/^https?:\/\//, '')
-            .replace(/^www\./, '')
-            .replace(/\/+$/, '');
-    }
-};
 
 const valuesEqual = (left: any, right: any) => normalizeComparableValue(left) === normalizeComparableValue(right);
 
@@ -466,11 +452,11 @@ export function diffSessions(oldPages: any[], newPages: any[], oldSession?: Craw
         };
     }
 
-    const oldMap = new Map(oldPages.map((p) => [normalizeDiffUrl(p.url), p]));
-    const newMap = new Map(newPages.map((p) => [normalizeDiffUrl(p.url), p]));
+    const oldMap = new Map(oldPages.map((p) => [UrlNormalization.toCanonical(p.url), p]));
+    const newMap = new Map(newPages.map((p) => [UrlNormalization.toCanonical(p.url), p]));
 
-    const added = newPages.filter((p) => !oldMap.has(normalizeDiffUrl(p.url)));
-    const removed = oldPages.filter((p) => !newMap.has(normalizeDiffUrl(p.url)));
+    const added = newPages.filter((p) => !oldMap.has(UrlNormalization.toCanonical(p.url)));
+    const removed = oldPages.filter((p) => !newMap.has(UrlNormalization.toCanonical(p.url)));
 
     const changed: any[] = [];
     const issuesFixed: any[] = [];

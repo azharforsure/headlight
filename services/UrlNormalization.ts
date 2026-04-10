@@ -1,13 +1,14 @@
+import { 
+  toCanonical as _toCanonical, 
+  normalizeHref as _normalizeHref,
+  toSitemapKey as _toSitemapKey,
+  extractHostname as _extractHostname,
+  getSafeHostname as _getSafeHostname
+} from '../shared/url-normalization';
+
 /**
  * UrlNormalization handles the consistent matching of URLs across disparate
  * data sources (GSC, GA4, Dexie, CSVs).
- * 
- * Rules:
- * 1. Strip protocol (optional, source-dependent)
- * 2. Strip 'www' (optional, source-dependent)
- * 3. Strip trailing slashes
- * 4. Strip UTM parameters and fragments
- * 5. Handle case-insensitivity (lowercase all)
  */
 
 export interface MatchResult {
@@ -21,40 +22,34 @@ export class UrlNormalization {
    * Example: "https://www.example.com/blog/?utm_source=fb#hash" 
    * -> "example.com/blog"
    */
-  static toCanonical(url: string, options: { 
-    stripProtocol?: boolean; 
-    stripWww?: boolean; 
-    stripTrailingSlash?: boolean;
-    lowercase?: boolean;
-  } = {}): string {
-    if (!url) return '';
+  static toCanonical = _toCanonical;
 
-    let normalized = url.trim();
+  /**
+   * Normalize a URL to a clean full href.
+   * Strips hash, optionally strips query params, removes default ports.
+   */
+  static normalizeHref = _normalizeHref;
 
-    // 1. Lowercase for consistency
-    if (options.lowercase !== false) {
-      normalized = normalized.toLowerCase();
-    }
+  /**
+   * Generate a stable key for sitemap URL matching.
+   */
+  static toSitemapKey = _toSitemapKey;
 
-    // 2. Remove fragments and query strings
-    normalized = normalized.split('#')[0].split('?')[0];
+  /**
+   * Extract the bare hostname from a URL, stripping www prefix.
+   */
+  static extractHostname = _extractHostname;
 
-    // 3. Strip protocol
-    if (options.stripProtocol !== false) {
-      normalized = normalized.replace(/^https?:\/\//, '');
-    }
+  /**
+   * Get hostname from URL, returning the raw string as fallback.
+   */
+  static getSafeHostname = _getSafeHostname;
 
-    // 4. Strip WWW
-    if (options.stripWww !== false) {
-      normalized = normalized.replace(/^www\./, '');
-    }
-
-    // 5. Strip trailing slash
-    if (options.stripTrailingSlash !== false) {
-      normalized = normalized.replace(/\/$/, '');
-    }
-
-    return normalized;
+  /**
+   * Extract domain (alias for extractHostname)
+   */
+  static extractDomain(url: string): string {
+    return this.extractHostname(url);
   }
 
   /**

@@ -7,8 +7,8 @@ import {
     updateCloudProject,
     deleteCloudProject,
     migrateLocalProjectsToCloud,
-    extractDomain,
 } from './ProjectSyncService';
+import { UrlNormalization } from './UrlNormalization';
 
 type Project = ProjectRecord;
 
@@ -152,7 +152,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     const addProject = async (name: string, url: string, industry: IndustryType) => {
         if (!user) return null;
-        const domain = extractDomain(url);
+        const domain = UrlNormalization.extractDomain(url);
         const newProject: Project = {
             id: `project_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
             user_id: user.id,

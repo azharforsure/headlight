@@ -7,6 +7,7 @@
 
 import { turso, initializeDatabase, isCloudSyncEnabled } from './turso';
 import type { ProjectRecord, IndustryType } from './app-types';
+import { UrlNormalization } from './UrlNormalization';
 
 let schemaReady: Promise<void> | null = null;
 
@@ -23,14 +24,6 @@ const ensureSchema = async () => {
 /**
  * Extract the root domain from a URL (e.g. "https://www.example.com/page" → "example.com")
  */
-export function extractDomain(url: string): string {
-    try {
-        const hostname = new URL(url.startsWith('http') ? url : `https://${url}`).hostname;
-        return hostname.replace(/^www\./, '');
-    } catch {
-        return '';
-    }
-}
 
 /**
  * Fetch all projects for a user from Turso
@@ -51,7 +44,7 @@ export async function fetchCloudProjects(userId: string): Promise<ProjectRecord[
 export async function createCloudProject(project: ProjectRecord): Promise<void> {
     if (!isCloudSyncEnabled) return;
     await ensureSchema();
-    const domain = project.domain || extractDomain(project.url);
+    const domain = project.domain || UrlNormalization.extractDomain(project.url);
     await turso().execute({
         sql: `INSERT OR REPLACE INTO projects (id, user_id, name, url, domain, industry, last_crawl_at, last_crawl_score, last_crawl_grade, crawl_count, gsc_connected, ga4_connected, auto_crawl_enabled, auto_crawl_interval, notification_email, created_at)
               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -115,7 +108,7 @@ export async function updateCloudProject(id: string, updates: Partial<ProjectRec
     // If URL is being updated, also update domain
     if (updates.url && !updates.domain) {
         setClauses.push('domain = ?');
-        args.push(extractDomain(updates.url));
+        args.push(UrlNormalization.extractDomain(updates.url));
     }
 
     if (setClauses.length === 0) return;
