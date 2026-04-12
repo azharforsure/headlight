@@ -1,7 +1,7 @@
 import React from 'react';
 import { 
     AlignLeft, Search, Download, CheckCircle2,
-    Tag, List, Map as MapIcon, BarChart3, ChevronDown
+    Tag, List, Map as MapIcon, BarChart3, ChevronDown, Sparkles
 } from 'lucide-react';
 import { useSeoCrawler } from '../../contexts/SeoCrawlerContext';
 import { ALL_COLUMNS } from './constants';
@@ -133,7 +133,7 @@ export default function CrawlerSubHeader() {
                                 </div>
                             </div>
                             <div className="grid grid-cols-2 gap-x-6 gap-y-2 max-h-[400px] overflow-y-auto custom-scrollbar pr-2">
-                                {['General', 'Technical', 'Metrics', 'Links', 'Advanced', 'Security', 'Collaboration'].map(group => (
+                                {['General', 'Technical', 'Metrics', 'Links', 'Advanced', 'Security', 'Accessibility', 'Cache', 'Mobile', 'URL Structure', 'Search Console', 'Analytics', 'Authority', 'Strategic', 'AI Insights', 'Business', 'AI Discoverability', 'Performance', 'Log Analysis', 'Collaboration'].map(group => (
                                     <div key={group} className="col-span-2 mb-2">
                                         <h5 className="text-[10px] text-[#444] font-black uppercase tracking-widest mb-2 border-l-2 border-[#F5364E] pl-2">{group}</h5>
                                         <div className="grid grid-cols-2 gap-2">

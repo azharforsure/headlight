@@ -95,6 +95,8 @@ const CORE_CHECK_REGISTRY: CheckDefinition[] = [
     { id: 't1-redirect-chain', name: 'Redirect Chain Length', tier: 1, category: 'http', auditModes: ['full', 'website_quality', 'technical_seo'], industries: ['all'], defaultSeverity: 'warning' },
     { id: 't1-redirect-loop', name: 'Redirect Loop Detection', tier: 1, category: 'http', auditModes: ['full', 'technical_seo'], industries: ['all'], defaultSeverity: 'critical' },
     { id: 't1-https', name: 'HTTPS Enforcement', tier: 1, category: 'security_privacy', auditModes: ['full', 'website_quality', 'technical_seo', 'security'], industries: ['all'], defaultSeverity: 'critical' },
+    { id: 't1-gzip', name: 'Compression Enabled', tier: 1, category: 'http', auditModes: ['full', 'technical_seo', 'website_quality'], industries: ['all'], defaultSeverity: 'info' },
+    { id: 't1-content-type', name: 'Content-Type Validation', tier: 1, category: 'http', auditModes: ['full', 'technical_seo'], industries: ['all'], defaultSeverity: 'warning' },
     { id: 't1-mixed-content', name: 'Mixed Content', tier: 1, category: 'security_privacy', auditModes: ['full', 'website_quality', 'technical_seo', 'security'], industries: ['all'], defaultSeverity: 'warning' },
     { id: 't1-hsts', name: 'HSTS Header', tier: 1, category: 'security_privacy', auditModes: ['full', 'technical_seo', 'security'], industries: ['all'], defaultSeverity: 'warning' },
     { id: 't1-csp', name: 'Content Security Policy', tier: 1, category: 'security_privacy', auditModes: ['full', 'technical_seo', 'security'], industries: ['all'], defaultSeverity: 'warning' },
@@ -142,6 +144,9 @@ const CORE_CHECK_REGISTRY: CheckDefinition[] = [
     { id: 't1-dynamic-links', name: 'JavaScript-Generated Links', tier: 1, category: 'js_rendering', auditModes: ['full', 'technical_seo'], industries: ['all'], defaultSeverity: 'warning' },
     // Performance
     { id: 't1-fcp', name: 'First Contentful Paint', tier: 1, category: 'performance', auditModes: ['full', 'technical_seo', 'website_quality'], industries: ['all'], defaultSeverity: 'warning' },
+    { id: 't1-requests', name: 'HTTP Request Count', tier: 1, category: 'performance', auditModes: ['full', 'technical_seo', 'website_quality'], industries: ['all'], defaultSeverity: 'info' },
+    { id: 't1-js-size', name: 'JavaScript Payload Size', tier: 1, category: 'performance', auditModes: ['full', 'technical_seo'], industries: ['all'], defaultSeverity: 'warning' },
+    { id: 't1-css-size', name: 'CSS Payload Size', tier: 1, category: 'performance', auditModes: ['full', 'technical_seo'], industries: ['all'], defaultSeverity: 'info' },
     { id: 't1-ttfb', name: 'Time to First Byte', tier: 1, category: 'performance', auditModes: ['full', 'technical_seo'], industries: ['all'], defaultSeverity: 'warning' },
     { id: 't1-third-party', name: 'Third-Party Impact', tier: 1, category: 'performance', auditModes: ['full', 'technical_seo'], industries: ['all'], defaultSeverity: 'warning' },
     { id: 't1-font-loading', name: 'Font Loading Strategy', tier: 1, category: 'resource_optimization', auditModes: ['full', 'technical_seo'], industries: ['all'], defaultSeverity: 'info' },

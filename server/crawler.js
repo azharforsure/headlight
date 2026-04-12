@@ -258,6 +258,42 @@ function normalizeResponseHeaders(headers = {}) {
     );
 }
 
+function extractCompressionInfo(headers = {}) {
+    const normalized = normalizeResponseHeaders(headers);
+    const rawEncoding = String(normalized['content-encoding'] || '').trim().toLowerCase();
+    const contentEncoding = rawEncoding || 'none';
+
+    return {
+        contentEncoding,
+        isCompressed: ['gzip', 'br', 'deflate'].some((encoding) => contentEncoding.includes(encoding))
+    };
+}
+
+function extractContentTypeInfo(contentType = '') {
+    const raw = String(contentType || '').trim();
+    const [mimePart, ...paramParts] = raw.split(';').map((part) => part.trim()).filter(Boolean);
+    const contentTypeMime = mimePart.toLowerCase();
+    const charsetPart = paramParts.find((part) => /^charset=/i.test(part)) || '';
+    const contentTypeCharset = charsetPart ? charsetPart.split('=').slice(1).join('=').trim().toLowerCase() : '';
+    const requiresUtf8Charset = [
+        'text/html',
+        'application/xhtml+xml',
+        'text/plain',
+        'text/css',
+        'application/javascript',
+        'text/javascript',
+        'application/json',
+        'application/xml',
+        'text/xml'
+    ].includes(contentTypeMime);
+
+    return {
+        contentTypeMime,
+        contentTypeCharset,
+        contentTypeValid: Boolean(contentTypeMime) && (!requiresUtf8Charset || contentTypeCharset === 'utf-8')
+    };
+}
+
 function extractHtmlLinkSets(html = '', currentUrl, baseHostname, options = {}) {
     const $ = cheerio.load(html);
     const internal = new Set();
@@ -885,7 +921,16 @@ async function followRedirectChain(url, requestHeaders, maxHops = 10, getPool) {
                 const nextUrl = normalizeUrl(headers.location, currentUrl);
                 if (!nextUrl || chain.includes(nextUrl)) {
                     // Redirect loop detected
-                    return { chain, finalUrl: currentUrl, statusCode: finalStatusCode, firstStatusCode, isLoop: true, headers: finalHeaders, totalTransferred };
+                    return {
+                        chain,
+                        finalUrl: currentUrl,
+                        statusCode: finalStatusCode,
+                        firstStatusCode,
+                        isLoop: true,
+                        chainLength: Math.max(0, chain.length - 1),
+                        headers: finalHeaders,
+                        totalTransferred
+                    };
                 }
                 chain.push(nextUrl);
                 currentUrl = nextUrl;
@@ -1744,7 +1789,7 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
                 let transferredBytes = 0;
                 let totalTransferred = 0;
                 let staticHtml = '';
-                let webVitals = { lcp: null, cls: null, inp: null };
+                let webVitals = { fcp: null, lcp: null, cls: null, inp: null };
                 let screenshotBase64 = null;
                 let visualChangeDetected = false;
                 let visualDiffUrl = null;
@@ -1797,7 +1842,17 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
                     try {
                         if (fetchWebVitals) {
                             await page.addInitScript(() => {
-                                window.__headlightVitals = { lcp: null, cls: 0, inp: null };
+                                window.__headlightVitals = { fcp: null, lcp: null, cls: 0, inp: null };
+
+                                try {
+                                    new PerformanceObserver((entryList) => {
+                                        const entries = entryList.getEntries();
+                                        const firstEntry = entries[0];
+                                        if (firstEntry && !window.__headlightVitals.fcp) {
+                                            window.__headlightVitals.fcp = Math.round(firstEntry.startTime);
+                                        }
+                                    }).observe({ type: 'paint', buffered: true });
+                                } catch {}
 
                                 try {
                                     new PerformanceObserver((entryList) => {
@@ -1839,6 +1894,44 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
                         page.on('pageerror', (err) => jsConsoleErrors.push(err.message));
                         page.on('console', (msg) => {
                             if (msg.type() === 'error') jsConsoleErrors.push(msg.text());
+                        });
+
+                        const networkTracking = {
+                            httpRequestCount: 0,
+                            totalJsBytes: 0,
+                            totalCssBytes: 0,
+                            oversizedImages: 0,
+                            brokenImages: 0
+                        };
+                        const responseTrackingTasks = [];
+                        page.on('response', (response) => {
+                            responseTrackingTasks.push((async () => {
+                                networkTracking.httpRequestCount += 1;
+                                const request = response.request();
+                                const resourceType = request.resourceType();
+                                const headers = normalizeResponseHeaders(response.headers());
+                                const contentTypeHeader = String(headers['content-type'] || '').toLowerCase();
+                                let resourceBytes = parseInt(headers['content-length'] || '0', 10) || 0;
+
+                                if (!resourceBytes && ['script', 'stylesheet', 'image'].includes(resourceType) && response.ok()) {
+                                    try {
+                                        resourceBytes = (await response.body()).length;
+                                    } catch {
+                                        resourceBytes = 0;
+                                    }
+                                }
+
+                                const isJsResource = resourceType === 'script' || contentTypeHeader.includes('javascript') || contentTypeHeader.includes('ecmascript');
+                                const isCssResource = resourceType === 'stylesheet' || contentTypeHeader.includes('text/css');
+                                const isImageResource = resourceType === 'image' || contentTypeHeader.startsWith('image/');
+
+                                if (isJsResource) networkTracking.totalJsBytes += resourceBytes;
+                                if (isCssResource) networkTracking.totalCssBytes += resourceBytes;
+                                if (isImageResource) {
+                                    if (response.status() >= 400) networkTracking.brokenImages += 1;
+                                    if (resourceBytes > 200 * 1024) networkTracking.oversizedImages += 1;
+                                }
+                            })());
                         });
 
                         // B8 — CSS/JS Coverage
@@ -1971,6 +2064,7 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
                                 const hasHorizontalScroll = document.documentElement.scrollWidth > window.innerWidth;
 
                                 return {
+                                    fcp: window.__headlightVitals?.fcp ?? null,
                                     lcp: window.__headlightVitals?.lcp ?? null,
                                     cls: window.__headlightVitals?.cls ?? null,
                                     inp: window.__headlightVitals?.inp ?? null,
@@ -1978,9 +2072,9 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
                                     focusIssues,
                                     hasHorizontalScroll
                                 };
-                            }).catch(() => ({ lcp: null, cls: null, inp: null, contrastIssues: 0, focusIssues: 0, hasHorizontalScroll: false }));
+                            }).catch(() => ({ fcp: null, lcp: null, cls: null, inp: null, contrastIssues: 0, focusIssues: 0, hasHorizontalScroll: false }));
                             
-                            webVitals = { lcp: clientData.lcp, cls: clientData.cls, inp: clientData.inp };
+                            webVitals = { fcp: clientData.fcp, lcp: clientData.lcp, cls: clientData.cls, inp: clientData.inp };
                             pagePayloadAttributes = { 
                                 contrastIssues: clientData.contrastIssues, 
                                 focusIssues: clientData.focusIssues, 
@@ -2017,6 +2111,16 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
                             pagePayloadAttributes.unusedJsPercent = totalJsBytes > 0 ? Math.round((1 - usedJsBytes / totalJsBytes) * 100) : 0;
                             pagePayloadAttributes.unusedCssPercent = totalCssBytes > 0 ? Math.round((1 - usedCssBytes / totalCssBytes) * 100) : 0;
                         }
+
+                        if (responseTrackingTasks.length > 0) {
+                            await Promise.allSettled(responseTrackingTasks);
+                        }
+
+                        pagePayloadAttributes.httpRequestCount = networkTracking.httpRequestCount;
+                        pagePayloadAttributes.totalJsBytes = networkTracking.totalJsBytes;
+                        pagePayloadAttributes.totalCssBytes = networkTracking.totalCssBytes;
+                        pagePayloadAttributes.oversizedImages = networkTracking.oversizedImages;
+                        pagePayloadAttributes.brokenImages = networkTracking.brokenImages;
                     } catch {
                         statusCode = 0;
                     } finally {
@@ -2163,6 +2267,8 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
                 const cacheInfo = extractCacheHeaders(rawHeaders);
                 const cookieInfo = extractCookieSecurity(rawHeaders);
                 const xRobotsInfo = extractXRobotsTag(rawHeaders);
+                const compressionInfo = extractCompressionInfo(rawHeaders);
+                const contentTypeInfo = extractContentTypeInfo(contentType);
                 const sslInfo = await sslPromise || {};
                 const effectiveTransferredBytes = transferredBytes || sizeBytes || (html ? Buffer.byteLength(html, 'utf8') : 0);
                 const effectiveTotalTransferred = totalTransferred || effectiveTransferredBytes;
@@ -2194,7 +2300,10 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
                         totalTransferred: effectiveTotalTransferred,
                         etag,
                         ttfb: loadTime,
+                        redirectLoop: isRedirectLoop,
                         ...carbonMetrics,
+                        ...compressionInfo,
+                        ...contentTypeInfo,
                         uniqueJsInlinks: jsInlinksMap[currentUrl]?.size || 0,
                         uniqueJsOutlinks: 0,
                         uniqueExternalJsOutlinks: 0,
@@ -2320,6 +2429,7 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
                             textContent: data.textContent,
                             loadTime,
                             ttfb: loadTime,
+                            fcp: webVitals.fcp,
                             lcp: webVitals.lcp,
                             cls: webVitals.cls !== null && webVitals.cls !== undefined ? Number(Number(webVitals.cls).toFixed(3)) : null,
                             inp: webVitals.inp,
@@ -2348,11 +2458,21 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
                             httpVersion,
                             transferredBytes: effectiveTransferredBytes,
                             totalTransferred: effectiveTotalTransferred,
+                            contentEncoding: compressionInfo.contentEncoding,
+                            contentTypeMime: contentTypeInfo.contentTypeMime,
+                            contentTypeCharset: contentTypeInfo.contentTypeCharset,
+                            contentTypeValid: contentTypeInfo.contentTypeValid,
+                            redirectLoop: isRedirectLoop,
                             ...carbonMetrics,
                             // ─── New fields from Phase 3 ───
                             // Structured Data
                             schema: data.schema,
                             schemaTypes: data.schemaTypes,
+                            schemaMissingRequired: data.schemaMissingRequired,
+                            hasBreadcrumbSchema: data.hasBreadcrumbSchema,
+                            hasFaqSchema: data.hasFaqSchema,
+                            hasArticleSchema: data.hasArticleSchema,
+                            hasOrgSchema: data.hasOrgSchema,
                             schemaErrors: data.schemaErrors,
                             schemaWarnings: data.schemaWarnings,
                             // Image analysis
@@ -2374,8 +2494,11 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
                             ogDescription: data.ogDescription,
                             ogImage: data.ogImage,
                             ogType: data.ogType,
+                            hasTwitterCard: data.hasTwitterCard,
+                            twitterCardType: data.twitterCardType,
                             twitterCard: data.twitterCard,
                             twitterTitle: data.twitterTitle,
+                            twitterImage: data.twitterImage,
                             // ─── New fields from Phase C ───
                             hasPassageStructure: data.hasPassageStructure,
                             hasFeaturedSnippetPatterns: data.hasFeaturedSnippetPatterns,

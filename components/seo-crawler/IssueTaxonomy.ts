@@ -36,6 +36,8 @@ export const SEO_ISSUES_TAXONOMY = [
         issues: [
             { id: 'videos_no_poster', checkId: 't1-perf', label: 'Videos Without Poster', type: 'notice', condition: (p: any) => p.videosWithoutPoster > 0 },
             { id: 'no_service_worker', checkId: 't1-pwa', label: 'No Service Worker (PWA)', type: 'notice', condition: (p: any) => !p.hasServiceWorker && p.isHtmlPage && p.crawlDepth === 0 },
+            { id: 'content_type_invalid', checkId: 't1-content-type', label: 'Invalid Content-Type or Charset', type: 'warning', condition: (p: any) => p.isHtmlPage && p.contentTypeValid === false },
+            { id: 'no_compression', checkId: 't1-gzip', label: 'No HTTP Compression', type: 'notice', condition: (p: any) => p.isHtmlPage && ['none', 'identity', ''].includes(String(p.contentEncoding || '').toLowerCase()) },
         ]
     },
     {
@@ -101,6 +103,8 @@ export const SEO_ISSUES_TAXONOMY = [
         issues: [
             { id: 'img_missing_alt', checkId: 't2-img-alt', label: 'Missing Alt Text', type: 'warning', condition: (p: any) => p.missingAltImages > 0 },
             { id: 'img_long_alt', checkId: 't2-img-alt', label: 'Alt Text Too Long (> 100 chars)', type: 'notice', condition: (p: any) => p.longAltImages > 0 },
+            { id: 'oversized_images', checkId: 't2-img-size', label: 'Oversized Images (>200KB)', type: 'warning', condition: (p: any) => Number(p.oversizedImages || 0) > 0 },
+            { id: 'broken_images', checkId: 't2-img-broken', label: 'Broken Images', type: 'error', condition: (p: any) => Number(p.brokenImages || 0) > 0 },
         ]
     },
     {
@@ -109,8 +113,12 @@ export const SEO_ISSUES_TAXONOMY = [
             { id: 'slow_response', checkId: 't1-server-response', label: 'Slow Response Time (> 1.5s)', type: 'warning', condition: (p: any) => p.loadTime > 1500 },
             { id: 'large_page', checkId: 't1-page-size', label: 'Large HTML Size (> 2MB)', type: 'warning', condition: (p: any) => p.sizeBytes > 2000000 },
             { id: 'poor_lcp', checkId: 't1-lcp', label: 'Poor LCP (> 2.5s)', type: 'warning', condition: (p: any) => p.lcp > 2500 },
+            { id: 'poor_fcp', checkId: 't1-fcp', label: 'Poor FCP (> 1.8s)', type: 'warning', condition: (p: any) => p.fcp > 1800 },
             { id: 'poor_cls', checkId: 't1-cls', label: 'Poor CLS (> 0.1)', type: 'warning', condition: (p: any) => p.cls > 0.1 },
             { id: 'poor_inp', checkId: 't1-fid', label: 'Poor INP (> 200ms)', type: 'warning', condition: (p: any) => p.inp > 200 },
+            { id: 'too_many_requests', checkId: 't1-requests', label: 'Too Many HTTP Requests (>100)', type: 'notice', condition: (p: any) => Number(p.httpRequestCount || 0) > 100 },
+            { id: 'js_bundle_too_large', checkId: 't1-js-size', label: 'Large JavaScript Payload (>500KB)', type: 'warning', condition: (p: any) => Number(p.totalJsBytes || 0) > 500 * 1024 },
+            { id: 'css_bundle_too_large', checkId: 't1-css-size', label: 'Large CSS Payload (>200KB)', type: 'notice', condition: (p: any) => Number(p.totalCssBytes || 0) > 200 * 1024 },
             { id: 'content_decay', checkId: 't3-content-decay', label: 'Possible Content Decay', type: 'warning', condition: (p: any) => p.contentDecay === 'Possible Decay' },
         ]
     },
@@ -215,6 +223,17 @@ export const SEO_ISSUES_TAXONOMY = [
             { id: 'schema_missing', checkId: 't2-schema-exists', label: 'Missing Structured Data', type: 'notice', condition: (p: any) => !p.schema || (Array.isArray(p.schema) && p.schema.length === 0) },
             { id: 'schema_errors', checkId: 't2-schema-valid', label: 'Schema Validation Errors', type: 'error', condition: (p: any) => p.schemaErrors > 0 },
             { id: 'schema_warnings', checkId: 't2-schema-valid', label: 'Schema Validation Warnings', type: 'warning', condition: (p: any) => p.schemaWarnings > 0 },
+            { id: 'schema_missing_required_props', checkId: 't2-schema-required', label: 'Schema Missing Required Properties', type: 'warning', condition: (p: any) => Array.isArray(p.schemaMissingRequired) && p.schemaMissingRequired.length > 0 },
+            { id: 'no_breadcrumb_schema', checkId: 't2-breadcrumb-schema', label: 'Missing Breadcrumb Schema', type: 'notice', condition: (p: any) => p.isHtmlPage && p.crawlDepth >= 2 && !p.hasBreadcrumbSchema },
+            { id: 'no_faq_schema', checkId: 't2-faq-schema', label: 'Missing FAQ Schema', type: 'notice', condition: (p: any) => p.isHtmlPage && p.hasQuestionFormat === true && !p.hasFaqSchema },
+            { id: 'no_article_schema', checkId: 't2-article-schema', label: 'Missing Article Schema', type: 'notice', condition: (p: any) => p.isHtmlPage && !!p.visibleDate && !p.hasArticleSchema },
+            { id: 'no_org_schema', checkId: 't2-org-schema', label: 'Missing Organization Schema', type: 'notice', condition: (p: any) => p.isHtmlPage && p.crawlDepth === 0 && !p.hasOrgSchema },
+        ]
+    },
+    {
+        category: 'Social Metadata',
+        issues: [
+            { id: 'missing_twitter_card', checkId: 't2-twitter-cards', label: 'Missing Twitter Card', type: 'notice', condition: (p: any) => p.isHtmlPage && p.hasTwitterCard === false },
         ]
     },
     {
@@ -329,6 +348,8 @@ export const ISSUE_TO_CHECK_MAP: Record<string, string> = {
     generic_anchors: 't1-links',
     videos_no_poster: 't1-perf',
     no_service_worker: 't1-pwa',
+    content_type_invalid: 't1-content-type',
+    no_compression: 't1-gzip',
     low_word_count: 't2-thin-content',
     exact_duplicate: 't2-duplicate-content',
     spelling_errors: 't2-spelling',
@@ -356,11 +377,17 @@ export const ISSUE_TO_CHECK_MAP: Record<string, string> = {
     heading_order: 't2-heading-hierarchy',
     img_missing_alt: 't2-img-alt',
     img_long_alt: 't2-img-alt',
+    oversized_images: 't2-img-size',
+    broken_images: 't2-img-broken',
     slow_response: 't1-server-response',
     large_page: 't1-page-size',
     poor_lcp: 't1-lcp',
+    poor_fcp: 't1-fcp',
     poor_cls: 't1-cls',
     poor_inp: 't1-fid',
+    too_many_requests: 't1-requests',
+    js_bundle_too_large: 't1-js-size',
+    css_bundle_too_large: 't1-css-size',
     content_decay: 't3-content-decay',
     low_ctr: 't3-keyword-opportunity',
     traffic_drop: 't3-content-decay',
@@ -432,6 +459,12 @@ export const ISSUE_TO_CHECK_MAP: Record<string, string> = {
     schema_missing: 't2-schema-exists',
     schema_errors: 't2-schema-valid',
     schema_warnings: 't2-schema-valid',
+    schema_missing_required_props: 't2-schema-required',
+    no_breadcrumb_schema: 't2-breadcrumb-schema',
+    no_faq_schema: 't2-faq-schema',
+    no_article_schema: 't2-article-schema',
+    no_org_schema: 't2-org-schema',
+    missing_twitter_card: 't2-twitter-cards',
     amp_missing: 't2-amp',
     mobile_alt_missing: 't2-mobile-alt',
     rel_next_missing: 't2-pagination-rel',

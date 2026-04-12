@@ -187,6 +187,28 @@ export interface CrawledPage {
   firstArchived?: string | null;
   lastArchived?: string | null;
   sslGrade?: string;
+  contentEncoding?: string;
+  contentTypeMime?: string;
+  contentTypeCharset?: string;
+  contentTypeValid?: boolean;
+  redirectLoop?: boolean;
+  fcp?: number | null;
+  httpRequestCount?: number;
+  totalJsBytes?: number;
+  totalCssBytes?: number;
+  unusedCssPercent?: number;
+  unusedJsPercent?: number;
+  oversizedImages?: number;
+  brokenImages?: number;
+  jsConsoleErrors?: string[];
+  hasTwitterCard?: boolean;
+  twitterCardType?: string;
+  twitterImage?: string;
+  hasBreadcrumbSchema?: boolean;
+  hasFaqSchema?: boolean;
+  hasArticleSchema?: boolean;
+  hasOrgSchema?: boolean;
+  schemaMissingRequired?: string[];
 
   // ─── Business & AI Discoverability ───
   hasPassageStructure?: boolean;

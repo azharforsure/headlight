@@ -180,6 +180,53 @@ const VALID_ARIA_ROLES = new Set([
 
 const GENERIC_LINK_TEXT_PATTERN = /^(click here|read more|learn more|more|here|link|this|download|submit)$/i;
 
+function collectSchemaNodes(node, bucket = []) {
+    if (!node || typeof node !== 'object') return bucket;
+    if (Array.isArray(node)) {
+        node.forEach((item) => collectSchemaNodes(item, bucket));
+        return bucket;
+    }
+
+    bucket.push(node);
+
+    if (Array.isArray(node['@graph'])) {
+        node['@graph'].forEach((item) => collectSchemaNodes(item, bucket));
+    }
+
+    return bucket;
+}
+
+function getMissingSchemaRequiredProps(schemaNodes = []) {
+    const requiredByType = {
+        BreadcrumbList: ['itemListElement'],
+        FAQPage: ['mainEntity'],
+        Article: ['headline'],
+        BlogPosting: ['headline'],
+        NewsArticle: ['headline'],
+        Organization: ['name'],
+        Product: ['name'],
+    };
+
+    const missing = new Set();
+    for (const node of schemaNodes) {
+        const rawTypes = node?.['@type'];
+        const types = Array.isArray(rawTypes) ? rawTypes : rawTypes ? [rawTypes] : [];
+        for (const type of types) {
+            const requiredProps = requiredByType[type];
+            if (!requiredProps) continue;
+            for (const prop of requiredProps) {
+                const value = node?.[prop];
+                const isMissing = value === undefined || value === null || value === '' || (Array.isArray(value) && value.length === 0);
+                if (isMissing) {
+                    missing.add(`${type}.${prop}`);
+                }
+            }
+        }
+    }
+
+    return Array.from(missing);
+}
+
 parentPort.on('message', (task) => {
     const { html, staticHtml, url, depth, baseHostname, config, robotsRules } = task;
 
@@ -369,6 +416,7 @@ parentPort.on('message', (task) => {
         let schemaErrors = 0;
         let schemaWarnings = 0;
         const schemaTypes = [];
+        const schemaNodes = [];
 
         $('script[type="application/ld+json"]').each((_, el) => {
             const raw = $(el).html();
@@ -376,6 +424,7 @@ parentPort.on('message', (task) => {
             try {
                 const parsed = JSON.parse(raw);
                 schemaBlocks.push(parsed);
+                collectSchemaNodes(parsed, schemaNodes);
 
                 // Extract @type
                 const extractTypes = (obj) => {
@@ -408,6 +457,12 @@ parentPort.on('message', (task) => {
                 schemaTypes.push(typeName);
             }
         });
+
+        const schemaMissingRequired = getMissingSchemaRequiredProps(schemaNodes);
+        const hasBreadcrumbSchema = schemaTypes.includes('BreadcrumbList');
+        const hasFaqSchema = schemaTypes.includes('FAQPage');
+        const hasArticleSchema = schemaTypes.some((type) => ['Article', 'BlogPosting', 'NewsArticle'].includes(type));
+        const hasOrgSchema = schemaTypes.includes('Organization');
 
         // ─── Hreflang Extraction (Phase 3d) ─────────────────
         const hreflangTags = [];
@@ -443,6 +498,9 @@ parentPort.on('message', (task) => {
         const ogType = $('meta[property="og:type"]').attr('content') || '';
         const twitterCard = $('meta[name="twitter:card"]').attr('content') || '';
         const twitterTitle = $('meta[name="twitter:title"]').attr('content') || '';
+        const twitterImage = $('meta[name="twitter:image"]').attr('content') || '';
+        const hasTwitterCard = Boolean(twitterCard);
+        const twitterCardType = twitterCard;
 
         // ─── Form Security Detection (Phase 3g) ─────────────
         let insecureForms = false;
@@ -1010,6 +1068,11 @@ parentPort.on('message', (task) => {
                 // Structured Data
                 schema: schemaBlocks.length > 0 ? schemaBlocks : null,
                 schemaTypes,
+                schemaMissingRequired,
+                hasBreadcrumbSchema,
+                hasFaqSchema,
+                hasArticleSchema,
+                hasOrgSchema,
                 schemaErrors,
                 schemaWarnings,
                 // Hreflang
@@ -1024,7 +1087,7 @@ parentPort.on('message', (task) => {
                 hasHsts,
                 // Social
                 ogTitle, ogDescription, ogImage, ogType,
-                twitterCard, twitterTitle,
+                hasTwitterCard, twitterCardType, twitterCard, twitterTitle, twitterImage,
                 // Security
                 insecureForms, mixedContent,
                 // Accessibility
