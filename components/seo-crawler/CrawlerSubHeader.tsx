@@ -18,8 +18,7 @@ export default function CrawlerSubHeader() {
         crawlRuntime, pages,
         auditFilter, applyAuditMode,
         setAutoFixItems, setShowAutoFixModal,
-        setShowExportDialog,
-        pages
+        setShowExportDialog
     } = useSeoCrawler();
 
     const detectedCms = React.useMemo(() => {
