@@ -157,7 +157,13 @@ export const ALL_COLUMNS = [
     { key: 'cmsType', label: 'CMS Type', width: '120px', group: 'Advanced' },
     { key: 'wpPostType', label: 'WP Post Type', width: '130px', group: 'Advanced' },
     { key: 'wpAuthor', label: 'WP Author', width: '120px', group: 'Advanced' },
+    { key: 'wpCategories', label: 'WP Categories', width: '180px', group: 'Advanced' },
+    { key: 'wpTags', label: 'WP Tags', width: '180px', group: 'Advanced' },
     { key: 'wpPublishDate', label: 'WP Published', width: '160px', group: 'Advanced' },
+    { key: 'wpModifiedDate', label: 'WP Modified', width: '160px', group: 'Advanced' },
+    { key: 'shopifyProductType', label: 'Shopify Product Type', width: '160px', group: 'Advanced' },
+    { key: 'shopifyVendor', label: 'Shopify Vendor', width: '140px', group: 'Advanced' },
+    { key: 'shopifyTags', label: 'Shopify Tags', width: '180px', group: 'Advanced' },
 
 
     // Security
@@ -306,6 +312,7 @@ export const ALL_COLUMNS = [
     { key: 'gbpName', label: 'GBP Name', width: '180px', group: 'Business' },
     { key: 'gbpAddress', label: 'GBP Address', width: '300px', group: 'Business' },
     { key: 'gbpPhone', label: 'GBP Phone', width: '140px', group: 'Business' },
+    { key: 'gbpReviewCount', label: 'GBP Reviews', width: '110px', group: 'Business' },
     { key: 'gbpAvgRating', label: 'GBP Rating', width: '110px', group: 'Business' },
 
     { key: 'hasPassageStructure', label: 'Passage Ready', width: '130px', group: 'AI Discoverability' },

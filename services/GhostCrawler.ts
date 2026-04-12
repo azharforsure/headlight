@@ -467,6 +467,21 @@ export class GhostCrawler {
         const h1 = doc.querySelector('h1')?.textContent || '';
         const canonical = doc.querySelector('link[rel="canonical"]')?.getAttribute('href') || '';
         const robots = doc.querySelector('meta[name="robots"]')?.getAttribute('content') || '';
+        const generator = doc.querySelector('meta[name="generator"]')?.getAttribute('content')?.toLowerCase() || '';
+        
+        // Universal CMS Fingerprinting
+        let cmsType: string | null = null;
+        if (generator.includes('wordpress')) cmsType = 'wordpress';
+        else if (generator.includes('shopify') || html.includes('shopify-checkout') || html.includes('cdn.shopify.com')) cmsType = 'shopify';
+        else if (generator.includes('wix') || html.includes('wix-first-interactive')) cmsType = 'wix';
+        else if (generator.includes('squarespace') || html.includes('static1.squarespace.com')) cmsType = 'squarespace';
+        else if (generator.includes('joomla')) cmsType = 'joomla';
+        else if (generator.includes('drupal')) cmsType = 'drupal';
+        else if (generator.includes('ghost')) cmsType = 'ghost';
+        else if (generator.includes('webflow')) cmsType = 'webflow';
+        else if (generator.includes('hubspot')) cmsType = 'hubspot';
+        else if (html.includes('next.js') || html.includes('__NEXT_DATA__')) cmsType = 'nextjs';
+        else if (html.includes('gatsby')) cmsType = 'gatsby';
 
         // Separate internal and external links
         const allLinks = Array.from(doc.querySelectorAll('a'))
@@ -511,6 +526,7 @@ export class GhostCrawler {
             imageCount: images.length,
             imagesWithoutAlt,
             indexable: !robots.includes('noindex'),
+            cmsType,
             timestamp: Date.now(),
             // Pass these up for enqueuing if needed
             resources: this.config.crawlResources ? [
@@ -587,6 +603,7 @@ export class GhostCrawler {
             backlinkEnrichedAt: null,
             // ── NEW: HTML Flag ──
             isHtmlPage: (page.contentType || '').includes('text/html'),
+            cmsType: page.cmsType || null,
             
             gscClicks: null,
             gscImpressions: null,

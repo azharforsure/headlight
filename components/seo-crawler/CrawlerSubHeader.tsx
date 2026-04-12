@@ -18,8 +18,14 @@ export default function CrawlerSubHeader() {
         crawlRuntime, pages,
         auditFilter, applyAuditMode,
         setAutoFixItems, setShowAutoFixModal,
-        setShowExportDialog
+        setShowExportDialog,
+        pages
     } = useSeoCrawler();
+
+    const detectedCms = React.useMemo(() => {
+        const firstWithCms = pages.find(p => p.cmsType);
+        return firstWithCms?.cmsType || null;
+    }, [pages]);
     
     const pickerRef = React.useRef<HTMLDivElement>(null);
 
@@ -72,7 +78,12 @@ export default function CrawlerSubHeader() {
                     </div>
                 </div>
 
-                <div className="h-4 border-l border-[#333] hidden md:block mr-1"></div>
+                {detectedCms && (
+                    <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 mr-2 shrink-0">
+                        <Sparkles size={10} className="text-indigo-400" />
+                        <span className="text-[9px] font-black text-indigo-400 uppercase tracking-widest">{detectedCms}</span>
+                    </div>
+                )}
 
                 <button onClick={() => setActiveMacro('all')} className={`px-2.5 py-1 rounded text-[12px] font-bold transition-colors shrink-0 ${activeMacro === 'all' ? 'bg-[#F5364E]/10 text-[#F5364E]' : 'bg-transparent text-[#888] hover:bg-[#1a1a1a] hover:text-[#ccc]'}`}>
                     All Pages ({Math.max(pages.length, crawlRuntime.crawled || 0)})

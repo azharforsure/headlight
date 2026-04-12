@@ -6,7 +6,7 @@ import { KeywordUploadMerger } from './KeywordUploadMerger';
 import { BacklinkUploadMerger } from './BacklinkUploadMerger';
 import { BingWebmasterService } from './BingWebmasterService';
 import { CommonCrawlService } from './CommonCrawlService';
-import { WordPressService } from './WordPressService';
+import { CMSService } from './CMSService';
 import { GoogleBusinessProfileService } from './GoogleBusinessProfileService';
 import {
     calculateAuthorityScore,
@@ -347,17 +347,14 @@ export class PostCrawlEnrichment {
             }));
         }
 
-        // 7.5 CMS Metadata Enrichment (WordPress)
+        // 7.5 CMS Metadata Enrichment (WordPress/Shopify) - Silent Auto-detect
         try {
-            const rootUrl = targetUrls[0] || targetPages[0]?.url;
-            if (rootUrl) {
-                const siteOrigin = new URL(rootUrl).origin;
-                onProgress?.('Checking for WordPress REST API...');
-                await WordPressService.enrichSession(sessionId, siteOrigin, onProgress);
+            const cmsResult = await CMSService.enrichSession(config.sessionId, session.startUrl, onProgress);
+            if (cmsResult.cms) {
+                onProgress?.(`Enriched ${cmsResult.enriched} pages with ${cmsResult.cms} metadata.`);
             }
-        } catch (err: any) {
-            // Silent fail — not all sites are WordPress
-            console.log('[Enrichment] WordPress detection skipped:', err.message);
+        } catch (err) {
+            console.error('[Enrichment] CMS Auto-detect failed:', err);
         }
 
 
