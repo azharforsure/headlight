@@ -102,7 +102,7 @@ type IntegrationRecord = {
 
 const ANON_STORAGE_KEY = 'headlight:seo-crawler-integrations:anonymous';
 const PROJECT_STORAGE_KEY_PREFIX = 'headlight:seo-crawler-integrations:project:';
-const DEFAULT_GOOGLE_SCOPES = [
+export const DEFAULT_GOOGLE_SCOPES = [
     'webmasters.readonly',
     'analytics.readonly',
     'userinfo.email',
