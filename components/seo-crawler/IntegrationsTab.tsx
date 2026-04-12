@@ -380,33 +380,6 @@ export function IntegrationsTab() {
           )}
         </div>
 
-        {/* Automated System Enrichment */}
-        <div className="rounded-lg border border-white/[0.04] bg-indigo-500/[0.02] p-5">
-          <div className="flex items-center gap-2 mb-1">
-            <Sparkles size={14} className="text-indigo-400" />
-            <h4 className="text-xs font-semibold text-white/90 uppercase tracking-widest">System Enrichment</h4>
-          </div>
-          <p className="text-[11px] text-white/40 mb-4 font-medium">Built-in automation for deep data analysis without API keys.</p>
-          
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="p-3 rounded-md bg-white/[0.02] border border-white/5">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-[10px] font-bold text-white/80">WP Discovery</span>
-                <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-bold border border-emerald-500/10 uppercase">Active</span>
-              </div>
-              <p className="text-[10px] text-white/30 leading-relaxed">Auto-detects WordPress sites and pulls post types, authors, and publish dates.</p>
-            </div>
-            
-            <div className="p-3 rounded-md bg-white/[0.02] border border-white/5">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-[10px] font-bold text-white/80">CC Backlinks</span>
-                <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 font-bold border border-amber-500/10 uppercase">Fallback</span>
-              </div>
-              <p className="text-[10px] text-white/30 leading-relaxed">Uses Common Crawl archive as a free fallback when Ahrefs/Semrush are missing.</p>
-            </div>
-          </div>
-        </div>
-
         {/* MCP Servers */}
         <div className="rounded-lg border border-white/[0.06] bg-white/[0.01] p-5">
           <div className="flex items-center justify-between mb-1">
