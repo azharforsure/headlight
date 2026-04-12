@@ -190,12 +190,89 @@ export const runPostCrawlScoring = (completedPages: any[]): any[] => {
     if (completedPages.length === 0) return completedPages;
 
     const ranks = calculateInternalPageRank(completedPages);
+    
+    // A3 — Keyword Cannibalization Detection
+    const keywordPageMap = new Map<string, string[]>();
+    completedPages.forEach(p => {
+        if (p.mainKeyword) {
+            const kw = String(p.mainKeyword).toLowerCase().trim();
+            if (!keywordPageMap.has(kw)) keywordPageMap.set(kw, []);
+            keywordPageMap.get(kw)!.push(p.url);
+        }
+    });
+
+    // B2 — WWW vs Non-WWW Consistency Detection
+    const wwwInconsistency = detectWwwInconsistency(completedPages);
+
+    // B3 — Hreflang Return Tag Verification
+    const hreflangReturnMap = verifyHreflangReciprocity(completedPages);
+
     return completedPages.map(p => {
         const internalPageRank = ranks[p.url] || 0;
-        const updatedPage = { ...p, internalPageRank };
+        
+        // Apply Cannibalization flag
+        let isCannibalized = false;
+        if (p.mainKeyword) {
+            const kw = String(p.mainKeyword).toLowerCase().trim();
+            const urls = keywordPageMap.get(kw);
+            isCannibalized = urls && urls.length > 1;
+        }
+
+        const updatedPage = { 
+            ...p, 
+            internalPageRank, 
+            isCannibalized,
+            wwwInconsistency: wwwInconsistency.hasInconsistency,
+            hreflangNoReturn: hreflangReturnMap.get(p.url) || false
+        };
+        
         return { ...updatedPage, healthScore: calculatePredictiveScore(updatedPage) };
     });
 };
+
+/**
+ * B2 — WWW vs Non-WWW Consistency
+ */
+export function detectWwwInconsistency(pages: any[]): { hasInconsistency: boolean; wwwUrls: number; nonWwwUrls: number } {
+    let wwwUrls = 0;
+    let nonWwwUrls = 0;
+    pages.forEach(p => {
+        try {
+            const host = new URL(p.url).hostname;
+            if (host.startsWith('www.')) wwwUrls++;
+            else nonWwwUrls++;
+        } catch {}
+    });
+    return { hasInconsistency: wwwUrls > 0 && nonWwwUrls > 0, wwwUrls, nonWwwUrls };
+}
+
+/**
+ * B3 — Hreflang Return Tag Verification
+ */
+export function verifyHreflangReciprocity(pages: any[]): Map<string, boolean> {
+    // Build a map: url -> hreflang targets
+    const hreflangMap = new Map<string, Set<string>>();
+    pages.forEach(p => {
+        if (Array.isArray(p.hreflang) && p.hreflang.length > 0) {
+            const targets = new Set(p.hreflang.map((h: any) => h.href).filter(Boolean).map((h: string) => h.trim()));
+            hreflangMap.set(p.url, targets);
+        }
+    });
+
+    // For each page, check if all its hreflang targets link back
+    const results = new Map<string, boolean>();
+    hreflangMap.forEach((targets, sourceUrl) => {
+        let hasNonReciprocal = false;
+        targets.forEach(targetUrl => {
+            const targetHreflangs = hreflangMap.get(targetUrl);
+            if (targetHreflangs && !targetHreflangs.has(sourceUrl)) {
+                hasNonReciprocal = true;
+            }
+        });
+        results.set(sourceUrl, hasNonReciprocal);
+    });
+    return results;
+}
 
 // ─── Owner Check Helper ───
 

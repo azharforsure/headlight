@@ -22,6 +22,8 @@ export const SEO_ISSUES_TAXONOMY = [
         category: 'Links & Navigation',
         issues: [
             { id: 'broken_internal_links', checkId: 't1-broken-links', label: 'Broken Internal Links', type: 'error', condition: (p: any) => p.brokenInternalLinks > 0 },
+            { id: 'broken_internal_image', checkId: 't1-image-broken', label: 'Broken Internal Image', type: 'error', condition: (p: any) => p.isHtmlPage && Number(p.brokenImages || 0) > 0 },
+            { id: 'decorative_img_with_alt', checkId: 't2-img-decorative', label: 'Decorative Image with Alt Text', type: 'notice', condition: (p: any) => Number(p.decorativeWithAlt || 0) > 0 },
             { id: 'too_many_links', checkId: 't1-outbound-count', label: 'Too Many Links on Page (>3000)', type: 'warning', condition: (p: any) => (p.inlinks + p.outlinks) > 3000 },
             { id: 'internal_redirects', checkId: 't1-redirect-chain', label: 'Internal Links to Redirects (3xx)', type: 'notice', condition: (p: any) => p.redirectsIn > 0 },
             { id: 'only_one_inlink', checkId: 't1-internal-count', label: 'Pages with Only 1 Inlink', type: 'notice', condition: (p: any) => p.inlinks === 1 },
@@ -44,7 +46,18 @@ export const SEO_ISSUES_TAXONOMY = [
             { id: 'spelling_errors', checkId: 't2-spelling', label: 'Spelling Errors Found', type: 'notice', condition: (p: any) => p.spellingErrors > 0 },
             { id: 'grammar_errors', checkId: 't2-grammar', label: 'Grammar Errors Found', type: 'notice', condition: (p: any) => p.grammarErrors > 0 },
             { id: 'low_readability', checkId: 't2-reading-level', label: 'Low Readability Score', type: 'notice', condition: (p: any) => p.fleschScore > 0 && p.fleschScore < 30 },
-            { id: 'lorem_ipsum', checkId: 't2-thin-content', label: 'Contains Lorem Ipsum', type: 'warning', condition: (p: any) => p.containsLoremIpsum === true },
+            { id: 'lorem_ipsum', checkId: 't2-lorem-ipsum', label: 'Lorem Ipsum Detected', type: 'warning', condition: (p: any) => p.containsLoremIpsum === true },
+            { id: 'stale_content', checkId: 't2-content-freshness', label: 'Content Stale (>6 months)', type: 'notice', condition: (p: any) => {
+                if (!p.visibleDate) return false;
+                const diff = Date.now() - new Date(p.visibleDate).getTime();
+                return diff > 180 * 24 * 60 * 60 * 1000 && diff <= 365 * 24 * 60 * 60 * 1000;
+            }},
+            { id: 'very_stale_content', checkId: 't2-content-freshness', label: 'Content Very Stale (>1 year)', type: 'warning', condition: (p: any) => {
+                if (!p.visibleDate) return false;
+                const diff = Date.now() - new Date(p.visibleDate).getTime();
+                return diff > 365 * 24 * 60 * 60 * 1000;
+            }},
+            { id: 'keyword_cannibalization', checkId: 't2-keyword-cannibalization', label: 'Keyword Cannibalization', type: 'warning', condition: (p: any) => p.isCannibalized === true },
         ]
     },
     {
@@ -79,6 +92,8 @@ export const SEO_ISSUES_TAXONOMY = [
             { id: 'h1_too_long', checkId: 't2-h1-length', label: 'H1 Too Long (> 70 chars)', type: 'notice', condition: (p: any) => p.h1_1Length > 70 },
             { id: 'h2_missing', checkId: 't2-heading-hierarchy', label: 'Missing H2 Tags', type: 'notice', condition: (p: any) => !p.h2_1 },
             { id: 'heading_order', checkId: 't2-heading-hierarchy', label: 'Incorrect Heading Order', type: 'warning', condition: (p: any) => p.incorrectHeadingOrder === true },
+            { id: 'lang_mismatch', checkId: 't2-lang-mismatch', label: 'Language Declaration Mismatch', type: 'warning', condition: (p: any) => p.langMismatch === true },
+            { id: 'hreflang_no_return', checkId: 't2-hreflang-reciprocity', label: 'Hreflang Reciprocity Issue (No Return)', type: 'warning', condition: (p: any) => p.hreflangNoReturn === true },
         ]
     },
     {
@@ -117,6 +132,11 @@ export const SEO_ISSUES_TAXONOMY = [
             { id: 'insecure_forms', checkId: 't1-security-headers', label: 'Insecure Forms', type: 'error', condition: (p: any) => p.insecureForms === true },
             { id: 'ssl_invalid', checkId: 't1-ssl-valid', label: 'Invalid SSL Certificate', type: 'error', condition: (p: any) => p.url?.startsWith('https://') && p.sslValid === false },
             { id: 'ssl_expiring', checkId: 't1-ssl-expiry', label: 'SSL Expiring Within 30 Days', type: 'warning', condition: (p: any) => p.sslIsExpiringSoon === true },
+            { id: 'http1_only', checkId: 't1-http2', label: 'Serving over HTTP/1.1', type: 'notice', condition: (p: any) => p.isHtmlPage && p.httpVersion === 'HTTP/1.1' },
+            { id: 'js_console_errors', checkId: 't1-js-errors', label: 'JavaScript Console Errors', type: 'warning', condition: (p: any) => Array.isArray(p.jsConsoleErrors) && p.jsConsoleErrors.length > 0 },
+            { id: 'unused_css_high', checkId: 't1-unused-css', label: 'High Unused CSS (>70%)', type: 'notice', condition: (p: any) => Number(p.unusedCssPercent) > 70 },
+            { id: 'unused_js_high', checkId: 't1-unused-js', label: 'High Unused JS (>70%)', type: 'notice', condition: (p: any) => Number(p.unusedJsPercent) > 70 },
+            { id: 'www_inconsistency', checkId: 't2-www-consistency', label: 'WWW/Non-WWW Inconsistency', type: 'warning', condition: (p: any) => p.wwwInconsistency === true },
             { id: 'weak_tls', checkId: 't1-ssl-valid', label: 'Weak TLS Protocol', type: 'warning', condition: (p: any) => p.sslIsWeakProtocol === true },
             { id: 'missing_hsts', checkId: 't1-hsts', label: 'Missing HSTS Header', type: 'warning', condition: (p: any) => p.url?.startsWith('https://') && p.hstsMissing === true },
             { id: 'missing_csp', checkId: 't1-csp', label: 'Missing Content Security Policy', type: 'notice', condition: (p: any) => p.isHtmlPage && p.hasCsp === false },
@@ -140,7 +160,9 @@ export const SEO_ISSUES_TAXONOMY = [
             { id: 'generic_link_text', checkId: 't2-a11y-links', label: 'Generic Link Text', type: 'notice', condition: (p: any) => p.genericLinkTextCount > 0 },
             { id: 'invalid_aria', checkId: 't2-a11y-aria', label: 'Invalid ARIA Roles', type: 'notice', condition: (p: any) => p.invalidAriaCount > 0 },
             { id: 'missing_skip_link', checkId: 't2-a11y-skip-link', label: 'Missing Skip Navigation Link', type: 'notice', condition: (p: any) => p.isHtmlPage && p.hasSkipLink === false },
-            { id: 'tables_without_headers', checkId: 't2-a11y-table-headers', label: 'Tables Without Headers', type: 'notice', condition: (p: any) => p.tablesWithoutHeaders > 0 },
+            { id: 'table_no_headers', checkId: 't2-a11y-tables', label: 'Table Missing Headers', type: 'notice', condition: (p: any) => p.isHtmlPage && Number(p.tablesWithoutHeaders || 0) > 0 },
+            { id: 'poor_color_contrast', checkId: 't2-a11y-contrast', label: 'Insufficient Color Contrast', type: 'warning', condition: (p: any) => Number(p.contrastIssues || 0) > 0 },
+            { id: 'missing_focus_indicators', checkId: 't2-a11y-focus', label: 'Missing Focus Indicators', type: 'warning', condition: (p: any) => Number(p.focusIssues || 0) > 0 },
         ]
     },
     {
@@ -171,6 +193,8 @@ export const SEO_ISSUES_TAXONOMY = [
         category: 'Mobile Usability',
         issues: [
             { id: 'missing_viewport', checkId: 't2-mobile-viewport', label: 'Missing Viewport Meta Tag', type: 'error', condition: (p: any) => p.isHtmlPage && p.hasViewportMeta === false },
+            { id: 'viewport_not_fixed', checkId: 't2-mobile-viewport', label: 'Viewport Not Set to Device Width', type: 'warning', condition: (p: any) => p.isHtmlPage && p.viewportWidth === false },
+            { id: 'horizontal_scroll_mobile', checkId: 't2-mobile-horizontal-scroll', label: 'Horizontal Scroll Present', type: 'warning', condition: (p: any) => p.hasHorizontalScroll === true },
             { id: 'non_device_width_viewport', checkId: 't2-mobile-viewport', label: 'Viewport Missing device-width', type: 'notice', condition: (p: any) => p.hasViewportMeta === true && p.viewportWidth === false },
             { id: 'small_tap_targets', checkId: 't2-mobile-tap-targets', label: 'Small Tap Targets', type: 'warning', condition: (p: any) => p.smallTapTargets > 0 },
             { id: 'small_fonts', checkId: 't2-mobile-font-size', label: 'Font Size Too Small', type: 'notice', condition: (p: any) => p.smallFontCount > 0 },

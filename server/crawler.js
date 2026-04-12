@@ -1752,7 +1752,7 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
                 let isDirListing = false;
                 let exposedSensitiveFiles = [];
 
-                // ── Incremental Check ──
+                let pagePayloadAttributes = {};
                 if (strategy === 'incremental' && previousRunData[currentUrl]) {
                     const prev = previousRunData[currentUrl];
                     try {
@@ -1832,6 +1832,21 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
                                     }).observe({ type: 'event', buffered: true, durationThreshold: 40 });
                                 } catch {}
                             });
+                        }
+
+                        // B4 — JS Error Tracking
+                        const jsConsoleErrors = [];
+                        page.on('pageerror', (err) => jsConsoleErrors.push(err.message));
+                        page.on('console', (msg) => {
+                            if (msg.type() === 'error') jsConsoleErrors.push(msg.text());
+                        });
+
+                        // B8 — CSS/JS Coverage
+                        if (config.fetchCoverage) {
+                            await Promise.all([
+                                page.coverage.startJSCoverage(),
+                                page.coverage.startCSSCoverage()
+                            ]);
                         }
 
                         const response = await page.goto(currentUrl, { waitUntil: 'networkidle', timeout: 15000 });
@@ -1927,11 +1942,80 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
 
                         if (fetchWebVitals) {
                             await page.waitForTimeout(750).catch(() => {});
-                            webVitals = await page.evaluate(() => ({
-                                lcp: window.__headlightVitals?.lcp ?? null,
-                                cls: window.__headlightVitals?.cls ?? null,
-                                inp: window.__headlightVitals?.inp ?? null
-                            })).catch(() => ({ lcp: null, cls: null, inp: null }));
+                            const clientData = await page.evaluate(() => {
+                                // B5 — Color Contrast (Basic Check)
+                                let contrastIssues = 0;
+                                try {
+                                    const elements = document.querySelectorAll('p, h1, h2, h3, h4, h5, h6, span, a');
+                                    elements.forEach(el => {
+                                        const style = window.getComputedStyle(el);
+                                        if (style.display === 'none' || style.visibility === 'hidden') return;
+                                        // Simple heuristic: if color and background are too close
+                                        // (This is a placeholder for a real WCAG contrast algorithm)
+                                    });
+                                } catch {}
+
+                                // B6 — Focus Indicators
+                                let focusIssues = 0;
+                                try {
+                                    const interactive = document.querySelectorAll('a, button, input, select, textarea');
+                                    interactive.forEach(el => {
+                                        const style = window.getComputedStyle(el);
+                                        if (style.outlineStyle === 'none' && style.boxShadow === 'none') {
+                                            focusIssues++;
+                                        }
+                                    });
+                                } catch {}
+
+                                // B7 — Horizontal Scroll
+                                const hasHorizontalScroll = document.documentElement.scrollWidth > window.innerWidth;
+
+                                return {
+                                    lcp: window.__headlightVitals?.lcp ?? null,
+                                    cls: window.__headlightVitals?.cls ?? null,
+                                    inp: window.__headlightVitals?.inp ?? null,
+                                    contrastIssues,
+                                    focusIssues,
+                                    hasHorizontalScroll
+                                };
+                            }).catch(() => ({ lcp: null, cls: null, inp: null, contrastIssues: 0, focusIssues: 0, hasHorizontalScroll: false }));
+                            
+                            webVitals = { lcp: clientData.lcp, cls: clientData.cls, inp: clientData.inp };
+                            pagePayloadAttributes = { 
+                                contrastIssues: clientData.contrastIssues, 
+                                focusIssues: clientData.focusIssues, 
+                                hasHorizontalScroll: clientData.hasHorizontalScroll,
+                                jsConsoleErrors: jsConsoleErrors.slice(0, 5) 
+                            };
+                        }
+
+                        // B8 — Calculate Coverage
+                        if (config.fetchCoverage) {
+                            const [jsCoverage, cssCoverage] = await Promise.all([
+                                page.coverage.stopJSCoverage(),
+                                page.coverage.stopCSSCoverage()
+                            ]);
+                            
+                            let totalJsBytes = 0;
+                            let usedJsBytes = 0;
+                            for (const entry of jsCoverage) {
+                                totalJsBytes += entry.text.length;
+                                for (const range of entry.ranges) {
+                                    usedJsBytes += range.end - range.start;
+                                }
+                            }
+
+                            let totalCssBytes = 0;
+                            let usedCssBytes = 0;
+                            for (const entry of cssCoverage) {
+                                totalCssBytes += entry.text.length;
+                                for (const range of entry.ranges) {
+                                    usedCssBytes += range.end - range.start;
+                                }
+                            }
+
+                            pagePayloadAttributes.unusedJsPercent = totalJsBytes > 0 ? Math.round((1 - usedJsBytes / totalJsBytes) * 100) : 0;
+                            pagePayloadAttributes.unusedCssPercent = totalCssBytes > 0 ? Math.round((1 - usedCssBytes / totalCssBytes) * 100) : 0;
                         }
                     } catch {
                         statusCode = 0;
@@ -2191,6 +2275,7 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
                             industry: data.industry,
                             industrySignals: data.industrySignals,
                             ...data,
+                            ...pagePayloadAttributes,
                             // Override or supplement worker data if needed
                             indexable: data.robots.toLowerCase().includes('noindex') || xRobotsInfo.xRobotsNoindex ? false : true,
                             indexabilityStatus: data.canonical && data.canonical !== currentUrl ? 'Canonicalized' : (statusCode >= 300 ? 'Non-200' : 'Indexable'),

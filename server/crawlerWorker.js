@@ -307,11 +307,32 @@ parentPort.on('message', (task) => {
             links.push(href);
         });
 
+        // ─── Fragment Link Validation (B1) ─────────────────
+        let brokenFragmentLinks = 0;
+        const allIds = new Set();
+        $('[id]').each((_, el) => {
+            const id = $(el).attr('id');
+            if (id) allIds.add(String(id));
+        });
+        $('[name]').each((_, el) => {
+            const name = $(el).attr('name');
+            if (name) allIds.add(String(name));
+        });
+
+        $('a[href^="#"]').each((_, el) => {
+            const href = $(el).attr('href') || '';
+            const fragment = href.slice(1); // Remove the #
+            if (fragment && !allIds.has(fragment)) {
+                brokenFragmentLinks++;
+            }
+        });
+
         // ─── Image Analysis (Phase 3b) ──────────────────────
         const imageDetails = [];
         let missingAltImages = 0;
         let longAltImages = 0;
         let totalImages = 0;
+        let decorativeWithAlt = 0;
 
         $('img').each((_, el) => {
             const src = $(el).attr('src');
@@ -327,6 +348,17 @@ parentPort.on('message', (task) => {
                 missingAltImages++;
             } else if (alt.length > 100) {
                 longAltImages++;
+            }
+
+            // Likely decorative: role="presentation", role="none", 
+            // or small size indicators (icon classes, 1x1 pixel, spacer patterns)
+            const role = $(el).attr('role');
+            const isLikelyDecorative = role === 'presentation' || role === 'none' ||
+                /icon|spacer|pixel|blank|transparent|divider/i.test(src) ||
+                /icon|spacer|divider|decoration/i.test($(el).attr('class') || '');
+            
+            if (isLikelyDecorative && alt && alt.trim().length > 0) {
+                decorativeWithAlt++;
             }
 
             imageDetails.push({ src, alt: alt || '', width, height, loading });
@@ -970,10 +1002,10 @@ parentPort.on('message', (task) => {
                 // Technical
                 canonical, multipleCanonical, metaRefresh, relNext, relPrev, amphtml, mobileAlt,
                 // Links & resources
-                links, resources,
+                links, resources, brokenFragmentLinks,
                 textContent: textContent.substring(0, 5000),
                 // Images
-                imageDetails, missingAltImages, longAltImages, totalImages,
+                imageDetails, missingAltImages, longAltImages, totalImages, decorativeWithAlt,
                 images: imageDetails.map(i => i.src),
                 // Structured Data
                 schema: schemaBlocks.length > 0 ? schemaBlocks : null,
