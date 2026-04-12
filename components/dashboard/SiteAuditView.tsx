@@ -895,7 +895,7 @@ export const SiteAuditView = ({ showHelp, openPanel }: { showHelp: (t: string, d
             return;
         }
         // Navigate to the full crawler with the project URL and Project ID pre-filled
-        window.location.href = `/crawler?url=${encodeURIComponent(activeProject.url)}&projectId=${activeProject.id}`;
+        window.location.href = `/project/${activeProject.id}/crawler?url=${encodeURIComponent(activeProject.url)}`;
     };
 
     return (

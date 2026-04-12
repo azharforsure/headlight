@@ -157,7 +157,7 @@ export default function InspectorShell() {
                                 id: selectedPage.url,
                                 title: selectedPage.title || selectedPage.url
                             });
-                            setActiveAuditTab('comments');
+                            setActiveAuditTab('tasks');
                             setShowAuditSidebar(true);
                         }}
                         className="text-[#666] hover:text-white p-1 hover:bg-[#222] rounded transition-colors"

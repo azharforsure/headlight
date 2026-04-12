@@ -89,7 +89,8 @@ export async function initializeDatabase(): Promise<void> {
             retention_policy TEXT NOT NULL,
             entry_urls_json TEXT NOT NULL,
             limits_json TEXT NOT NULL,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
         )
     `);
 
@@ -113,7 +114,8 @@ export async function initializeDatabase(): Promise<void> {
             issue_overview_json TEXT NOT NULL,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             completed_at DATETIME,
-            FOREIGN KEY (job_id) REFERENCES crawl_jobs(id)
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+            FOREIGN KEY (job_id) REFERENCES crawl_jobs(id) ON DELETE CASCADE
         )
     `);
 
@@ -135,7 +137,8 @@ export async function initializeDatabase(): Promise<void> {
             trend TEXT NOT NULL DEFAULT 'new',
             evidence_json TEXT NOT NULL,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (run_id) REFERENCES crawl_runs(id)
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+            FOREIGN KEY (run_id) REFERENCES crawl_runs(id) ON DELETE CASCADE
         )
     `);
 
@@ -155,7 +158,8 @@ export async function initializeDatabase(): Promise<void> {
             summary_json TEXT NOT NULL,
             full_data_json TEXT,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (run_id) REFERENCES crawl_runs(id)
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+            FOREIGN KEY (run_id) REFERENCES crawl_runs(id) ON DELETE CASCADE
         )
     `);
 
@@ -166,7 +170,8 @@ export async function initializeDatabase(): Promise<void> {
             run_id TEXT NOT NULL,
             snapshot_at DATETIME NOT NULL,
             metrics_json TEXT NOT NULL,
-            FOREIGN KEY (run_id) REFERENCES crawl_runs(id)
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+            FOREIGN KEY (run_id) REFERENCES crawl_runs(id) ON DELETE CASCADE
         )
     `);
 
@@ -184,7 +189,8 @@ export async function initializeDatabase(): Promise<void> {
             selection_json TEXT NOT NULL,
             sync_json TEXT NOT NULL,
             secret_ref TEXT,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
         )
     `);
 
@@ -198,7 +204,8 @@ export async function initializeDatabase(): Promise<void> {
             session_id TEXT,
             event_type TEXT,
             event_message TEXT,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
         )
     `);
 
@@ -206,7 +213,8 @@ export async function initializeDatabase(): Promise<void> {
         CREATE TABLE IF NOT EXISTS crawl_audit_presets (
             project_id TEXT PRIMARY KEY,
             presets_json TEXT NOT NULL,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
         )
     `);
 
@@ -214,7 +222,8 @@ export async function initializeDatabase(): Promise<void> {
         CREATE TABLE IF NOT EXISTS crawler_configs (
             id TEXT PRIMARY KEY,
             config_json TEXT NOT NULL,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (id) REFERENCES projects(id) ON DELETE CASCADE
         )
     `);
 
@@ -231,7 +240,8 @@ export async function initializeDatabase(): Promise<void> {
             invited_by TEXT,
             invited_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             accepted_at DATETIME,
-            UNIQUE(project_id, user_id)
+            UNIQUE(project_id, user_id),
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
         )
     `);
 
@@ -254,7 +264,8 @@ export async function initializeDatabase(): Promise<void> {
             resolved_by TEXT,
             resolved_at DATETIME,
             edited_at DATETIME,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
         )
     `);
 
@@ -280,7 +291,8 @@ export async function initializeDatabase(): Promise<void> {
             tags_json TEXT,
             sort_order INTEGER DEFAULT 0,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
         )
     `);
 
@@ -307,7 +319,8 @@ export async function initializeDatabase(): Promise<void> {
             entity_type TEXT NOT NULL,
             entity_id TEXT NOT NULL,
             metadata_json TEXT,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
         )
     `);
 
@@ -323,7 +336,8 @@ export async function initializeDatabase(): Promise<void> {
             assignee_strategy TEXT NOT NULL DEFAULT 'specific',
             priority_override TEXT,
             enabled INTEGER NOT NULL DEFAULT 1,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
         )
     `);
 
@@ -340,7 +354,8 @@ export async function initializeDatabase(): Promise<void> {
             entity_id TEXT,
             read INTEGER NOT NULL DEFAULT 0,
             read_at DATETIME,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
         )
     `);
 
@@ -381,7 +396,8 @@ export async function initializeDatabase(): Promise<void> {
             include_sections_json TEXT NOT NULL DEFAULT '["summary","issues","performance","content","recommendations"]',
             password_hash TEXT,
             view_count INTEGER NOT NULL DEFAULT 0,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
         )
     `);
 
@@ -392,7 +408,8 @@ export async function initializeDatabase(): Promise<void> {
             session_id TEXT NOT NULL,
             token TEXT NOT NULL UNIQUE,
             expires_at DATETIME,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
         )
     `);
 
@@ -406,7 +423,8 @@ export async function initializeDatabase(): Promise<void> {
             rate_limit_per_minute INTEGER NOT NULL DEFAULT 100,
             last_used_at DATETIME,
             revoked_at DATETIME,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
         )
     `);
 
@@ -420,7 +438,8 @@ export async function initializeDatabase(): Promise<void> {
             secret TEXT,
             is_active INTEGER NOT NULL DEFAULT 1,
             last_delivery_at DATETIME,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
         )
     `);
 
@@ -450,7 +469,8 @@ export async function initializeDatabase(): Promise<void> {
             robots TEXT,
             snapshot_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             changed INTEGER NOT NULL DEFAULT 0,
-            change_type TEXT
+            change_type TEXT,
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
         )
     `);
 
@@ -459,6 +479,9 @@ export async function initializeDatabase(): Promise<void> {
     `);
     await client.execute(`
         CREATE INDEX IF NOT EXISTS idx_public_reports_token ON public_reports(token);
+    `);
+    await client.execute(`
+        CREATE INDEX IF NOT EXISTS idx_notifications_user_project_read ON notifications(user_id, project_id, read);
     `);
 
     await client.execute(`
@@ -472,7 +495,8 @@ export async function initializeDatabase(): Promise<void> {
             enabled INTEGER NOT NULL DEFAULT 1,
             last_tested_at DATETIME,
             tool_count INTEGER DEFAULT 0,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
         )
     `);
 
@@ -487,6 +511,8 @@ export async function initializeDatabase(): Promise<void> {
         }
     };
 
+    await migrate('ALTER TABLE projects ADD COLUMN domain TEXT');
+    await migrate('ALTER TABLE projects ADD COLUMN industry TEXT');
     await migrate('ALTER TABLE projects ADD COLUMN last_crawl_at DATETIME');
     await migrate('ALTER TABLE projects ADD COLUMN last_crawl_score INTEGER');
     await migrate('ALTER TABLE projects ADD COLUMN last_crawl_grade TEXT');

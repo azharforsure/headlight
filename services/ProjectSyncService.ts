@@ -49,31 +49,42 @@ export async function fetchCloudProjects(userId: string): Promise<ProjectRecord[
  * Create a new project in Turso
  */
 export async function createCloudProject(project: ProjectRecord): Promise<void> {
-    if (!isCloudSyncEnabled) return;
+    if (!isCloudSyncEnabled) {
+        console.warn('[Projects] Cloud sync is disabled, skipping cloud creation.');
+        return;
+    }
     await ensureSchema();
     const domain = project.domain || extractDomain(project.url);
-    await turso().execute({
-        sql: `INSERT OR REPLACE INTO projects (id, user_id, name, url, domain, industry, last_crawl_at, last_crawl_score, last_crawl_grade, crawl_count, gsc_connected, ga4_connected, auto_crawl_enabled, auto_crawl_interval, notification_email, created_at)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        args: [
-            project.id,
-            project.user_id,
-            project.name,
-            project.url,
-            domain,
-            project.industry || 'ecommerce',
-            project.last_crawl_at || null,
-            project.last_crawl_score ?? null,
-            project.last_crawl_grade || null,
-            project.crawl_count || 0,
-            project.gsc_connected ? 1 : 0,
-            project.ga4_connected ? 1 : 0,
-            project.auto_crawl_enabled ? 1 : 0,
-            project.auto_crawl_interval || 'weekly',
-            project.notification_email || null,
-            project.created_at || new Date().toISOString()
-        ]
-    });
+    
+    try {
+        console.log(`[Projects] Attempting to create project: ${project.id} (${project.name})`);
+        await turso().execute({
+            sql: `INSERT OR REPLACE INTO projects (id, user_id, name, url, domain, industry, last_crawl_at, last_crawl_score, last_crawl_grade, crawl_count, gsc_connected, ga4_connected, auto_crawl_enabled, auto_crawl_interval, notification_email, created_at)
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            args: [
+                project.id,
+                project.user_id,
+                project.name,
+                project.url,
+                domain,
+                project.industry || 'ecommerce',
+                project.last_crawl_at || null,
+                project.last_crawl_score ?? null,
+                project.last_crawl_grade || null,
+                project.crawl_count || 0,
+                project.gsc_connected ? 1 : 0,
+                project.ga4_connected ? 1 : 0,
+                project.auto_crawl_enabled ? 1 : 0,
+                project.auto_crawl_interval || 'weekly',
+                project.notification_email || null,
+                project.created_at || new Date().toISOString()
+            ]
+        });
+        console.log(`[Projects] Successfully created project in cloud: ${project.id}`);
+    } catch (error) {
+        console.error(`[Projects] Failed to create project in cloud: ${project.id}`, error);
+        throw error;
+    }
 }
 
 /**
@@ -129,16 +140,77 @@ export async function updateCloudProject(id: string, updates: Partial<ProjectRec
     }
 }
 
-/**
- * Delete a project from Turso
- */
 export async function deleteCloudProject(id: string): Promise<void> {
-    if (!isCloudSyncEnabled) return;
+    if (!isCloudSyncEnabled) {
+        console.warn('[Projects] Cloud sync is disabled, skipping cloud deletion.');
+        return;
+    }
     await ensureSchema();
-    await turso().execute({
-        sql: `DELETE FROM projects WHERE id = ?`,
-        args: [id]
-    });
+
+    try {
+        console.log(`[Projects] Starting optimized batch deletion for: ${id}`);
+        
+        // 1. Gather sessions to clean up pages properly (pages are linked by session_id)
+        const sessionsRes = await turso().execute({
+            sql: `SELECT session_id FROM crawl_runs WHERE project_id = ? 
+                  UNION 
+                  SELECT session_id FROM crawl_jobs WHERE project_id = ?`,
+            args: [id, id]
+        });
+        const sessionIds = sessionsRes.rows.map(r => String(r.session_id)).filter(s => s && s !== 'null');
+        const queries: { sql: string; args: any[] }[] = [];
+
+        // --- Verified Child Dependencies ---
+        // These tables were confirmed to exist either via init-db.js or previous error logs
+        const tablesWithProjectId = [
+            'project_brand_mentions', 
+            'rank_history', 
+            'keywords', 
+            'crawl_page_insights', 
+            'crawl_issue_clusters', 
+            'trend_snapshots',
+            'integration_connections', 
+            'crawl_status', 
+            'api_keys', 
+            'webhook_endpoints', 
+            'page_snapshots',
+            'crawl_runs', 
+            'crawl_jobs',
+            'notifications' // Added index to this earlier, so it exists
+        ];
+
+        // 1. Webhook deliveries (point to endpoints)
+        queries.push({ 
+            sql: "DELETE FROM webhook_deliveries WHERE webhook_id IN (SELECT id FROM webhook_endpoints WHERE project_id = ?)", 
+            args: [id] 
+        });
+
+        // 2. All confirmed tables with project_id
+        tablesWithProjectId.forEach(table => {
+            queries.push({ sql: `DELETE FROM ${table} WHERE project_id = ?`, args: [id] });
+        });
+
+        // 3. Config (id is project_id)
+        queries.push({ sql: `DELETE FROM crawler_configs WHERE id = ?`, args: [id] });
+
+        // 4. Session data (linked by pre-fetched IDs)
+        if (sessionIds.length > 0) {
+            sessionIds.forEach(sid => {
+                queries.push({ sql: "DELETE FROM crawl_pages WHERE session_id = ?", args: [sid] });
+                queries.push({ sql: "DELETE FROM crawl_sessions WHERE id = ?", args: [sid] });
+            });
+        }
+
+        // 5. The Project itself
+        queries.push({ sql: "DELETE FROM projects WHERE id = ?", args: [id] });
+
+        // Execute as a single high-performance batch
+        await turso().batch(queries, "write");
+        console.log(`[Projects] Batch deletion completed successfully for project: ${id}`);
+    } catch (error: any) {
+        console.error(`[Projects] Critical failure during project deletion: ${id}`, error.message);
+        throw error;
+    }
 }
 
 /**

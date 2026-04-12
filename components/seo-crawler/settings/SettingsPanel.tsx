@@ -12,7 +12,7 @@ import StorageTab from './StorageTab';
 import APIWebhooksTab from './APIWebhooksTab';
 import { SettingsTabId } from '../../../services/CrawlerConfigTypes';
 
-const SETTINGS_TABS: { id: SettingsTabId; label: string; icon: React.ReactNode }[] = [
+export const SETTINGS_TABS: { id: SettingsTabId; label: string; icon: React.ReactNode }[] = [
   { id: 'general',       label: 'General',        icon: <Globe size={14}/> },
   { id: 'performance',   label: 'Performance',    icon: <Zap size={14}/> },
   { id: 'integrations',  label: 'Integrations',   icon: <Network size={14}/> },
@@ -23,6 +23,7 @@ const SETTINGS_TABS: { id: SettingsTabId; label: string; icon: React.ReactNode }
   { id: 'storage',       label: 'Storage',        icon: <Database size={14}/> },
   { id: 'api',           label: 'API & Webhooks', icon: <Webhook size={14}/> },
 ];
+
 
 import { importConfig, exportConfig } from '../../../services/CrawlerConfigService';
 

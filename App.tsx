@@ -16,13 +16,19 @@ const PublicReport = React.lazy(() => import('./pages/PublicReport').then(m => (
 const GoogleOAuthCallback = React.lazy(() => import('./pages/oauth/google/callback'));
 import { AuthProvider, useAuth } from './services/AuthContext';
 import { ProjectProvider } from './services/ProjectContext';
+import { ProjectUrlSync } from './services/ProjectUrlSync';
 import { CrawlerManager } from './components/CrawlerManager';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
     const { session, loading } = useAuth();
     if (loading) return <div className="h-screen bg-[#080808] text-white flex items-center justify-center">Loading...</div>;
     if (!session) return <Navigate to="/auth" replace />;
-    return <>{children}</>;
+    return (
+        <>
+            <ProjectUrlSync />
+            {children}
+        </>
+    );
 };
 
 
@@ -44,10 +50,24 @@ const App: React.FC = () => {
                                 <Route path="/pricing" element={<Pricing />} />
                                 <Route path="/auth" element={<Auth />} />
                                 <Route path="/board" element={<Board />} />
-                                <Route path="/crawler" element={<SeoCrawler />} />
+                                <Route path="/crawler" element={
+                                    <ProtectedRoute>
+                                        <SeoCrawler />
+                                    </ProtectedRoute>
+                                } />
                                 <Route path="/dashboard" element={
                                     <ProtectedRoute>
                                         <Dashboard />
+                                    </ProtectedRoute>
+                                } />
+                                <Route path="/project/:projectId/dashboard" element={
+                                    <ProtectedRoute>
+                                        <Dashboard />
+                                    </ProtectedRoute>
+                                } />
+                                <Route path="/project/:projectId/crawler" element={
+                                    <ProtectedRoute>
+                                        <SeoCrawler />
                                     </ProtectedRoute>
                                 } />
                                 <Route path="/project/:projectId/tasks" element={

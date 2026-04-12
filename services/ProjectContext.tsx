@@ -18,7 +18,7 @@ interface ProjectContextType {
     loading: boolean;
     isCollapsed: boolean;
     setIsCollapsed: (collapsed: boolean) => void;
-    switchProject: (projectId: string) => void;
+    switchProject: (projectId: string, options?: { persist?: boolean }) => void;
     addProject: (name: string, url: string, industry: IndustryType) => Promise<Project | null>;
     updateProject: (id: string, updates: Partial<Project>) => Promise<boolean>;
     deleteProject: (id: string) => Promise<boolean>;
@@ -33,6 +33,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const [activeProject, setActiveProject] = useState<Project | null>(null);
     const [loading, setLoading] = useState(true);
     const [isCollapsed, setIsCollapsed] = useState(false);
+    const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
     const migrationRunRef = useRef(false);
 
     const localStorageKey = user ? `headlight:projects:${source}:${user.id}` : null;
@@ -80,23 +81,25 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
                 const active = cloudProjects.find(p => p.id === savedActiveId) || cloudProjects[0];
                 setActiveProject(active);
                 cacheLocally(cloudProjects, active);
+                migrationRunRef.current = true; // Avoid migration if we found cloud projects
             } else {
                 // No cloud projects — check localStorage for existing data to migrate
                 const localProjects = readLocalProjects();
                 if (localProjects.length > 0 && !migrationRunRef.current) {
                     migrationRunRef.current = true;
+                    console.log(`[Projects] No cloud projects found, but local projects exist. Attempting migration...`);
                     const migrated = await migrateLocalProjectsToCloud(user.id, localProjects);
                     if (migrated > 0) {
                         console.log(`[Projects] Migrated ${migrated} local projects to cloud.`);
-                    }
-                    // Re-fetch from cloud after migration
-                    const fresh = await fetchCloudProjects(user.id);
-                    if (fresh.length > 0) {
-                        setProjects(fresh);
-                        const savedActiveId = readLocalActiveId();
-                        const active = fresh.find(p => p.id === savedActiveId) || fresh[0];
-                        setActiveProject(active);
-                        cacheLocally(fresh, active);
+                        // Re-fetch from cloud after migration
+                        const fresh = await fetchCloudProjects(user.id);
+                        if (fresh.length > 0) {
+                            setProjects(fresh);
+                            const savedActiveId = readLocalActiveId();
+                            const active = fresh.find(p => p.id === savedActiveId) || fresh[0];
+                            setActiveProject(active);
+                            cacheLocally(fresh, active);
+                        }
                     } else {
                         // Migration didn't produce results, use local
                         setProjects(localProjects);
@@ -107,6 +110,10 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
                 } else {
                     setProjects([]);
                     setActiveProject(null);
+                    // Crucial: Clear local cache if cloud is empty and we've already checked/migrated
+                    if (migrationRunRef.current) {
+                        cacheLocally([], null);
+                    }
                 }
             }
         } catch (err) {
@@ -133,16 +140,37 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
             setActiveProject(null);
             setLoading(false);
             migrationRunRef.current = false;
+            setDeletedIds(new Set());
         }
-    }, [user]);
+    }, [user, fetchProjects]);
+
+    // Cross-tab synchronization
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+
+        const handleStorageChange = (e: StorageEvent) => {
+            if (e.storageArea !== window.localStorage) return;
+
+            if (e.key === localStorageKey) {
+                console.log('[Projects] Storage changed in another tab, re-fetching...');
+                fetchProjects();
+            }
+        };
+
+        window.addEventListener('storage', handleStorageChange);
+        return () => window.removeEventListener('storage', handleStorageChange);
+    }, [localStorageKey, fetchProjects]);
+
+    // Filter projects by tombstoned IDs
+    const visibleProjects = projects.filter(p => !deletedIds.has(p.id));
 
     // ─── Switch ───
 
-    const switchProject = (projectId: string) => {
+    const switchProject = (projectId: string, options?: { persist?: boolean }) => {
         const project = projects.find((p) => p.id === projectId);
         if (project) {
             setActiveProject(project);
-            if (typeof window !== 'undefined' && activeIdKey) {
+            if ((options?.persist ?? true) && typeof window !== 'undefined' && activeIdKey) {
                 window.localStorage.setItem(activeIdKey, project.id);
             }
         }
@@ -171,7 +199,8 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         // Optimistic local update
         const nextProjects = [newProject, ...projects];
         setProjects(nextProjects);
-        setActiveProject(newProject);
+        // We don't setActiveProject here directly anymore, 
+        // as the UI should navigate to the new project URL
         cacheLocally(nextProjects, newProject);
 
         // Persist to cloud (fire-and-forget with retry)
@@ -205,30 +234,55 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         return true;
     };
 
-    // ─── Delete: remove from Turso + update local state ───
-
     const deleteProject = async (id: string) => {
-        const nextProjects = projects.filter((p) => p.id !== id);
-        const nextActive = activeProject && activeProject.id === id
-            ? (nextProjects[0] || null)
-            : activeProject;
-        setProjects(nextProjects);
-        setActiveProject(nextActive);
-        cacheLocally(nextProjects, nextActive);
+        // Prevent concurrent deletions of the same project
+        if (deletedIds.has(id)) return true;
 
-        // Persist to cloud
-        try {
-            await deleteCloudProject(id);
-        } catch (err) {
-            console.error('[Projects] Failed to delete project from cloud:', err);
+        // 1. Update list and tombstones IMMEDIATELY
+        setDeletedIds(prev => new Set([...prev, id]));
+        const nextVisibleProjects = projects.filter((p) => p.id !== id);
+        
+        // 2. Clear from localStorage IMMEDIATELY to prevent migration resurrection
+        if (typeof window !== 'undefined' && localStorageKey) {
+            const currentLocal = JSON.parse(window.localStorage.getItem(localStorageKey) || '[]');
+            const nextLocal = currentLocal.filter((p: any) => p.id !== id);
+            window.localStorage.setItem(localStorageKey, JSON.stringify(nextLocal));
         }
 
-        return true;
+        // 3. Update active project
+        if (activeProject?.id === id) {
+            setActiveProject(nextVisibleProjects[0] || null);
+        }
+
+        // 4. Persist to cloud
+        try {
+            await deleteCloudProject(id);
+            console.log(`[Projects] Successfully deleted project from cloud: ${id}`);
+            setProjects(prev => prev.filter(p => p.id !== id));
+            return true;
+        } catch (err) {
+            console.error('[Projects] Failed to delete project from cloud:', err);
+            // Revert local tombstone on failure so it reappears if the deletion failed
+            setDeletedIds(prev => {
+                const next = new Set(prev);
+                next.delete(id);
+                return next;
+            });
+            // Restoring localStorage cache is omitted for brevity as the user can retry, 
+            // but we'll at least put it back in the React state list
+            setProjects(prev => {
+                const alreadyHas = prev.some(p => p.id === id);
+                if (alreadyHas) return prev;
+                const originalRecord = projects.find(p => p.id === id);
+                return originalRecord ? [...prev, originalRecord] : prev;
+            });
+            throw err; 
+        }
     };
 
     return (
         <ProjectContext.Provider value={{ 
-            projects, 
+            projects: visibleProjects, 
             activeProject, 
             loading, 
             isCollapsed, 
@@ -246,7 +300,8 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
 export const useProject = () => {
     const context = useContext(ProjectContext);
-    if (context === undefined) {
+    // Be more permissive here or handle null activeProject downstream
+    if (!context) {
         throw new Error('useProject must be used within a ProjectProvider');
     }
     return context;

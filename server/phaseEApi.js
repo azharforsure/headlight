@@ -1,5 +1,5 @@
 import { createHash, createHmac, randomBytes } from 'crypto';
-import { aiComplete } from './aiGateway.js';
+import { completeAI } from './aiGateway.js';
 
 const apiRateTracker = new Map();
 
@@ -293,13 +293,13 @@ export async function registerPhaseERoutes(app, turso) {
         }
 
         try {
-            const text = await aiComplete({
+            const aiResponse = await completeAI({
                 prompt,
                 systemPrompt: systemPrompt || 'You are Headlight, an SEO and GEO assistant. Be concise, practical, and data-aware.',
                 maxTokens: Number(maxTokens || 600),
                 format
             });
-            return res.json({ text: text || 'No AI providers were available.' });
+            return res.json({ text: aiResponse.text || 'No AI providers were available.' });
         } catch (error) {
             return res.status(500).json({ error: error.message || 'AI chat failed.' });
         }

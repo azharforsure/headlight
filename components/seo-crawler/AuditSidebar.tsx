@@ -8,8 +8,8 @@ import {
 import { useSeoCrawler } from '../../contexts/SeoCrawlerContext';
 import LogFileAnalysisService from '../../services/LogFileAnalysisService';
 import ChangeMonitorService from '../../services/ChangeMonitorService';
-import TechDebtService from '../../services/TechDebtService';
 import MigrationPlannerService, { type MigrationMapping } from '../../services/MigrationPlannerService';
+import OverviewTab from './audit-tabs/OverviewTab';
 
 interface AuditSidebarProps {
     embedded?: boolean;
@@ -69,13 +69,6 @@ export default function AuditSidebar({ embedded = false }: AuditSidebarProps) {
         }, 0);
     }, [issueGroups]);
 
-    const techDebt = useMemo(() => {
-        return TechDebtService.calculate(pages);
-    }, [pages]);
-
-    const totalCarbonMg = useMemo(() => {
-        return Math.round(pages.reduce((sum, page) => sum + Number(page.co2Mg || 0), 0));
-    }, [pages]);
 
     const handleLogAnalysisUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
@@ -173,13 +166,13 @@ export default function AuditSidebar({ embedded = false }: AuditSidebarProps) {
     return (
         <aside
             style={embedded ? undefined : { width: auditSidebarWidth }}
-            className={`bg-[#111] flex flex-col z-10 relative ${embedded ? 'w-full h-full rounded-2xl border border-[#222]' : 'shrink-0 border-l border-[#222] shadow-[-4px_0_15px_rgba(0,0,0,0.2)]'}`}
+            className={`bg-[#111] flex flex-col z-10 relative min-h-0 ${embedded ? 'w-full h-full overflow-hidden rounded-2xl border border-[#222]' : 'shrink-0 border-l border-[#222] shadow-[-4px_0_15px_rgba(0,0,0,0.2)]'}`}
         >
             {/* Resize Handle Area */}
             {!embedded && (
                 <div 
                     onMouseDown={() => setIsDraggingSidebar(true)}
-                    className="absolute top-0 bottom-0 left-0 w-1.5 -ml-0.5 cursor-ew-resize z-50 transition-colors hover:bg-[#F5364E]"
+                    className="absolute top-0 bottom-0 left-0 w-1.5 cursor-ew-resize z-50 transition-colors hover:bg-[#F5364E]"
                 ></div>
             )}
 
@@ -198,13 +191,11 @@ export default function AuditSidebar({ embedded = false }: AuditSidebarProps) {
                         { id: 'opportunities', label: 'Opportunities', count: strategicOpportunities.length },
                         { id: 'geo', label: 'GEO', count: 0 },
                         { id: 'tasks', label: 'Tasks', count: tasks.length },
-                        { id: 'comments', label: 'Comments' },
                         { id: 'ai', label: 'AI Strategy' },
                         { id: 'monitor', label: 'Monitor', count: monitorChanges.length },
                         { id: 'migration', label: 'Migration', count: migrationMappings.length },
                         { id: 'robots', label: 'Robots' },
                         { id: 'sitemap', label: 'Sitemap' },
-                        { id: 'visual', label: 'Visual Diff', count: pages.filter(p => p.visualChangeDetected).length },
                         { id: 'history', label: 'History', count: crawlHistory?.length || 0 },
                         { id: 'logs', label: 'Logs', count: logs?.length || 0 }
                     ].map(tab => (
@@ -224,161 +215,19 @@ export default function AuditSidebar({ embedded = false }: AuditSidebarProps) {
                 </div>
             </div>
             
-            <div className="flex-1 overflow-y-auto custom-scrollbar bg-[#111] p-4">
+            <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar bg-[#111] p-4">
                 {/* OVERVIEW TAB */}
                 {activeAuditTab === 'overview' && (
-                    <div className="space-y-6 animate-in fade-in duration-200">
-                        {/* Health Score */}
-                        <div className="bg-gradient-to-br from-[#1a1a1a] to-[#111] border border-[#222] rounded-lg p-4 relative overflow-hidden group/health w-full shadow-inner">
-                            <div className={`absolute top-0 right-0 w-32 h-32 rounded-full blur-[40px] -mr-10 -mt-10 transition-colors duration-1000 ${
-                                healthScore.grade === 'A' ? 'bg-green-500/10' : 
-                                healthScore.grade === 'B' ? 'bg-blue-500/10' : 
-                                healthScore.grade === 'F' ? 'bg-[#F5364E]/15' : 'bg-yellow-500/10'
-                            }`}></div>
-                            <div className={`absolute bottom-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-${healthScore.grade === 'A' ? 'green' : healthScore.grade === 'B' ? 'blue' : healthScore.grade === 'F' ? 'red' : 'yellow'}-500/50 to-transparent`}></div>
-                            {/* Live crawl progress */}
-                            {isCrawling && (
-                                <div className="mb-3 pb-3 border-b border-[#222]">
-                                    <div className="flex items-center justify-between mb-1.5">
-                                        <span className="text-[10px] text-[#888] uppercase tracking-widest font-bold flex items-center gap-1.5">
-                                            <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-                                            Crawling Live
-                                        </span>
-                                        <span className="text-[10px] font-mono text-[#666]">{elapsedTime}</span>
-                                    </div>
-                                    <div className="flex items-center gap-3 text-[11px] text-[#ccc]">
-                                        <span className="font-mono">{pages.length} URLs</span>
-                                        <span className="text-[#444]">|</span>
-                                        <span className="font-mono text-[#F5364E]">{crawlRate} p/s</span>
-                                    </div>
-                                </div>
-                            )}
-                            <div className="flex items-center gap-4 relative z-10">
-                                <div className="flex-1">
-                                    <h4 className="text-[11px] font-bold text-[#888] uppercase tracking-widest mb-1">Site Health</h4>
-                                    <div className="flex items-baseline gap-2">
-                                        <span className="text-3xl font-black text-white">{pages.length === 0 ? '--' : healthScore.score}</span>
-                                        <span className={`text-lg font-black ${healthScore.grade === 'A' ? 'text-green-400' : healthScore.grade === 'B' ? 'text-blue-400' : healthScore.grade === 'C' ? 'text-yellow-400' : healthScore.grade === 'D' ? 'text-orange-400' : healthScore.grade === 'F' ? 'text-red-400' : 'text-[#555]'}`}>{healthScore.grade}</span>
-                                        <span className="text-[#666] text-[12px]">/ 100</span>
-                                    </div>
-                                </div>
-                                <div className="w-16 h-16 shrink-0 relative flex items-center justify-center">
-                                    <svg className="w-full h-full transform -rotate-90">
-                                        <circle cx="32" cy="32" r="28" stroke="#222" strokeWidth="6" fill="none" />
-                                        <circle cx="32" cy="32" r="28" stroke={healthScore.grade === 'A' ? '#4ade80' : healthScore.grade === 'B' ? '#60a5fa' : healthScore.grade === 'C' ? '#fbbf24' : '#F5364E'} strokeWidth="6" fill="none" strokeDasharray="175.9" strokeDashoffset={pages.length === 0 ? 175.9 : 175.9 * (1 - healthScore.score / 100)} className="transition-all duration-1000 ease-out" />
-                                    </svg>
-                                </div>
-                            </div>
-                        </div>
-
-
-
-                        {/* Crawl Summary */}
-                        <div>
-                            <h4 className="text-[11px] font-bold text-[#555] mb-3 uppercase tracking-widest border-b border-[#222] pb-1">Crawl Summary</h4>
-                            <div className="grid grid-cols-2 gap-2">
-                                <div className="bg-[#141414] p-3 rounded border border-[#222]">
-                                    <div className="text-[10px] text-[#888] mb-1">Total URLs</div>
-                                    <div className="text-[16px] font-mono text-white">{stats?.total || 0}</div>
-                                </div>
-                                <div className="bg-[#141414] p-3 rounded border border-[#222]">
-                                    <div className="text-[10px] text-[#888] mb-1">HTML Pages</div>
-                                    <div className="text-[16px] font-mono text-white">{stats?.html || 0}</div>
-                                </div>
-                                <div className="bg-[#141414] p-3 rounded border border-[#222]">
-                                    <div className="text-[10px] text-[#888] mb-1">Images</div>
-                                    <div className="text-[16px] font-mono text-white">{stats?.img || 0}</div>
-                                </div>
-                                <div className="bg-[#141414] p-3 rounded border border-[#222]">
-                                    <div className="text-[10px] text-[#888] mb-1">Avg Load Time</div>
-                                    <div className="text-[16px] font-mono text-white">{pages.length > 0 ? Math.round(pages.reduce((acc: any, p: any) => acc + (p.loadTime || 0), 0) / pages.length) : 0}ms</div>
-                                </div>
-                                <div className="bg-[#141414] p-3 rounded border border-[#222]">
-                                    <div className="text-[10px] text-[#888] mb-1">Visual Regression</div>
-                                    <div className="text-[16px] font-mono text-white">{pages.filter(p => p.visualChangeDetected).length} Changes</div>
-                                </div>
-                                <div className="bg-[#141414] p-3 rounded border border-[#222]">
-                                    <div className="text-[10px] text-[#888] mb-1">Tech Debt</div>
-                                    <div className={`text-[16px] font-mono ${techDebt.grade === 'A' ? 'text-green-400' : 'text-amber-300'}`}>{techDebt.score}</div>
-                                </div>
-                                <div className="bg-[#141414] p-3 rounded border border-[#222]">
-                                    <div className="text-[10px] text-[#888] mb-1">Site Carbon</div>
-                                    <div className="text-[16px] font-mono text-emerald-300">{totalCarbonMg}mg</div>
-                                </div>
-                            </div>
-                            
-                            {/* Tech Debt Breakdown (E9) */}
-                            {techDebt.factors.length > 0 && (
-                                <div className="mt-4 p-3 rounded bg-amber-500/5 border border-amber-500/10">
-                                    <h5 className="text-[10px] font-bold text-amber-500 uppercase tracking-widest mb-2 flex items-center gap-1.5">
-                                        <AlertTriangle size={10} /> Technical Debt Drivers
-                                    </h5>
-                                    <div className="space-y-2">
-                                        {techDebt.factors.slice(0, 3).map((f, idx) => (
-                                            <div key={idx} className="flex justify-between text-[11px]">
-                                                <span className="text-gray-400">{f.label}</span>
-                                                <span className="text-white font-mono">-{f.impact} pts</span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-
-
-
-                        {/* Fix These First */}
-                        <div className="bg-[#1a1a1a] border border-[#222] rounded-lg p-4">
-                            <h4 className="text-[11px] font-bold text-[#F5364E] mb-3 uppercase tracking-widest flex items-center gap-1.5">Fix These First</h4>
-                            {pages.length === 0 ? (
-                                <div className="text-[11px] text-[#666] text-center py-4">Scan a website to see what needs fixing.</div>
-                            ) : (
-                                <div className="space-y-3">
-                                    {(() => {
-                                        if (auditInsights.length === 0) return <div className="text-[11px] text-green-400 flex items-center gap-2 pb-2"><CheckCircle2 size={12}/> Looking good! No big issues found.</div>;
-
-                                        return auditInsights.slice(0, 5).map((r: any) => (
-                                            <div 
-                                                key={r.id} 
-                                                onClick={() => setActiveMacro(r.id)}
-                                                className="flex items-start gap-3 p-2.5 rounded-md bg-[#111] hover:bg-[#1a1a1a] border border-[#222] hover:border-[#333] cursor-pointer transition-colors group/fix"
-                                            >
-                                                <div className={`mt-0.5 px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider shrink-0 border ${
-                                                    r.impact === 'High' ? 'text-red-400 bg-red-400/10 border-red-500/20' : 'text-blue-400 bg-blue-400/10 border-blue-500/20'
-                                                }`}>{r.impact}</div>
-                                                <div className="flex-1 min-w-0">
-                                                    <div className="text-[12px] text-[#eee] font-medium leading-tight group-hover/fix:text-white transition-colors">{r.label}</div>
-                                                    <div className="text-[10px] text-[#666] mt-0.5 leading-snug">{r.summary}</div>
-                                                </div>
-                                                <div className="text-[#444] group-hover/fix:text-white transition-colors self-center">
-                                                    <ArrowRight size={14}/>
-                                                </div>
-                                            </div>
-                                        ));
-                                    })()}
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Status Distribution */}
-                        <div>
-                            <h4 className="text-[11px] font-bold text-[#555] mb-3 uppercase tracking-widest border-b border-[#222] pb-1">Status Codes</h4>
-                            <div className="space-y-2">
-                                {[
-                                    { label: '2xx Success', count: pages.filter((p: any) => p.statusCode >= 200 && p.statusCode < 300).length, color: 'bg-green-500' },
-                                    { label: '3xx Redirect', count: stats?.redirects || 0, color: 'bg-orange-400' },
-                                    { label: '4xx Error', count: stats?.broken || 0, color: 'bg-red-500' },
-                                    { label: '5xx Server Error', count: pages.filter((p: any) => p.statusCode >= 500).length, color: 'bg-red-700' }
-                                ].map(stat => (
-                                    <div key={stat.label} className="flex items-center gap-3 text-[12px]">
-                                        <div className={`w-2 h-2 rounded-full ${stat.color} shrink-0`}></div>
-                                        <div className="flex-1 text-[#aaa]">{stat.label}</div>
-                                        <div className="font-mono text-white">{stat.count}</div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    </div>
+                    <OverviewTab
+                        pages={pages}
+                        isCrawling={isCrawling}
+                        elapsedTime={elapsedTime}
+                        crawlRate={crawlRate}
+                        healthScore={healthScore}
+                        stats={stats}
+                        auditInsights={auditInsights}
+                        setActiveMacro={setActiveMacro}
+                    />
                 )}
 
                 {/* ISSUES TAB */}
@@ -467,8 +316,20 @@ export default function AuditSidebar({ embedded = false }: AuditSidebarProps) {
                         </div>
 
                         {tasks.length === 0 ? (
-                            <div className="text-[11px] text-[#666] text-center py-8 bg-[#141414] rounded border border-[#222]">
-                                No tasks created yet.
+                            <div className="flex flex-col items-center justify-center py-12 text-[#666] bg-[#141414] rounded border border-dashed border-[#222] gap-3">
+                                <CheckSquare size={32} className="text-[#222]" />
+                                <div className="text-center">
+                                    <p className="text-[11px]">No active tasks.</p>
+                                    <button 
+                                        onClick={() => {
+                                            setCollabOverlayTarget({ type: 'task', id: 'new-' + Math.random().toString(36).substr(2, 9), title: 'New Task' });
+                                            setShowCollabOverlay(true);
+                                        }}
+                                        className="mt-3 text-[10px] font-bold text-brand-red hover:underline uppercase tracking-widest"
+                                    >
+                                        Create your first task
+                                    </button>
+                                </div>
                             </div>
                         ) : (
                             <div className="space-y-2">
@@ -515,19 +376,6 @@ export default function AuditSidebar({ embedded = false }: AuditSidebarProps) {
                     </div>
                 )}
 
-                {/* COMMENTS TAB */}
-                {activeAuditTab === 'comments' && (
-                    <div className="space-y-4 animate-in fade-in duration-200">
-                        <h4 className="text-[11px] font-bold text-[#888] uppercase tracking-widest flex items-center gap-1.5">
-                            Recent Comments
-                        </h4>
-                        <div className="text-[11px] text-[#666] text-center py-12 bg-[#141414] rounded border border-[#222] border-dashed">
-                            <MessageSquare size={24} className="mx-auto mb-2 opacity-20" />
-                            <p>Global project discussion feed coming soon.</p>
-                            <p className="mt-1 text-[10px]">Open an issue to start a discussion.</p>
-                        </div>
-                    </div>
-                )}
 
                 {activeAuditTab === 'opportunities' && (
                     <div className="space-y-4 animate-in fade-in duration-200">
@@ -578,7 +426,7 @@ export default function AuditSidebar({ embedded = false }: AuditSidebarProps) {
                             <h4 className="text-[11px] font-bold text-[#555] mb-3 uppercase tracking-widest border-b border-[#222] pb-1">AI Crawler Access</h4>
                             <div className="grid grid-cols-2 gap-2">
                                 {(() => {
-                                    const botRules = robotsTxt?.aiBotRules || {};
+                                    const botAccess = robotsTxt?.aiBotAccess || {};
                                     const bots = [
                                         { key: 'gptBot', label: 'GPTBot' },
                                         { key: 'claudeBot', label: 'ClaudeBot' },
@@ -589,14 +437,24 @@ export default function AuditSidebar({ embedded = false }: AuditSidebarProps) {
                                         { key: 'amazonBot', label: 'Amazonbot' },
                                         { key: 'appleBotExtended', label: 'Apple Ext' }
                                     ];
-                                    return bots.map(bot => (
-                                        <div key={bot.key} className="flex items-center justify-between p-2 bg-[#141414] border border-[#222] rounded text-[10px]">
-                                            <span className="text-gray-400 font-medium truncate pr-1">{bot.label}</span>
-                                            <span className={botRules[bot.key] ? 'text-green-500 font-bold' : 'text-red-500/50'}>
-                                                {botRules[bot.key] ? 'ALLOW' : 'NONE'}
-                                            </span>
-                                        </div>
-                                    ));
+                                    return bots.map(bot => {
+                                        const access = botAccess[bot.key] || 'unspecified';
+                                        const colorClass =
+                                            access === 'allow'       ? 'text-green-500 font-bold' :
+                                            access === 'disallow'    ? 'text-red-400 font-bold' :
+                                            access === 'partial'     ? 'text-yellow-500 font-bold' :
+                                            'text-[#555]';
+                                        const label =
+                                            access === 'allow'    ? 'ALLOW' :
+                                            access === 'disallow' ? 'BLOCK' :
+                                            access === 'partial'  ? 'PARTIAL' : 'NONE';
+                                        return (
+                                            <div key={bot.key} className="flex items-center justify-between p-2 bg-[#141414] border border-[#222] rounded text-[10px]">
+                                                <span className="text-gray-400 font-medium truncate pr-1">{bot.label}</span>
+                                                <span className={colorClass}>{label}</span>
+                                            </div>
+                                        );
+                                    });
                                 })()}
                             </div>
                         </div>
@@ -666,7 +524,7 @@ export default function AuditSidebar({ embedded = false }: AuditSidebarProps) {
                             </h4>
                             {aiNarrative ? (
                                 <p className="text-[12px] text-gray-200 leading-relaxed italic">
-                                    "{aiNarrative}"
+                                    {aiNarrative}
                                 </p>
                             ) : (
                                 <div className="text-[11px] text-[#666] text-center py-4 border border-white/5 bg-black/20 rounded">
@@ -738,19 +596,22 @@ export default function AuditSidebar({ embedded = false }: AuditSidebarProps) {
 
                         {/* Batch AI Actions */}
                         <div className="bg-[#1a1a1a] border border-[#222] rounded-lg p-4">
-                            <h4 className="text-[11px] font-bold text-emerald-400 mb-3 uppercase tracking-widest">Batch AI Actions</h4>
-                            <div className="space-y-2">
-                                <button className="w-full flex items-center justify-between p-2.5 bg-[#111] border border-[#222] hover:border-emerald-500/30 rounded text-[11px] text-gray-300 transition-all group">
+                            <h4 className="text-[11px] font-bold text-emerald-400 mb-3 uppercase tracking-widest flex items-center justify-between">
+                                Batch AI Actions
+                                <span className="text-[9px] text-[#555] normal-case tracking-normal font-normal">Coming Soon</span>
+                            </h4>
+                            <div className="space-y-2 opacity-50">
+                                <button disabled className="w-full flex items-center justify-between p-2.5 bg-[#111] border border-[#222] rounded text-[11px] text-gray-500 cursor-not-allowed">
                                     <span>Rewrite missing meta descriptions</span>
-                                    <Sparkles size={12} className="text-emerald-500 opacity-50 group-hover:opacity-100" />
+                                    <Sparkles size={12} className="text-emerald-500 opacity-50" />
                                 </button>
-                                <button className="w-full flex items-center justify-between p-2.5 bg-[#111] border border-[#222] hover:border-emerald-500/30 rounded text-[11px] text-gray-300 transition-all group">
+                                <button disabled className="w-full flex items-center justify-between p-2.5 bg-[#111] border border-[#222] rounded text-[11px] text-gray-500 cursor-not-allowed">
                                     <span>Generate missing alt text</span>
-                                    <Sparkles size={12} className="text-emerald-500 opacity-50 group-hover:opacity-100" />
+                                    <Sparkles size={12} className="text-emerald-500 opacity-50" />
                                 </button>
-                                <button className="w-full flex items-center justify-between p-2.5 bg-[#111] border border-[#222] hover:border-emerald-500/30 rounded text-[11px] text-gray-300 transition-all group">
+                                <button disabled className="w-full flex items-center justify-between p-2.5 bg-[#111] border border-[#222] rounded text-[11px] text-gray-500 cursor-not-allowed">
                                     <span>Cluster topics across site</span>
-                                    <Sparkles size={12} className="text-emerald-500 opacity-50 group-hover:opacity-100" />
+                                    <Sparkles size={12} className="text-emerald-500 opacity-50" />
                                 </button>
                             </div>
                         </div>
@@ -983,45 +844,7 @@ export default function AuditSidebar({ embedded = false }: AuditSidebarProps) {
                     </div>
                 )}
 
-                {/* Visual Diff Panel (E3) */}
-                {activeAuditTab === 'visual' && (
-                    <div className="space-y-4 animate-in fade-in duration-200">
-                        <div className="p-4 rounded-lg border border-purple-500/20 bg-purple-500/5">
-                            <div className="text-[11px] font-bold uppercase tracking-widest text-purple-300 flex items-center gap-2">
-                                <GitCompare size={13} /> Visual Regression Scan
-                            </div>
-                            <div className="mt-2 text-[11px] text-[#9aa3ad] leading-relaxed">
-                                Detecting pixel-level changes between this crawl and the previous snapshot.
-                            </div>
-                        </div>
 
-                        <div className="space-y-3">
-                            {pages.filter(p => p.visualChangeDetected).slice(0, 20).map((p, idx) => (
-                                <div key={idx} className="p-3 bg-[#141414] border border-[#222] rounded-lg group">
-                                    <div className="flex items-center justify-between mb-2">
-                                        <div className="text-[11px] text-white font-mono truncate max-w-[150px]">{p.url}</div>
-                                        <span className="text-[10px] px-1.5 py-0.5 bg-red-500/10 text-red-400 border border-red-500/20 rounded">
-                                            {p.visualDiffPercent}% Change
-                                        </span>
-                                    </div>
-                                    {p.visualDiffUrl && (
-                                        <div className="relative aspect-video bg-[#0a0a0a] rounded overflow-hidden border border-[#222]">
-                                            <img src={p.visualDiffUrl} alt="Visual Diff" className="w-full h-full object-contain" />
-                                            <div className="absolute inset-x-0 bottom-0 bg-black/60 p-1.5 text-[9px] text-[#888] backdrop-blur-sm">
-                                                Red pixels indicate visual layout shifts or content changes.
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                            ))}
-                            {pages.filter(p => p.visualChangeDetected).length === 0 && (
-                                <div className="py-8 text-center text-[11px] text-[#555] bg-[#141414] border border-dashed border-[#222] rounded-lg">
-                                    No visual changes detected in this crawl.
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                )}
 
 
                 {/* LOGS TAB */}

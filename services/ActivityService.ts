@@ -161,7 +161,8 @@ export async function createNotification(
 export async function getUnreadCount(userId: string, projectId?: string): Promise<number> {
     if (projectId) {
         return crawlDb.notifications
-            .where({ userId, projectId, read: 0 as any }) // Dexie booleans can be tricky, we used 'read' in store
+            .where('[userId+projectId+read]')
+            .equals([userId, projectId, 0 as any])
             .count();
     }
     return crawlDb.notifications
@@ -186,6 +187,42 @@ export async function markRead(notificationId: string): Promise<void> {
             });
         } catch (error) {
             console.error('[ActivityService] Failed to sync notification read status:', error);
+        }
+    }
+}
+
+/**
+ * Mark all notifications as read for a user/project
+ */
+export async function markAllRead(userId: string, projectId?: string): Promise<void> {
+    const read_at = new Date().toISOString();
+    
+    // Update local Dexie
+    if (projectId) {
+        await crawlDb.notifications
+            .where('[userId+projectId+read]')
+            .equals([userId, projectId, 0 as any])
+            .modify({ read: true, read_at });
+    } else {
+        await crawlDb.notifications
+            .where('userId')
+            .equals(userId)
+            .filter(n => !n.read)
+            .modify({ read: true, read_at });
+    }
+    
+    // Update Cloud
+    if (isCloudSyncEnabled) {
+        try {
+            await ensureSchema();
+            const sql = projectId 
+                ? `UPDATE notifications SET read = 1, read_at = ? WHERE user_id = ? AND project_id = ? AND read = 0`
+                : `UPDATE notifications SET read = 1, read_at = ? WHERE user_id = ? AND read = 0`;
+            const args = projectId ? [read_at, userId, projectId] : [read_at, userId];
+            
+            await turso().execute({ sql, args });
+        } catch (error) {
+            console.error('[ActivityService] Failed to sync markAllRead to cloud:', error);
         }
     }
 }

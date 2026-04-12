@@ -1,13 +1,323 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
-    Network, List, Upload, Play, Pause, Settings, X,
-    Save, LogIn,
-    Keyboard, Database, Sparkles, Download, GitCompare, Bot
+    Network, List,
+    Settings, X,
+    LogIn,
+    Keyboard, Database, Sparkles, Bot,
+    FolderOpen, Plus, ChevronDown, Check, ArrowRight,
+    Pause, Play, Pencil, Trash2
 } from 'lucide-react';
 import { useSeoCrawler } from '../../contexts/SeoCrawlerContext';
-import AuditModeSelector from './AuditModeSelector';
-import { AUDIT_MODES, INDUSTRY_FILTERS } from '../../services/AuditModeConfig';
+import { useOptionalProject } from '../../services/ProjectContext';
 import { NotificationBell } from '../NotificationBell';
+import { useNavigate } from 'react-router-dom';
+
+// ─── Mini "New Project" form rendered inside the dropdown ───────────────────
+
+const extractDomain = (url: string) => {
+    try {
+        const hostname = new URL(url.startsWith('http') ? url : `https://${url}`).hostname;
+        return hostname.replace(/^www\./, '');
+    } catch {
+        return url;
+    }
+};
+
+interface NewProjectFormProps {
+    onCreated: () => void;
+    onCancel: () => void;
+}
+
+function NewProjectForm({ onCreated, onCancel }: NewProjectFormProps) {
+    const projectCtx = useOptionalProject();
+    const navigate = useNavigate();
+    const [name, setName] = useState('');
+    const [url, setUrl] = useState('');
+    const [industry, setIndustry] = useState('all');
+    const [loading, setLoading] = useState(false);
+
+    const handleUrlChange = (value: string) => {
+        const domain = extractDomain(value);
+        setUrl(value);
+        if (!name || name === extractDomain(url)) setName(domain);
+    };
+
+    const handleCreate = async () => {
+        if (!url.trim() || !projectCtx) return;
+        setLoading(true);
+        try {
+            const newProject = await projectCtx.addProject(name || extractDomain(url), url, industry as any);
+            if (newProject) {
+                navigate(`/project/${newProject.id}/crawler?setup=true`);
+                onCreated();
+            }
+        } catch (err) {
+            console.error('Failed to create project:', err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <div className="p-3 border-t border-[#222] space-y-2.5">
+            <div className="text-[10px] font-bold uppercase tracking-widest text-[#555] mb-1">New Project</div>
+
+            <input
+                autoFocus
+                value={name}
+                onChange={e => setName(e.target.value)}
+                placeholder="Project name (optional)"
+                className="w-full h-8 px-3 bg-[#0a0a0a] border border-[#222] rounded text-[12px] text-white placeholder-[#444] focus:outline-none focus:border-[#F5364E] transition-colors"
+            />
+            <input
+                value={url}
+                onChange={e => handleUrlChange(e.target.value)}
+                placeholder="https://example.com"
+                onKeyDown={e => e.key === 'Enter' && handleCreate()}
+                className="w-full h-8 px-3 bg-[#0a0a0a] border border-[#222] rounded text-[12px] text-white placeholder-[#444] focus:outline-none focus:border-[#F5364E] transition-colors"
+            />
+            <select
+                value={industry}
+                onChange={e => setIndustry(e.target.value)}
+                className="w-full h-8 px-2 bg-[#0a0a0a] border border-[#222] rounded text-[12px] text-white focus:outline-none appearance-none cursor-pointer"
+            >
+                {INDUSTRY_FILTERS.map(f => <option key={f.id} value={f.id}>{f.label}</option>)}
+            </select>
+
+            <div className="flex gap-2 pt-0.5">
+                <button
+                    onClick={onCancel}
+                    className="flex-1 h-7 text-[11px] font-medium text-[#666] hover:text-[#999] border border-[#222] rounded transition-colors"
+                >
+                    Cancel
+                </button>
+                <button
+                    onClick={handleCreate}
+                    disabled={loading || !url.trim()}
+                    className="flex-1 h-7 text-[11px] font-bold bg-white hover:bg-[#eee] disabled:opacity-30 disabled:cursor-not-allowed text-black rounded flex items-center justify-center gap-1 transition-all"
+                >
+                    {loading ? 'Creating…' : <><ArrowRight size={11} /> Create</>}
+                </button>
+            </div>
+        </div>
+    );
+}
+
+// ─── Project Selector Dropdown ───────────────────────────────────────────────
+
+function ProjectSelector() {
+    const projectCtx = useOptionalProject();
+    const { isCrawling, crawlRuntime, clearCrawlerWorkspace } = useSeoCrawler();
+    const navigate = useNavigate();
+    const [open, setOpen] = useState(false);
+    const [showNewForm, setShowNewForm] = useState(false);
+    const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
+    const [editForm, setEditForm] = useState({ name: '', url: '' });
+    const ref = useRef<HTMLDivElement>(null);
+
+    const projects = projectCtx?.projects ?? [];
+    const active = projectCtx?.activeProject ?? null;
+
+    // Progress calculation
+    const isActive = isCrawling || crawlRuntime.stage === 'crawling' || crawlRuntime.stage === 'connecting' || crawlRuntime.stage === 'paused';
+    const isError = crawlRuntime.stage === 'error';
+    const progress = Math.min(100, Math.max(0, (crawlRuntime.crawled / Math.max(1, crawlRuntime.discovered)) * 100));
+
+    // Close on outside click
+    useEffect(() => {
+        if (!open) return;
+        const handler = (e: MouseEvent) => {
+            if (ref.current && !ref.current.contains(e.target as Node)) {
+                setOpen(false);
+                setShowNewForm(false);
+            }
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, [open]);
+
+    const handleSwitch = (id: string) => {
+        // Clear old project data/workspace before switching
+        clearCrawlerWorkspace();
+        projectCtx?.switchProject(id, { persist: false });
+        navigate(`/project/${id}/crawler`);
+        setOpen(false);
+        setShowNewForm(false);
+    };
+
+    const handleDelete = (e: React.MouseEvent, id: string, name: string) => {
+        e.stopPropagation();
+        if (confirm(`Are you sure you want to delete project "${name}"? This will permanently remove all associated crawl data.`)) {
+            projectCtx?.deleteProject(id);
+            if (active?.id === id) {
+                navigate('/crawler');
+            }
+        }
+    };
+
+    const handleEdit = (e: React.MouseEvent, p: any) => {
+        e.stopPropagation();
+        setEditingProjectId(p.id);
+        setEditForm({ name: p.name, url: p.url || p.domain || '' });
+    };
+
+    const handleCancelEdit = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        setEditingProjectId(null);
+    };
+
+    const handleSaveEdit = async (e: React.MouseEvent, id: string) => {
+        e.stopPropagation();
+        if (!editForm.name.trim() || !editForm.url.trim()) return;
+
+        const domain = editForm.url.replace(/^https?:\/\//, '').split('/')[0];
+        const url = editForm.url.startsWith('http') ? editForm.url : `https://${editForm.url}`;
+
+        await projectCtx?.updateProject(id, { 
+            name: editForm.name, 
+            url,
+            domain
+        });
+        setEditingProjectId(null);
+    };
+
+    return (
+        <div ref={ref} className="relative flex-1 max-w-[340px]">
+            {/* Trigger */}
+            <button
+                id="crawler-project-selector"
+                onClick={() => { setOpen(o => !o); setShowNewForm(false); }}
+                className={`w-full h-[32px] flex items-center gap-2 px-3 rounded-md text-[13px] transition-all duration-200
+                    bg-gradient-to-b from-[#111] to-[#0a0a0a] border shadow-[inset_0_1px_4px_rgba(0,0,0,0.5)] relative overflow-hidden
+                    ${open ? 'border-[#F5364E]/40 shadow-[0_0_10px_rgba(245,54,78,0.08)]' : 'border-white/10 hover:border-white/20'}`}
+                style={isActive ? {
+                    backgroundImage: `linear-gradient(to right, ${isError ? 'rgba(245, 54, 78, 0.2)' : 'rgba(34, 197, 94, 0.2)'} ${progress}%, transparent ${progress}%), linear-gradient(to bottom, #111, #0a0a0a)`
+                } : {}}
+            >
+                <FolderOpen size={13} className="shrink-0 text-[#666] relative z-10" />
+                <span className="flex-1 text-left truncate text-[#ccc] relative z-10">
+                    {active ? active.name : <span className="text-[#555]">Select a project…</span>}
+                </span>
+                {active?.domain && (
+                    <span className="text-[10px] text-[#555] truncate max-w-[100px] hidden sm:block relative z-10">{active.domain}</span>
+                )}
+                <ChevronDown
+                    size={11}
+                    className={`shrink-0 text-[#555] transition-transform duration-200 relative z-10 ${open ? 'rotate-180' : ''}`}
+                />
+            </button>
+
+            {/* Dropdown panel */}
+            {open && (
+                <div className="absolute left-0 top-full mt-1 w-full min-w-[280px] max-w-[380px] bg-[#111] border border-[#2a2a2a] rounded-lg shadow-2xl z-[100] overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
+
+                    {/* Project list */}
+                    {projects.length > 0 ? (
+                        <div className="max-h-[220px] overflow-y-auto">
+                            {projects.map(p => (
+                                <div key={p.id}>
+                                    {editingProjectId === p.id ? (
+                                        <div 
+                                            className="px-3 py-2 space-y-2 bg-[#1a1a1a] border-y border-[#2a2a2a]"
+                                            onClick={(e) => e.stopPropagation()}
+                                        >
+                                            <input 
+                                                autoFocus
+                                                value={editForm.name}
+                                                onChange={(e) => setEditForm(prev => ({ ...prev, name: e.target.value }))}
+                                                className="w-full bg-black border border-white/10 rounded px-2 py-1 text-[11px] text-white focus:outline-none focus:border-[#F5364E]/50"
+                                                placeholder="Project Name"
+                                            />
+                                            <div className="flex items-center gap-2">
+                                                <input 
+                                                    value={editForm.url}
+                                                    onChange={(e) => setEditForm(prev => ({ ...prev, url: e.target.value }))}
+                                                    className="flex-1 bg-black border border-white/10 rounded px-2 py-1 text-[11px] text-[#888] focus:outline-none focus:border-[#F5364E]/50"
+                                                    placeholder="URL or Domain"
+                                                />
+                                                <div className="flex items-center gap-1">
+                                                    <button 
+                                                        onClick={(e) => handleSaveEdit(e, p.id)}
+                                                        className="p-1 rounded hover:bg-green-500/20 text-green-500 transition-colors"
+                                                    >
+                                                        <Check size={12} />
+                                                    </button>
+                                                    <button 
+                                                        onClick={handleCancelEdit}
+                                                        className="p-1 rounded hover:bg-white/10 text-[#666] hover:text-white transition-colors"
+                                                    >
+                                                        <X size={12} />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div
+                                            onClick={() => handleSwitch(p.id)}
+                                            className={`group/item w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors cursor-pointer
+                                                ${p.id === active?.id
+                                                    ? 'bg-[#1a1a1a] text-white'
+                                                    : 'text-[#999] hover:bg-[#161616] hover:text-white'
+                                                }`}
+                                        >
+                                            <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${p.id === active?.id ? 'bg-[#F5364E]' : 'bg-[#333]'}`} />
+                                            <span className="flex-1 text-[12px] font-medium truncate">{p.name}</span>
+                                            <span className="text-[10px] text-[#444] truncate max-w-[80px] hidden sm:block">{p.domain}</span>
+                                            
+                                            {/* Action Buttons */}
+                                            <div className="flex items-center gap-1 opacity-0 group-hover/item:opacity-100 transition-opacity">
+                                                <button 
+                                                    onClick={(e) => handleEdit(e, p)}
+                                                    className="p-1 rounded hover:bg-white/10 text-white/40 hover:text-white transition-colors"
+                                                    title="Edit Project"
+                                                >
+                                                    <Pencil size={10} />
+                                                </button>
+                                                <button 
+                                                    onClick={(e) => handleDelete(e, p.id, p.name)}
+                                                    className="p-1 rounded hover:bg-red-500/20 text-white/40 hover:text-red-400 transition-colors"
+                                                    title="Delete Project"
+                                                >
+                                                    <Trash2 size={10} />
+                                                </button>
+                                            </div>
+
+                                            {p.id === active?.id && <Check size={10} className="shrink-0 text-[#F5364E]" />}
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="px-3 py-4 text-center text-[11px] text-[#555]">
+                            No projects yet
+                        </div>
+                    )}
+
+                    {/* New Project toggle */}
+                    {!showNewForm ? (
+                        <div className="border-t border-[#1e1e1e]">
+                            <button
+                                onClick={() => setShowNewForm(true)}
+                                className="w-full flex items-center gap-2 px-3 py-2 text-[11px] font-bold text-[#F5364E] hover:bg-[#F5364E]/5 transition-colors"
+                            >
+                                <Plus size={12} />
+                                New Project
+                            </button>
+                        </div>
+                    ) : (
+                        <NewProjectForm
+                            onCreated={() => { setOpen(false); setShowNewForm(false); }}
+                            onCancel={() => setShowNewForm(false)}
+                        />
+                    )}
+                </div>
+            )}
+        </div>
+    );
+}
+
+// ─── Main Header ─────────────────────────────────────────────────────────────
 
 export default function CrawlerHeader() {
     const {
@@ -29,23 +339,15 @@ export default function CrawlerHeader() {
         runIncrementalEnrichment,
         auditFilter, applyAuditMode, saveCustomPreset,
         runAIAnalysis, isAnalyzingAI, aiProgress,
+        analysisRuntime, runCompleteAnalysis,
         setShowComparisonView, setShowExportDialog,
         setShowAiChat
     } = useSeoCrawler();
 
     const [showShortcuts, setShowShortcuts] = useState(false);
-    const [showModeSelector, setShowModeSelector] = useState(false);
     const isPausedSession = !isCrawling && crawlRuntime.stage === 'paused' && pages.length > 0;
     const isActiveSession = isCrawling || crawlRuntime.stage === 'crawling' || crawlRuntime.stage === 'connecting';
     const crawlButtonLabel = isActiveSession ? 'Pause Scan' : isPausedSession ? 'Resume Scan' : 'Start Scan';
-    const connectedIntegrations = Object.values(integrationConnections).filter(Boolean);
-    const showNoIntegrationsState = integrationsSource === 'project' && connectedIntegrations.length === 0;
-    const currentModeLabel = auditFilter.modes.includes('full')
-        ? 'Full Audit'
-        : auditFilter.modes
-            .map((modeId) => AUDIT_MODES.find((mode) => mode.id === modeId)?.label || modeId)
-            .join(' + ');
-    const currentIndustryLabel = INDUSTRY_FILTERS.find((industry) => industry.id === auditFilter.industry)?.label || 'All Industries';
 
     return (
         <header className="h-[52px] border-b border-[#222] bg-[#141414] flex items-center px-4 justify-between shrink-0 relative z-40">
@@ -64,73 +366,15 @@ export default function CrawlerHeader() {
                 </div>
 
                 <div className="h-4 border-l border-[#333] hidden md:block"></div>
-
-                {/* Mode Selector */}
-                <div className="hidden md:flex p-0.5 bg-[#0a0a0a] rounded border border-[#222]">
-                    {[
-                        { id: 'spider', icon: Network, label: 'Spider' },
-                        { id: 'list', icon: List, label: 'List' },
-                    ].map(m => (
-                        <button 
-                            key={m.id}
-                            onClick={() => setCrawlingMode(m.id as any)}
-                            className={`flex items-center gap-1.5 px-3 py-1 text-[12px] font-medium rounded-sm transition-colors ${crawlingMode === m.id ? 'bg-[#222] text-white shadow-sm' : 'text-[#888] hover:text-[#bbb]'}`}
-                        >
-                            <m.icon size={12}/> {m.label}
-                        </button>
-                    ))}
-                </div>
-
-                <div className="hidden xl:flex items-center gap-2">
-                    <button
-                        onClick={() => setShowModeSelector(true)}
-                        className="mode-selector px-2.5 py-1 bg-[#0f0f0f] border border-[#222] rounded text-[11px] text-[#ccc] hover:border-[#333] hover:text-white transition-colors"
-                    >
-                        Mode: {currentModeLabel}
-                        <span className="text-[#555] ml-1">▾</span>
-                    </button>
-                    <button
-                        onClick={() => setShowModeSelector(true)}
-                        className="mode-selector px-2.5 py-1 bg-[#0f0f0f] border border-[#222] rounded text-[11px] text-[#ccc] hover:border-[#333] hover:text-white transition-colors"
-                    >
-                        Industry: {currentIndustryLabel}
-                        <span className="text-[#555] ml-1">▾</span>
-                    </button>
-                </div>
-
-
             </div>
 
-            {/* Main Input Control */}
+            {/* Project Selector (replaces scan input) */}
             <div className="flex items-center gap-2 flex-1 max-w-[600px] ml-6">
-                {crawlingMode === 'list' ? (
-                    <button 
-                        onClick={() => setShowListModal(true)}
-                        className={`flex-1 bg-gradient-to-b from-[#111] to-[#0a0a0a] border hover:border-[#F5364E] rounded-md px-3 py-1.5 text-[13px] text-[#888] flex items-center justify-between transition-all shadow-[inset_0_1px_4px_rgba(0,0,0,0.5)] ${isCrawling ? 'border-[#F5364E]/50 shadow-[0_0_10px_rgba(245,54,78,0.1)]' : 'border-white/10'}`}
-                    >
-                        <span className="truncate pr-4">{listUrls ? `${listUrls.split('\n').filter((u: string)=>u).length} URLs ready` : 'Paste list of URLs...'}</span>
-                        <Upload size={14} className="shrink-0" />
-                    </button>
-                ) : (
-                    <div className={`flex-1 relative flex items-center rounded-md transition-all duration-300 bg-gradient-to-b from-[#111] to-[#0a0a0a] border ${isCrawling ? 'border-[#F5364E]/50 shadow-[0_0_15px_rgba(245,54,78,0.15)]' : 'border-white/10 shadow-[inset_0_1px_4px_rgba(0,0,0,0.5)]'}`}>
-                        {isCrawling && (
-                            <div className="absolute right-3 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-[#F5364E] animate-ping z-20" />
-                        )}
-                        <input 
-                            type="text"
-                            value={urlInput}
-                            onChange={e => setUrlInput(e.target.value)}
-                            placeholder={isCrawling ? "Scanning architecture..." : "Enter URL to scan (e.g., https://example.com/)"}
-                            className={`crawler-url-input relative z-10 w-full bg-transparent rounded-md pl-3 pr-8 py-1.5 text-[13px] text-[#e0e0e0] placeholder-[#666] focus:outline-none transition-colors ${isCrawling ? 'opacity-80' : ''}`}
-                            onKeyDown={e => e.key === 'Enter' && handleStartPause()}
-                            readOnly={isCrawling}
-                        />
-                    </div>
-                )}
+                <ProjectSelector />
 
                 <button 
                     onClick={() => handleStartPause()}
-                    className={`h-[32px] px-4 rounded-md text-[12px] font-bold transition-all duration-300 flex items-center justify-center gap-1.5 min-w-[110px] shadow-sm ${
+                    className={`h-[28px] px-3 rounded-md text-[11px] font-bold transition-all duration-300 flex items-center justify-center gap-1.5 min-w-[100px] shadow-sm ${
                         isActiveSession
                         ? 'bg-[#1a0508] text-[#F5364E] border border-[#F5364E]/30 hover:bg-[#2a080d] hover:border-[#F5364E]/50' 
                         : isPausedSession
@@ -138,144 +382,128 @@ export default function CrawlerHeader() {
                         : 'bg-gradient-to-t from-[#d62839] to-[#F5364E] text-white hover:to-[#ff455d] border border-transparent shadow-[0_2px_10px_rgba(245,54,78,0.2)]'
                     }`}
                 >
-                    {isActiveSession ? <Pause size={12} fill="currentColor" /> : <Play size={12} fill="currentColor" />}
+                    {isActiveSession ? <Pause size={11} fill="currentColor" /> : <Play size={11} fill="currentColor" />}
                     {crawlButtonLabel}
                 </button>
             </div>
 
             <div className="flex items-center gap-2 ml-4">
-                {/* Save session button */}
-                <button 
-                    onClick={() => saveCrawlSession('completed')}
-                    disabled={pages.length === 0}
-                    className="flex items-center gap-1.5 px-2.5 py-1 bg-transparent hover:bg-[#222] border border-[#333] rounded text-[11px] font-medium text-[#ccc] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                    title="Save current session (Ctrl+S)"
-                >
-                    <Save size={12} /> Save
-                </button>
-
                 <button 
                     onClick={clearCrawlerWorkspace}
                     disabled={pages.length === 0 || isCrawling}
-                    className="flex items-center gap-1.5 px-2.5 py-1 bg-transparent hover:bg-[#222] border border-[#333] rounded text-[11px] font-medium text-[#ccc] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                    className="flex items-center gap-1.5 px-2 py-0.5 bg-transparent hover:bg-[#222] border border-[#333] rounded text-[10px] font-medium text-[#ccc] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                     title={isCrawling ? 'Pause the crawl before clearing' : 'Clear current crawler workspace'}
                 >
-                    <X size={12} /> Clear
+                    <X size={11} /> Clear
                 </button>
 
-                <button
-                    onClick={() => setShowExportDialog(true)}
-                    disabled={pages.length === 0}
-                    className="hidden md:flex items-center gap-1.5 px-2.5 py-1 bg-transparent hover:bg-[#222] border border-[#333] rounded text-[11px] font-medium text-[#ccc] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                    title="Export crawl data"
-                >
-                    <Download size={12} /> Export
-                </button>
-
-                <button
-                    onClick={() => setShowComparisonView(true)}
-                    disabled={crawlHistory.length < 2}
-                    className="hidden md:flex items-center gap-1.5 px-2.5 py-1 bg-transparent hover:bg-[#222] border border-[#333] rounded text-[11px] font-medium text-[#ccc] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                    title="Compare crawl sessions"
-                >
-                    <GitCompare size={12} /> Compare
-                </button>
-
-                <NotificationBell />
-
-
-                <div className="w-[1px] h-4 bg-[#333]"></div>
-
-                <div className="hidden xl:flex items-center gap-1.5">
-                    {showNoIntegrationsState && (
-                        <span className="px-2 py-1 rounded border border-[#222] text-[10px] text-[#666]">No integrations</span>
-                    )}
+                <div className="hidden xl:flex items-center gap-1.5 ml-4">
                     {pages.length > 0 && !isCrawling && (
                         <div className="flex items-center gap-1.5">
+                            {/* Unified Analysis Button */}
                             <button 
-                                onClick={() => runAIAnalysis()}
-                                disabled={isAnalyzingAI}
-                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-[11px] font-bold shadow-lg transition-all ${
-                                    isAnalyzingAI 
-                                    ? 'bg-[#1a1a1a] text-gray-500 border border-[#333] cursor-not-allowed'
-                                    : 'bg-gradient-to-t from-[#4f46e5] to-[#6366f1] text-white hover:to-[#818cf8] shadow-[0_2px_8px_rgba(79,70,229,0.3)]'
+                                onClick={() => runCompleteAnalysis()}
+                                disabled={analysisRuntime.isAnalyzing || isCrawling}
+                                className={`group relative flex items-center gap-2 px-3 py-1 rounded text-[10px] font-bold shadow-lg transition-all duration-300 overflow-hidden ${
+                                    analysisRuntime.isAnalyzing 
+                                    ? 'bg-[#1a1a1a] text-gray-400 border border-[#333] cursor-wait min-w-[140px]'
+                                    : 'bg-gradient-to-t from-[#4f46e5] to-[#6366f1] text-white hover:to-[#818cf8] shadow-[0_2px_8px_rgba(79,70,229,0.3)] min-w-[110px]'
                                 }`}
-                                title="Run Tier 3 AI checks (Summaries, Intent, Quality, EEAT, Keywords)"
+                                title="Run full analysis pipeline: AI analysis + GSC/GA4 Strategic Audit + Automatic Enrichment"
                             >
-                                {isAnalyzingAI ? (
-                                    <div className="flex items-center gap-1.5">
-                                        <div className="w-2 h-2 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                        {aiProgress ? `Analyzing ${aiProgress.done}/${aiProgress.total}...` : 'Analyzing...'}
-                                    </div>
-                                ) : (
-                                    <>
-                                        <Sparkles size={12} fill="currentColor" /> Run AI Analysis
-                                    </>
+                                {/* Progress Background Glow */}
+                                {analysisRuntime.isAnalyzing && (
+                                    <div 
+                                        className="absolute inset-0 bg-white/5 transition-all duration-500 ease-out z-0"
+                                        style={{ width: `${analysisRuntime.progress}%` }}
+                                    />
                                 )}
+
+                                <div className="relative z-10 flex items-center gap-2 w-full justify-center">
+                                    {analysisRuntime.isAnalyzing ? (
+                                        <div className="flex items-center gap-2">
+                                            {/* Circular Progress SVG */}
+                                            <svg className="w-3.5 h-3.5 -rotate-90 animate-in fade-in duration-500" viewBox="0 0 24 24">
+                                                <circle 
+                                                    className="text-white/10" 
+                                                    strokeWidth="3.5" 
+                                                    stroke="currentColor" 
+                                                    fill="transparent" 
+                                                    r="10" 
+                                                    cx="12" 
+                                                    cy="12" 
+                                                />
+                                                <circle 
+                                                    className="text-white transition-all duration-700 ease-in-out" 
+                                                    strokeWidth="3.5" 
+                                                    strokeDasharray={2 * Math.PI * 10}
+                                                    strokeDashoffset={2 * Math.PI * 10 * (1 - analysisRuntime.progress / 100)}
+                                                    strokeLinecap="round" 
+                                                    stroke="currentColor" 
+                                                    fill="transparent" 
+                                                    r="10" 
+                                                    cx="12" 
+                                                    cy="12" 
+                                                />
+                                            </svg>
+                                            <span className="truncate">{analysisRuntime.label}</span>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <Sparkles size={11} className={analysisRuntime.stage === 'completed' ? 'text-green-400' : 'text-white'} fill="currentColor" /> 
+                                            <span>{analysisRuntime.stage === 'completed' ? 'Audit Complete' : 'Run Analysis'}</span>
+                                        </>
+                                    )}
+                                </div>
                             </button>
+
                             <button
                                 onClick={() => setShowAiChat(true)}
-                                className="ai-tab flex items-center gap-1.5 px-3 py-1.5 bg-[#111827] hover:bg-[#172033] border border-[#2c3344] text-[#c6d3ff] rounded text-[11px] font-bold transition-all"
+                                className="ai-tab flex items-center gap-1.5 px-2.5 py-1 bg-[#111827] hover:bg-[#172033] border border-[#2c3344] text-[#c6d3ff] rounded text-[10px] font-bold transition-all shadow-sm"
                                 title="Open AI chat assistant for crawl questions and actions"
                             >
-                                <Bot size={12} /> AI Chat
+                                <Bot size={11} /> AI Chat
                             </button>
-
-                            {integrationConnections.google?.status === 'connected' && (
-                                <>
-                                    <button 
-                                        onClick={() => runFullEnrichment()}
-                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-t from-[#059669] to-[#10b981] text-white rounded text-[11px] font-bold shadow-[0_2px_8px_rgba(16,185,129,0.3)] hover:to-[#34d399] transition-all"
-                                        title="Run GSC, GA4, and Strategic Intelligence pipeline (Opportunity, Authority, Priority) based on current signals"
-                                    >
-                                        <Sparkles size={12} fill="currentColor" /> Run Strategic Audit
-                                    </button>
-                                    <button 
-                                        onClick={() => runIncrementalEnrichment()}
-                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-[#1a1a1a] hover:bg-[#222] border border-[#333] text-[#ccc] rounded text-[11px] font-medium transition-all"
-                                        title="Continue enrichment for large sites (processes next batch of stale/never-enriched pages)"
-                                    >
-                                        <Database size={11} /> Continue Audit
-                                    </button>
-                                </>
-                            )}
                         </div>
                     )}
                 </div>
 
-                {/* Keyboard shortcuts help */}
-                <div className="relative">
-                    <button 
-                        onClick={() => setShowShortcuts(!showShortcuts)} 
-                        className="p-1.5 rounded text-[#666] hover:bg-[#222] hover:text-white transition-colors"
-                        title="Keyboard Shortcuts"
-                    >
-                        <Keyboard size={13}/>
-                    </button>
-                    {showShortcuts && (
-                        <div className="absolute right-0 top-full mt-1 w-[260px] bg-[#111] border border-[#333] rounded-lg shadow-2xl z-[100] p-4 animate-in fade-in slide-in-from-top-2 duration-150">
-                            <h4 className="text-[11px] font-bold text-[#888] uppercase tracking-wider mb-3">Keyboard Shortcuts</h4>
-                            <div className="space-y-2">
-                                {[
-                                    { keys: '⌘ + Enter', desc: 'Start / Pause crawl' },
-                                    { keys: '⌘ + F', desc: 'Search URLs' },
-                                    { keys: '⌘ + E', desc: 'Export to CSV' },
-                                    { keys: 'Escape', desc: 'Close / Clear' },
-                                ].map(s => (
-                                    <div key={s.keys} className="flex items-center justify-between text-[11px]">
-                                        <span className="text-[#888]">{s.desc}</span>
-                                        <kbd className="px-1.5 py-0.5 bg-[#222] border border-[#333] rounded text-[10px] text-[#ccc] font-mono">{s.keys}</kbd>
-                                    </div>
-                                ))}
+                {/* Utilities Group (Bell, Shortcuts, Settings) */}
+                <div className="flex items-center gap-1 ml-2 border-l border-[#333] pl-3">
+                    <NotificationBell />
+
+                    <div className="relative">
+                        <button 
+                            onClick={() => setShowShortcuts(!showShortcuts)} 
+                            className="p-1.5 rounded text-[#666] hover:bg-[#222] hover:text-white transition-colors"
+                            title="Keyboard Shortcuts"
+                        >
+                            <Keyboard size={13}/>
+                        </button>
+                        {showShortcuts && (
+                            <div className="absolute right-0 top-full mt-1 w-[260px] bg-[#111] border border-[#333] rounded-lg shadow-2xl z-[100] p-4 animate-in fade-in slide-in-from-top-2 duration-150">
+                                <h4 className="text-[11px] font-bold text-[#888] uppercase tracking-wider mb-3">Keyboard Shortcuts</h4>
+                                <div className="space-y-2">
+                                    {[
+                                        { keys: '⌘ + Enter', desc: 'Start / Pause crawl' },
+                                        { keys: '⌘ + F', desc: 'Search URLs' },
+                                        { keys: '⌘ + E', desc: 'Export to CSV' },
+                                        { keys: 'Escape', desc: 'Close / Clear' },
+                                    ].map(s => (
+                                        <div key={s.keys} className="flex items-center justify-between text-[11px]">
+                                            <span className="text-[#888]">{s.desc}</span>
+                                            <kbd className="px-1.5 py-0.5 bg-[#222] border border-[#333] rounded text-[10px] text-[#ccc] font-mono">{s.keys}</kbd>
+                                        </div>
+                                    ))}
+                                </div>
                             </div>
-                        </div>
-                    )}
+                        )}
+                    </div>
+
+                    <button onClick={() => setShowSettings(!showSettings)} className={`p-1.5 rounded transition-colors ${showSettings ? 'bg-[#333] text-white' : 'text-[#888] hover:bg-[#222] hover:text-white'}`} title="Configuration">
+                        <Settings size={14}/>
+                    </button>
                 </div>
-
-                <button onClick={() => setShowSettings(!showSettings)} className={`p-1.5 rounded transition-colors ${showSettings ? 'bg-[#333] text-white' : 'text-[#888] hover:bg-[#222] hover:text-white'}`} title="Configuration">
-                    <Settings size={14}/>
-                </button>
-
 
                 {/* Auth indicator */}
                 {isAuthenticated ? (
@@ -295,15 +523,6 @@ export default function CrawlerHeader() {
                     </button>
                 )}
             </div>
-
-            <AuditModeSelector
-                isOpen={showModeSelector}
-                onClose={() => setShowModeSelector(false)}
-                currentModes={auditFilter.modes}
-                currentIndustry={auditFilter.industry}
-                onApply={applyAuditMode}
-                onSavePreset={saveCustomPreset}
-            />
         </header>
     );
 }

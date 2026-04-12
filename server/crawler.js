@@ -836,26 +836,9 @@ class DomainThrottler {
 }
 
 // ─── Connection Pool Manager ────────────────────────────────
-const connectionPools = new Map(); // origin -> undici.Pool
-
-function getPool(origin) {
-    if (!connectionPools.has(origin)) {
-        connectionPools.set(origin, new Pool(origin, {
-            connections: 100, // Increased for massive scale
-            pipelining: 10,  // Enable pipelining for faster throughput
-            keepAliveTimeout: 60000,
-            keepAliveMaxTimeout: 120000,
-        }));
-    }
-    return connectionPools.get(origin);
-}
-
-function closeAllPools() {
-    for (const [, pool] of connectionPools) {
-        pool.close().catch(() => {});
-    }
-    connectionPools.clear();
-}
+// Pools are created per-crawl-instance inside runCrawler to prevent
+// cross-session sharing and premature pool closure races.
+// getPool and closeAllPools are declared inside runCrawler.
 
 function ensureSet(value) {
     if (value instanceof Set) return value;
@@ -870,7 +853,7 @@ function normalizeLinkMap(rawMap = {}) {
 }
 
 // ─── Follow Redirect Chain ──────────────────────────────────
-async function followRedirectChain(url, requestHeaders, maxHops = 10) {
+async function followRedirectChain(url, requestHeaders, maxHops = 10, getPool) {
     const chain = [url];
     let currentUrl = url;
     let finalStatusCode = 200;
@@ -1229,7 +1212,7 @@ async function enrichWithAIRecommendations(pages, topN = 50) {
         .filter(p => p.isHtmlPage && p.statusCode === 200)
         .sort((a, b) => (b.gscImpressions || 0) - (a.gscImpressions || 0))
         .slice(0, topN);
-    
+
     for (const page of candidates) {
         const issues = [];
         if (!page.metaDesc) issues.push('missing meta description');
@@ -1244,19 +1227,19 @@ async function enrichWithAIRecommendations(pages, topN = 50) {
             continue;
         }
 
-        const aiReason = await aiComplete({
+        const aiResponse = await completeAI({
             prompt: `SEO page: ${page.url}\nTitle: ${page.title}\nIssues: ${issues.join(', ')}\nTraffic: ${page.gscClicks || 0} clicks/mo\n\nWrite 1 sentence: what to fix first and why. Be specific.`,
             systemPrompt: 'You are an SEO consultant. Be concise and actionable.',
             maxTokens: 80
         });
 
         page.recommendedAction = issues.length >= 3 ? 'Rewrite' : issues.length >= 1 ? 'Optimize' : 'Maintain';
-        page.recommendedActionReason = aiReason || `Fix: ${issues.join(', ')}`;
+        page.recommendedActionReason = aiResponse?.text || `Fix: ${issues.join(', ')}`;
     }
-    }
+}
 
-    // ─── AI GEO Analysis (E1) ──────────────────────────────────
-    async function performAIGEOAnalysis(pages, topN = 30) {
+// ─── AI GEO Analysis (E1) ──────────────────────────────────
+async function performAIGEOAnalysis(pages, topN = 30) {
     const candidates = pages
         .filter(p => p.isHtmlPage && p.statusCode === 200)
         .sort((a, b) => (b.gscImpressions || 0) - (a.gscImpressions || 0))
@@ -1264,15 +1247,15 @@ async function enrichWithAIRecommendations(pages, topN = 50) {
 
     for (const page of candidates) {
         try {
-            const aiResult = await aiComplete({
+            const aiResponse = await completeAI({
                 systemPrompt: 'You are an AI Search Optimization (GEO) expert. Return JSON only.',
                 prompt: `Evaluate this page for GEO. URL: ${page.url}\nTitle: ${page.title}\nContent: ${page.textContent?.substring(0, 2000)}\n\nReturn JSON: {"citationWorthiness": number 0-100, "extractionReady": number 0-100, "entityCoverage": number 0-100, "freshnessSignal": number 0-100, "aiOverviewFit": number 0-100, "overallGeoScore": number 0-100, "reasoning": string, "suggestions": [string]}`,
                 format: 'json',
                 maxTokens: 300
             });
 
-            if (aiResult) {
-                const data = JSON.parse(aiResult);
+            if (aiResponse?.text) {
+                const data = JSON.parse(aiResponse.text);
                 page.citationWorthiness = data.citationWorthiness;
                 page.extractionReady = data.extractionReady;
                 page.entityCoverage = data.entityCoverage;
@@ -1286,7 +1269,7 @@ async function enrichWithAIRecommendations(pages, topN = 50) {
             console.warn(`[AI:GEOError] ${e.message} for ${page.url}`);
         }
     }
-    }
+}
 // ════════════════════════════════════════════════════════════
 //  MAIN CRAWLER
 // ════════════════════════════════════════════════════════════
@@ -1390,6 +1373,27 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
         rebuildWorkerPool();
     }
 
+    // ─── Per-Crawl Connection Pools ─────────────────────────────────
+    // Scoped per-instance to prevent cross-session pool sharing and closure races.
+    const crawlConnectionPools = new Map();
+    const getPool = (origin) => {
+        if (!crawlConnectionPools.has(origin)) {
+            crawlConnectionPools.set(origin, new Pool(origin, {
+                connections: 100,
+                pipelining: 1,   // HTTP/1.1 pipelining disabled — most servers don't support it reliably
+                keepAliveTimeout: 60000,
+                keepAliveMaxTimeout: 120000,
+            }));
+        }
+        return crawlConnectionPools.get(origin);
+    };
+    const closeAllPools = () => {
+        for (const [, pool] of crawlConnectionPools) {
+            pool.close().catch(() => {});
+        }
+        crawlConnectionPools.clear();
+    };
+
     const delayBySpeed = { slow: 1000, normal: 200, fast: 0, turbo: 0 };
     let baseRequestDelay = delayBySpeed[crawlSpeed] ?? delayBySpeed.normal;
     let adaptiveDelay = 0;
@@ -1416,6 +1420,7 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
     const crawlStartedAt = initialState?.crawlStartedAt || Date.now();
     let lastProgressEmitAt = 0;
     let sitemapData = {}; // normalized url -> { url, lastmod, changefreq, priority }
+    let localRootSensitiveFiles = []; // populated by the sensitive file probe inside processQueue
 
     const firstUrl = normalizeUrl(startUrls[0], undefined, urlNormalizationOptions);
     if (!firstUrl) {
@@ -1766,13 +1771,14 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
                         const curLastMod = headHeaders['last-modified'] || '';
                         const curEtag = headHeaders['etag'] || '';
                         
-                        if (hCode === 200 && 
-                            ((curLastMod && curLastMod === prev.lastModified) || 
+                        if (hCode === 200 &&
+                            ((curLastMod && curLastMod === prev.lastModified) ||
                              (curEtag && curEtag === prev.etag))) {
-                            
+
                             onEvent('LOG', { message: `Incremental: Skipping unchanged URL ${currentUrl}`, type: 'info' });
-                            // For simplicity, we'll still proceed for now to ensure all discovery is the same,
-                            // but this could be optimized by reusing previous outlinks.
+                            urlsCrawled++;
+                            emitProgress('crawling', true);
+                            return; // Truly skip — content unchanged since last crawl
                         }
                     } catch (err) {
                         // If HEAD fails, proceed with normal GET
@@ -1892,7 +1898,7 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
                         }
 
                         if (redirectUrl && redirectUrl !== currentUrl) {
-                            const chainResult = await followRedirectChain(currentUrl, requestHeaders, maxRedirectHops);
+                            const chainResult = await followRedirectChain(currentUrl, requestHeaders, maxRedirectHops, getPool);
                             redirectChain = chainResult.chain;
                             redirectChainLength = chainResult.chainLength;
                             isRedirectLoop = chainResult.isLoop;
@@ -1968,7 +1974,7 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
                         // Track redirects via header
                         if (statusCode >= 300 && statusCode < 400 && headers.location) {
                             redirectUrl = normalizeUrl(headers.location, currentUrl) || headers.location;
-                            const chainResult = await followRedirectChain(currentUrl, requestHeaders, maxRedirectHops);
+                            const chainResult = await followRedirectChain(currentUrl, requestHeaders, maxRedirectHops, getPool);
                             redirectChain = chainResult.chain;
                             redirectChainLength = chainResult.chainLength;
                             isRedirectLoop = chainResult.isLoop;
@@ -2025,7 +2031,7 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
                             httpRelPrev = parsedLinkHeader.prev || '';
                             if (res.redirected) {
                                 redirectUrl = res.url;
-                                const chainResult = await followRedirectChain(currentUrl, requestHeaders, maxRedirectHops);
+                                const chainResult = await followRedirectChain(currentUrl, requestHeaders, maxRedirectHops, getPool);
                                 redirectChain = chainResult.chain;
                                 redirectChainLength = chainResult.chainLength;
                                 isRedirectLoop = chainResult.isLoop;
@@ -2102,7 +2108,6 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
                         httpVersion,
                         transferredBytes: effectiveTransferredBytes,
                         totalTransferred: effectiveTotalTransferred,
-                        lastModified,
                         etag,
                         ttfb: loadTime,
                         ...carbonMetrics,
@@ -2163,7 +2168,7 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
                             statusCode,
                             status: statusCode === 200 ? 'OK' : statusCode >= 400 ? 'Client Error' : statusCode >= 300 ? 'Redirect' : 'Unknown',
                             isDirectoryListing: isDirListing,
-                            exposedSensitiveFiles: depth === 0 ? (initialState?.rootSensitiveFiles || []) : [],
+                            exposedSensitiveFiles: depth === 0 ? localRootSensitiveFiles : [],
                             screenshotUrl: screenshotBase64,
                             visualChangeDetected,
                             visualDiffUrl,
@@ -2461,10 +2466,6 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
                                 ...(data.resources || [])
                             ];
                             
-                            if (resourcesToEnqueue.length > 0) {
-                                console.log(`[Crawler] Found ${resourcesToEnqueue.length} resources on ${currentUrl}. crawlResources: ${crawlResources}`);
-                            }
-                            
                             resourcesToEnqueue.forEach((src) => {
                                 const absoluteSrc = normalizeUrl(src, currentUrl, urlNormalizationOptions);
                                 if (absoluteSrc) {
@@ -2475,10 +2476,7 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
                                         
                                         // Match domain or subdomain
                                         if (srcHost === baseHost || srcHost.endsWith('.' + baseHost) || baseHost.endsWith('.' + srcHost)) {
-                                            const enqueued = enqueueUrl(absoluteSrc, depth + 1, currentUrl);
-                                            if (enqueued) {
-                                                console.log(`[Crawler] Enqueued internal resource: ${absoluteSrc}`);
-                                            }
+                                            enqueueUrl(absoluteSrc, depth + 1, currentUrl);
                                         }
                                     } catch (e) {
                                         console.error(`[Crawler] Error enqueuing resource ${src}:`, e.message);
@@ -2573,19 +2571,17 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
         onEvent('FETCHING', { url: `${baseProtocol}//${baseHostname}/robots.txt`, queueLength: getPendingQueueLength() });
         await robotsParser.fetchAndParse(baseHostname, baseProtocol, requestHeaders, userAgent);
 
-        if (respectRobots) {
-            // Emit robots.txt info to client for UI display
-            onEvent('ROBOTS_TXT', {
-                hostname: baseHostname,
-                raw: robotsParser.getRaw(baseHostname),
-                sitemaps: robotsParser.getSitemaps(baseHostname),
-                crawlDelay: robotsParser.getCrawlDelay(baseHostname),
-                hasLlmsTxt: robotsParser.rules.get(baseHostname)?.hasLlmsTxt || false,
-                aiBotRules: robotsParser.rules.get(baseHostname)?.aiBotRules || {},
-                aiBotAccess: robotsParser.rules.get(baseHostname)?.aiBotAccess || {},
-                llmsTxt: robotsParser.rules.get(baseHostname)?.llmsTxt || null
-            });
-        }
+        // Always emit robots.txt data for UI — regardless of respectRobots setting
+        onEvent('ROBOTS_TXT', {
+            hostname: baseHostname,
+            raw: robotsParser.getRaw(baseHostname),
+            sitemaps: robotsParser.getSitemaps(baseHostname),
+            crawlDelay: robotsParser.getCrawlDelay(baseHostname),
+            hasLlmsTxt: robotsParser.rules.get(baseHostname)?.hasLlmsTxt || false,
+            aiBotRules: robotsParser.rules.get(baseHostname)?.aiBotRules || {},
+            aiBotAccess: robotsParser.rules.get(baseHostname)?.aiBotAccess || {},
+            llmsTxt: robotsParser.rules.get(baseHostname)?.llmsTxt || null
+        });
 
         // Phase 2b: Sensitive File Probe
         onEvent('LOG', { message: 'Probing for exposed sensitive files (.env, .git, etc)...', type: 'info' });
@@ -2597,8 +2593,7 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
                     type: 'warning' 
                 });
                 // We'll attach this to the root page later
-                if (!initialState) initialState = {};
-                initialState.rootSensitiveFiles = sensitiveFilesFound;
+                localRootSensitiveFiles = sensitiveFilesFound;
             }
         } catch (err) {
             console.warn(`[SensitiveProbe] Error: ${err.message}`);

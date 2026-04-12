@@ -2,7 +2,7 @@ import { turso, isCloudSyncEnabled } from './turso';
 import { SEO_ISSUES_TAXONOMY } from '../components/seo-crawler/IssueTaxonomy';
 
 const DB_NAME = 'headlight_crawler';
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 const SESSIONS_STORE = 'crawl_sessions';
 const PAGES_STORE = 'crawl_pages';
 
@@ -64,6 +64,7 @@ export interface CrawlPageSnapshot {
 }
 
 const COMPARISON_FIELDS = [
+    // Core Identity & Infrastructure
     'statusCode',
     'title',
     'metaDesc',
@@ -72,15 +73,93 @@ const COMPARISON_FIELDS = [
     'canonical',
     'loadTime',
     'wordCount',
-    'lcp',
-    'cls',
-    'inp',
-    'schemaTypes',
-    'missingAltImages',
-    'hreflang',
     'sizeBytes',
+    'contentType',
+    'crawlDepth',
+    'redirectUrl',
+    'redirectType',
     'inlinks',
-    'healthScore'
+    'internalOutlinks',
+    'externalOutlinks',
+    'inSitemap',
+
+    // Search Performance (GSC)
+    'gscClicks',
+    'gscImpressions',
+    'gscCtr',
+    'gscPosition',
+    'mainKeyword',
+    'mainKwPosition',
+    'bestKeyword',
+    'bestKwPosition',
+
+    // User Engagement (GA4)
+    'ga4Sessions',
+    'ga4Users',
+    'ga4Views',
+    'ga4BounceRate',
+    'ga4Conversions',
+    'ga4Revenue',
+    'ga4EngagementRate',
+    'ga4EngagementTimePerPage',
+
+    // Authority & Backlinks
+    'urlRating',
+    'referringDomains',
+    'backlinks',
+
+    // Strategic & Quality Scores
+    'opportunityScore',
+    'businessValueScore',
+    'authorityScore',
+    'techHealthScore',
+    'contentQualityScore',
+    'searchVisibilityScore',
+    'engagementScore',
+
+    // AI Intelligence & Discoverability
+    'topicCluster',
+    'primaryTopic',
+    'searchIntent',
+    'sentiment',
+    'eeatScore',
+    'originalityScore',
+    'aiLikelihood',
+    'passageReadiness',
+    'voiceSearchScore',
+    'geoScore',
+    'citationWorthiness',
+    'aiOverviewFit',
+    'hasLlmsTxt',
+    'answerBoxReady',
+
+    // Technical & Web Vitals
+    'fieldLcp',
+    'fieldCls',
+    'fieldInp',
+    'lighthousePerformance',
+    'lighthouseSeo',
+    'domNodeCount',
+    'jsRenderDiff',
+
+    // Security & Infrastructure
+    'securityGrade',
+    'securityScore',
+    'sslGrade',
+    'sslValid',
+    'hasHsts',
+    'hasCsp',
+    'hasXFrameOptions',
+    'hasXContentTypeOptions',
+
+    // Crawl Logistics & Sustainability
+    'googlebotVisits30d',
+    'botResponseTime',
+    'aiBotVisits30d',
+    'visualChangeDetected',
+    'visualDiffPercent',
+    'co2Mg',
+    'carbonRating'
 ];
 
 const normalizeComparableValue = (value: any) => {
@@ -160,9 +239,16 @@ const getSessionHealthScore = (pages: any[], session?: CrawlSession) => {
 const buildSummaryMetrics = (pages: any[], session?: CrawlSession) => {
     const issues = pages.flatMap((page) => collectPageIssues(page));
     const lcpValues = pages
-        .map((page) => Number(page?.lcp || 0))
+        .map((page) => Number(page?.lcp || page?.fieldLcp || 0))
         .filter((value) => Number.isFinite(value) && value > 0);
     const pagesWithSchema = pages.filter((page) => hasStructuredData(page)).length;
+
+    // Enterprise Summaries
+    const totalClicks = pages.reduce((sum, p) => sum + (Number(p.gscClicks) || 0), 0);
+    const totalSessions = pages.reduce((sum, p) => sum + (Number(p.ga4Sessions) || 0), 0);
+    const avgGeoScore = average(pages.map(p => Number(p.geoScore || 0)).filter(v => v > 0));
+    const avgContentQuality = average(pages.map(p => Number(p.contentQualityScore || 0)).filter(v => v > 0));
+    const googlebotVisits = pages.reduce((sum, p) => sum + (Number(p.googlebotVisits30d) || 0), 0);
 
     return {
         totalPages: pages.length,
@@ -171,7 +257,12 @@ const buildSummaryMetrics = (pages: any[], session?: CrawlSession) => {
         warnings: issues.filter((issue) => issue.type === 'warning').length,
         avgLcp: Math.round(average(lcpValues)),
         schemaCoverage: pages.length > 0 ? Math.round((pagesWithSchema / pages.length) * 100) : 0,
-        notFoundPages: pages.filter((page) => Number(page?.statusCode || 0) === 404).length
+        notFoundPages: pages.filter((page) => Number(page?.statusCode || 0) === 404).length,
+        totalClicks,
+        totalSessions,
+        avgGeoScore: Math.round(avgGeoScore),
+        avgContentQuality: Math.round(avgContentQuality),
+        googlebotVisits
     };
 };
 
@@ -240,6 +331,11 @@ function openDB(): Promise<IDBDatabase> {
 
             // Version 3 specific changes (Opening at v3 is enough to fix the crash, add any new logic here if needed)
             if (oldVersion < 3) {
+            }
+
+            // Version 4 aligns the local history store version with the
+            // already-upgraded database observed in production browsers.
+            if (oldVersion < 4) {
             }
         };
         req.onblocked = () => {

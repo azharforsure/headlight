@@ -443,6 +443,18 @@ class CrawlDB extends Dexie {
             page.visualChangeDetected = page.visualChangeDetected ?? false;
         });
     });
+
+    this.version(10).stores({
+        pages: 'url, crawlId, isHtmlPage, statusCode, [crawlId+statusCode]',
+        sessions: 'id, projectId, startedAt',
+        members: 'id, projectId, userId',
+        comments: 'id, projectId, sessionId, targetType, targetId, createdAt',
+        tasks: 'id, projectId, sessionId, status, priority, assigneeId, createdAt',
+        subtasks: 'id, taskId, sortOrder',
+        activity: 'id, projectId, entityType, entityId, createdAt',
+        rules: 'id, projectId, enabled',
+        notifications: 'id, userId, projectId, read, createdAt, [userId+projectId+read]'
+    });
   }
 }
 

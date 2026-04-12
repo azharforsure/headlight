@@ -158,7 +158,7 @@ export default function ChartsView() {
   }
 
   return (
-    <div className="p-4 bg-[#0a0a0a]">
+    <div className="h-full overflow-y-auto custom-scrollbar p-6 bg-[#0a0a0a]">
       {/* Row 1: Status + Score */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
         <StatusDonut data={statusData} total={pages.length} />

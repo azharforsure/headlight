@@ -62,6 +62,13 @@ export interface CrawlerConfig {
   useGhostEngine: boolean;
   fallbackToServer: boolean;
 
+  // URL LIST SETTINGS
+  urlListSource: 'manual' | 'upload' | 'import';
+  manualUrls: string;
+  sitemapSource: 'auto' | 'manual';
+  importSitemapUrl: string;
+  uploadedFileName?: string;
+
   // PERFORMANCE
   concurrent: number;
   psiApiKey: string;

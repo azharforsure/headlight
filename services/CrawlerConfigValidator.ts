@@ -29,13 +29,13 @@ export function validateCrawlConfig(config: CrawlerConfig): ConfigValidationResu
   }
 
   const maxPages = Number.parseInt(String(config.limit || '0'), 10);
-  const maxDepth = Number.parseInt(String(config.maxDepth || '0'), 10);
-  const threads = Number(config.threads || 0);
+  const maxDepth = Number.parseInt(String(config.maxDepth || '10'), 10);
+  const threads = Number(config.threads || config.concurrent || 5);
   const crawlDelay = Number(config.rateLimitDelay || 0);
 
   if (Number.isFinite(maxPages) && maxPages < 0) errors.push('Max pages cannot be negative.');
   if (Number.isFinite(maxPages) && maxPages > 1_000_000) warnings.push('Crawling over 1M pages may take a very long time.');
-  if (!Number.isFinite(maxDepth) || maxDepth < 1) errors.push('Max depth must be at least 1.');
+  if (!Number.isFinite(maxDepth) || maxDepth < 0) errors.push('Max depth cannot be negative.');
   if (!Number.isFinite(threads) || threads < 1 || threads > 200) errors.push('Concurrency must be between 1 and 200.');
   if (Number.isFinite(crawlDelay) && crawlDelay < 0) errors.push('Crawl delay cannot be negative.');
 

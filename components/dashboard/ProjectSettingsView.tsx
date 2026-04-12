@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Plug, Trash2, CheckCircle2, CreditCard, ExternalLink } from 'lucide-react';
 import { useProject } from '../../services/ProjectContext';
 import { useAuth } from '../../services/AuthContext';
@@ -187,6 +188,7 @@ const BillingSection = () => {
 
 export const ProjectSettingsView = () => {
     const { activeProject, updateProject, deleteProject } = useProject();
+    const navigate = useNavigate();
     const [name, setName] = useState('');
     const [url, setUrl] = useState('');
     const [isSaving, setIsSaving] = useState(false);
@@ -212,9 +214,14 @@ export const ProjectSettingsView = () => {
     const handleDelete = async () => {
         if (confirm("Are you sure you want to delete this project? This cannot be undone.")) {
             setIsDeleting(true);
-            await deleteProject(activeProject.id);
-            // After deletion, the context will auto-select another project or null
-            setIsDeleting(false);
+            try {
+                await deleteProject(activeProject.id);
+                navigate('/dashboard');
+            } catch (err: any) {
+                alert(err?.message || "Failed to delete project. Please check your connection and try again.");
+            } finally {
+                setIsDeleting(false);
+            }
         }
     };
 

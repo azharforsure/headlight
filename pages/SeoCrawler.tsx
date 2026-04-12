@@ -1,6 +1,7 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
-import { SeoCrawlerProvider } from '../contexts/SeoCrawlerContext';
+import { SeoCrawlerProvider, getHashRouteSearchParams } from '../contexts/SeoCrawlerContext';
 import CrawlerHeader from '../components/seo-crawler/CrawlerHeader';
+import CrawlerSubHeader from '../components/seo-crawler/CrawlerSubHeader';
 import SiteExplorer from '../components/seo-crawler/SiteExplorer';
 import MainDataView from '../components/seo-crawler/MainDataView';
 import AuditSidebar from '../components/seo-crawler/AuditSidebar';
@@ -13,10 +14,13 @@ import ComparisonView from '../components/seo-crawler/ComparisonView';
 import ExportDialog from '../components/seo-crawler/ExportDialog';
 import MobileBottomSheet from '../components/seo-crawler/MobileBottomSheet';
 import AIChatDrawer from '../components/seo-crawler/AIChatDrawer';
+import CrawlerSettingsDrawer from '../components/seo-crawler/CrawlerSettingsDrawer';
 import { PanelErrorBoundary } from '../components/PanelErrorBoundary';
 import OnboardingTour from '../components/seo-crawler/OnboardingTour';
 import { useSeoCrawler } from '../contexts/SeoCrawlerContext';
+import { useOptionalProject } from '../services/ProjectContext';
 import { useBreakpoint } from '../hooks/useBreakpoint';
+
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 
 interface ErrorBoundaryProps {
@@ -65,6 +69,9 @@ class SeoCrawlerErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundar
 }
 
 export default function SeoCrawlerWrapper() {
+    const params = getHashRouteSearchParams();
+    const isSetup = params.get('setup') === 'true';
+
     return (
         <SeoCrawlerErrorBoundary>
             <SeoCrawlerProvider>
@@ -74,55 +81,65 @@ export default function SeoCrawlerWrapper() {
     );
 }
 
+
 function SeoCrawlerLayout() {
     const { isMobile, isTablet } = useBreakpoint();
     useKeyboardShortcuts();
     const [showMobileExplorer, setShowMobileExplorer] = React.useState(false);
     const [showMobileAudit, setShowMobileAudit] = React.useState(false);
+    // const [isSettingsOpen, setIsSettingsOpen] = React.useState(false); // REMOVED
     const {
         showCollabOverlay,
         setShowCollabOverlay,
         pages,
-        isCrawling,
         crawlHistory,
         showComparisonView,
         setShowComparisonView,
         showExportDialog,
         setShowExportDialog,
         showAiChat,
-        setShowAiChat
+        setShowAiChat,
+        showSettings,
+        setShowSettings
     } = useSeoCrawler();
 
-    const shouldShowEmptyState = pages.length === 0 && !isCrawling && crawlHistory.length === 0;
+    const projectContext = useOptionalProject();
+    const { projects = [], activeProject = null, loading: projectsLoading } = projectContext || {};
+    
+    const params = getHashRouteSearchParams();
+    const isSetup = params.get('setup') === 'true';
+
+    // Only show the "Get Started" empty state if there are absolutely no projects on the dashboard.
+    // We wait for projectsLoading to be false to avoid flickering.
+    const shouldShowEmptyState = !projectsLoading && !isSetup && !activeProject && projects.length === 0;
+
     const isCompactLayout = isMobile || isTablet;
+
+    React.useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('setup') === 'true') {
+            setShowSettings(true);
+        }
+    }, [window.location.search]);
 
     return (
         <div className="flex flex-col h-screen bg-[var(--bg-main)] text-[var(--text-secondary)] font-sans overflow-hidden">
             <CrawlerHeader />
+            <CrawlerSubHeader />
 
-            <div className="flex-1 flex min-h-0 relative">
-                {shouldShowEmptyState ? (
-                    <CrawlerEmptyState />
-                ) : (
-                    <>
-                        {!isCompactLayout && (
-                            <PanelErrorBoundary name="Site Explorer" fallback={<div className="m-3 rounded border border-[#2b2b2f] bg-[#111] p-3 text-[12px] text-[#999]">Category tree failed to load.</div>}>
-                                <div className="category-tree h-full">
-                                    <SiteExplorer />
-                                </div>
-                            </PanelErrorBoundary>
-                        )}
-                        <PanelErrorBoundary name="Main Data View" fallback={<div className="m-3 rounded border border-[#2b2b2f] bg-[#111] p-3 text-[12px] text-[#999]">Main data view failed to load.</div>}>
-                            <MainDataView />
-                        </PanelErrorBoundary>
-                        {!isCompactLayout && (
-                            <PanelErrorBoundary name="Audit Sidebar" fallback={<div className="m-3 rounded border border-[#2b2b2f] bg-[#111] p-3 text-[12px] text-[#999]">Audit panel failed to load.</div>}>
-                                <div className="audit-sidebar h-full">
-                                    <AuditSidebar />
-                                </div>
-                            </PanelErrorBoundary>
-                        )}
-                    </>
+            <div className="flex-1 flex min-h-0 relative overflow-hidden">
+                {!isCompactLayout && (
+                    <PanelErrorBoundary name="Site Explorer" fallback={<div className="m-3 rounded border border-[#2b2b2f] bg-[#111] p-3 text-[12px] text-[#999]">Category tree failed to load.</div>}>
+                        <SiteExplorer />
+                    </PanelErrorBoundary>
+                )}
+                <PanelErrorBoundary name="Main Data View" fallback={<div className="m-3 rounded border border-[#2b2b2f] bg-[#111] p-3 text-[12px] text-[#999]">Main data view failed to load.</div>}>
+                    <MainDataView />
+                </PanelErrorBoundary>
+                {!isCompactLayout && (
+                    <PanelErrorBoundary name="Audit Sidebar" fallback={<div className="m-3 rounded border border-[#2b2b2f] bg-[#111] p-3 text-[12px] text-[#999]">Audit panel failed to load.</div>}>
+                        <AuditSidebar />
+                    </PanelErrorBoundary>
                 )}
 
                 <CollaborationOverlay 
@@ -136,11 +153,14 @@ function SeoCrawlerLayout() {
             </PanelErrorBoundary>
 
             <CrawlerModals />
-            <CrawlProgressOverlay />
+
             {showComparisonView && <ComparisonView onClose={() => setShowComparisonView(false)} />}
             {showExportDialog && <ExportDialog onClose={() => setShowExportDialog(false)} />}
             <AIChatDrawer isOpen={showAiChat} onClose={() => setShowAiChat(false)} />
+            {isSetup && <CrawlerSettingsDrawer isOpen={showSettings} onClose={() => setShowSettings(false)} />}
             <OnboardingTour />
+            
+            {shouldShowEmptyState && <CrawlerEmptyState />}
 
             {!shouldShowEmptyState && isCompactLayout && (
                 <>

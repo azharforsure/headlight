@@ -3,7 +3,8 @@ const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
 const SCOPES = [
   'https://www.googleapis.com/auth/webmasters.readonly',
   'https://www.googleapis.com/auth/analytics.readonly',
-  'https://www.googleapis.com/auth/userinfo.email', // Reduced to minimum
+  'https://www.googleapis.com/auth/userinfo.email',
+  'https://www.googleapis.com/auth/drive.file',
 ].join(' ');
 
 const GOOGLE_OAUTH_RESULT_KEY = 'GOOGLE_OAUTH_RESULT';

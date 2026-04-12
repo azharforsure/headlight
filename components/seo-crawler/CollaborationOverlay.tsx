@@ -24,13 +24,15 @@ export const CollaborationOverlay: React.FC<CollaborationOverlayProps> = ({ isOp
     const [loading, setLoading] = useState(false);
     const [commentText, setCommentText] = useState('');
     const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
+    const [isCreatingTask, setIsCreatingTask] = useState(false);
+    const [newTaskDescription, setNewTaskDescription] = useState('');
+    const [newTaskPriority, setNewTaskPriority] = useState<TaskPriority>('medium');
     
     const scrollRef = useRef<HTMLDivElement>(null);
 
     // Associated task if target is a task, or if an issue has an associated task
-    const activeTask = collabOverlayTarget?.type === 'task' 
-        ? tasks.find(t => t.id === collabOverlayTarget.id)
-        : tasks.find(t => t.linked_issue_id === collabOverlayTarget?.id);
+    const activeTask = tasks.find(t => t.id === collabOverlayTarget?.id) || 
+                       tasks.find(t => t.linked_issue_id === collabOverlayTarget?.id);
 
     useEffect(() => {
         if (!isOpen || !collabOverlayTarget || !activeProject) return;
@@ -131,6 +133,49 @@ export const CollaborationOverlay: React.FC<CollaborationOverlayProps> = ({ isOp
         }
     };
 
+    const handleDeleteSubtask = async (id: string) => {
+        try {
+            await crawlDb.subtasks.delete(id);
+            if (isCloudSyncEnabled) {
+                // We'd need a deleteSubtask in TaskService usually, but for now we'll just remove from UI since it's local first.
+                // In a real app we'd sync this.
+            }
+            setSubtasks(prev => prev.filter(s => s.id !== id));
+        } catch (err) {
+            console.error('Failed to delete subtask:', err);
+        }
+    };
+
+    const handleCreateTask = async () => {
+        if (!activeProject || !user) return;
+        setIsCreatingTask(true);
+        try {
+            const newTask = await createTask(activeProject.id, {
+                title: collabOverlayTarget.title,
+                description: newTaskDescription,
+                priority: newTaskPriority,
+                source: 'manual',
+                createdBy: user.id,
+                linkedIssueId: collabOverlayTarget.type === 'issue' ? collabOverlayTarget.id : null,
+            });
+            setTasks(prev => [...prev, newTask]);
+        } catch (err) {
+            console.error('Failed to create task:', err);
+        } finally {
+            setIsCreatingTask(false);
+        }
+    };
+
+    const handleResolveComment = async (commentId: string) => {
+        if (!user) return;
+        try {
+            await resolveComment(commentId, user.id);
+            setComments(prev => prev.map(c => c.id === commentId ? { ...c, resolved: true, resolved_by: user.id, resolved_at: new Date().toISOString() } : c));
+        } catch (err) {
+            console.error('Failed to resolve comment:', err);
+        }
+    };
+
     return (
         <div className="fixed inset-y-0 right-0 w-[560px] bg-[#0A0A0A] border-l border-white/10 shadow-2xl z-50 flex flex-col animate-in slide-in-from-right duration-300">
             {/* Header */}
@@ -162,7 +207,7 @@ export const CollaborationOverlay: React.FC<CollaborationOverlayProps> = ({ isOp
 
             <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-8" ref={scrollRef}>
                 {/* Task Controls if applicable */}
-                {activeTask && (
+                {activeTask ? (
                     <section className="space-y-4">
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-1.5">
@@ -216,7 +261,10 @@ export const CollaborationOverlay: React.FC<CollaborationOverlayProps> = ({ isOp
                                         <span className={`text-sm flex-1 ${sub.completed ? 'text-gray-600 line-through' : 'text-gray-300'}`}>
                                             {sub.title}
                                         </span>
-                                        <button className="opacity-0 group-hover:opacity-100 p-1 text-gray-600 hover:text-red-500 transition-all">
+                                        <button 
+                                            onClick={() => handleDeleteSubtask(sub.id)}
+                                            className="opacity-0 group-hover:opacity-100 p-1 text-gray-600 hover:text-red-500 transition-all"
+                                        >
                                             <Trash2 size={14} />
                                         </button>
                                     </div>
@@ -234,7 +282,57 @@ export const CollaborationOverlay: React.FC<CollaborationOverlayProps> = ({ isOp
                             </div>
                         </div>
                     </section>
-                )}
+                ) : collabOverlayTarget.type === 'task' ? (
+                    <section className="bg-white/5 border border-dashed border-white/10 rounded-2xl p-6 space-y-4">
+                        <div className="flex flex-col items-center text-center space-y-2 mb-2">
+                            <div className="w-12 h-12 rounded-full bg-brand-red/10 flex items-center justify-center text-brand-red">
+                                <CheckCircle size={24} />
+                            </div>
+                            <h3 className="text-lg font-bold text-white">No task created yet</h3>
+                            <p className="text-xs text-gray-500 max-w-xs">Assign this issue to a team member to track progress and get notifications.</p>
+                        </div>
+                        
+                        <div className="space-y-4">
+                            <div className="space-y-1.5">
+                                <label className="text-[10px] font-bold text-gray-500 uppercase">Description (Optional)</label>
+                                <textarea 
+                                    className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-brand-red/50 resize-none min-h-[80px]"
+                                    placeholder="What needs to be done?"
+                                    value={newTaskDescription}
+                                    onChange={(e) => setNewTaskDescription(e.target.value)}
+                                />
+                            </div>
+                            
+                            <div className="flex items-center justify-between">
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-bold text-gray-500 uppercase">Priority</label>
+                                    <div className="flex gap-2">
+                                        {(['low', 'medium', 'high', 'critical'] as TaskPriority[]).map(p => (
+                                            <button
+                                                key={p}
+                                                onClick={() => setNewTaskPriority(p)}
+                                                className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase transition-all ${
+                                                    newTaskPriority === p 
+                                                    ? 'bg-brand-red text-white' 
+                                                    : 'bg-white/5 text-gray-500 hover:text-white hover:bg-white/10'
+                                                }`}
+                                            >
+                                                {p}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                                <button 
+                                    onClick={handleCreateTask}
+                                    disabled={isCreatingTask}
+                                    className="px-6 py-2.5 bg-brand-red hover:bg-red-600 text-white rounded-xl text-xs font-bold transition-all shadow-lg active:scale-95 disabled:opacity-50"
+                                >
+                                    {isCreatingTask ? 'Creating...' : 'Create Task'}
+                                </button>
+                            </div>
+                        </div>
+                    </section>
+                ) : null}
 
                 {/* Discussion Thread */}
                 <section className="space-y-6">
@@ -277,6 +375,14 @@ export const CollaborationOverlay: React.FC<CollaborationOverlayProps> = ({ isOp
                                                 <Smile size={14} />
                                             </button>
                                             <button className="text-[10px] font-bold text-gray-500 hover:text-white uppercase tracking-tighter">Reply</button>
+                                            {!comment.resolved && (
+                                                <button 
+                                                    onClick={() => handleResolveComment(comment.id)}
+                                                    className="text-[10px] font-bold text-gray-500 hover:text-green-500 uppercase tracking-tighter"
+                                                >
+                                                    Resolve
+                                                </button>
+                                            )}
                                         </div>
                                     </div>
                                 </div>

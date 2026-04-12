@@ -1,10 +1,11 @@
 import React, { useEffect } from 'react';
-import { useProject } from '../services/ProjectContext';
+import { useOptionalProject } from '../services/ProjectContext';
 import { openCrawler } from '../services/CrawlerLauncher';
 import { CrawlerOverlay } from './CrawlerOverlay';
 
 export const CrawlerManager: React.FC = () => {
-    const { activeProject } = useProject();
+    const context = useOptionalProject();
+    const activeProject = context?.activeProject;
 
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {

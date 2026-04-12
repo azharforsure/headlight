@@ -18,3 +18,7 @@ export async function getUnreadCount(userId: string, projectId?: string): Promis
 export async function markNotificationRead(notificationId: string): Promise<void> {
   await markRead(notificationId);
 }
+
+export async function markAllNotificationsRead(userId: string, projectId?: string): Promise<void> {
+  await import('./ActivityService').then(m => m.markAllRead(userId, projectId));
+}

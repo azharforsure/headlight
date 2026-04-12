@@ -1,5 +1,5 @@
 import React from 'react';
-import { Clock, Layers, Keyboard, Cpu, Route } from 'lucide-react';
+import { Clock, Layers, Keyboard, Cpu, Route, GitCompare, Save } from 'lucide-react';
 import { useSeoCrawler } from '../../contexts/SeoCrawlerContext';
 
 const getSafeHostname = (url: string | undefined | null) => {
@@ -13,7 +13,7 @@ const getSafeHostname = (url: string | undefined | null) => {
 
 export default function StatusBar() {
     const { 
-        isCrawling, elapsedTime, crawlRate, crawlRuntime, isAuthenticated, viewMode, pages, trialPagesLimit, crawlHistory
+        isCrawling, elapsedTime, crawlRate, crawlRuntime, isAuthenticated, viewMode, pages, trialPagesLimit, crawlHistory, setShowComparisonView, saveCrawlSession
     } = useSeoCrawler();
 
     const statusMeta = (() => {
@@ -93,10 +93,25 @@ export default function StatusBar() {
 
             {/* Right side: Helpers */}
             <div className="flex items-center gap-4 text-[#666]">
-                <span className="flex items-center gap-1.5">
-                    <Layers size={12} className="text-[#555]" />
-                    {viewMode === 'grid' ? 'Grid View' : 'Map View'}
-                </span>
+                <button 
+                    onClick={() => saveCrawlSession('completed')}
+                    disabled={pages.length === 0}
+                    className="flex items-center gap-1.5 hover:text-[#bbb] transition-colors disabled:opacity-30 disabled:cursor-default"
+                >
+                    <Save size={12} className="text-[#555]" />
+                    Save
+                </button>
+
+                <span className="text-[#333]">|</span>
+
+                <button
+                    onClick={() => setShowComparisonView(true)}
+                    disabled={crawlHistory.length < 2}
+                    className="flex items-center gap-1.5 hover:text-[#bbb] transition-colors disabled:opacity-30 disabled:cursor-default"
+                >
+                    <GitCompare size={12} className="text-[#555]" />
+                    Compare
+                </button>
 
                 <span className="text-[#333]">|</span>
 

@@ -1,7 +1,7 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { Search, ChevronDown, ChevronRight, Wand2 } from 'lucide-react';
 import { useSeoCrawler } from '../../contexts/SeoCrawlerContext';
-import { AI_INSIGHTS_CATEGORY, CATEGORIES, SMART_PRESETS, matchesCategoryFilter } from './constants';
+import { AI_INSIGHTS_CATEGORY, CATEGORIES, matchesCategoryFilter } from './constants';
 import CategoryTreeContextMenu from './CategoryTreeContextMenu';
 
 type CategoryMenuState = {
@@ -19,15 +19,14 @@ interface SiteExplorerProps {
 export default function SiteExplorer({ embedded = false }: SiteExplorerProps) {
     const {
         categorySearch, setCategorySearch,
-        leftSidebarPreset, setLeftSidebarPreset,
         leftSidebarWidth, setIsDraggingLeftSidebar,
         openCategories, setOpenCategories,
         setVisibleColumns, setActiveMacro,
         dynamicClusters, categoryCounts,
         pages, toggleCategory,
         activeCategories, setActiveCategories,
-        prioritizedCategories, prioritizeByIssues, setPrioritizeByIssues,
         activeCheckCategories,
+        prioritizedCategories, prioritizeByIssues, setPrioritizeByIssues,
         auditFilter,
         exportSubset, createTaskForCategory, bulkAIAnalyzeCategory
     } = useSeoCrawler();
@@ -107,33 +106,18 @@ export default function SiteExplorer({ embedded = false }: SiteExplorerProps) {
     return (
         <aside
             style={embedded ? undefined : { width: leftSidebarWidth }}
-            className={`bg-[#111] flex flex-col overflow-hidden relative ${embedded ? 'w-full h-full rounded-2xl border border-[#222]' : 'border-r border-[#222] shrink-0'}`}
+            className={`bg-[#111] flex flex-col min-h-0 relative ${embedded ? 'w-full h-full overflow-hidden rounded-2xl border border-[#222]' : 'border-r border-[#222] shrink-0'}`}
         >
             {!embedded && (
                 <div
                     onMouseDown={() => setIsDraggingLeftSidebar(true)}
-                    className="absolute top-0 bottom-0 right-0 w-1.5 -mr-0.5 cursor-ew-resize z-50 transition-colors hover:bg-[#F5364E]"
+                    className="absolute top-0 bottom-0 right-0 w-1.5 cursor-ew-resize z-50 transition-colors hover:bg-[#F5364E]"
                 ></div>
             )}
-            
-            {/* Sidebar Search */}
-            <div className="px-2 pt-2 pb-1 shrink-0 border-b border-[#1a1a1a]">
-                <div className="relative">
-                    <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-[#555]" size={11} />
-                    <input
-                        type="text"
-                        value={categorySearch}
-                        onChange={(e) => setCategorySearch(e.target.value)}
-                        placeholder="Search categories..."
-                        className="w-full bg-[#0a0a0a] border border-[#222] rounded pl-6 pr-2 py-1 text-[11px] text-[#e0e0e0] placeholder-[#555] focus:border-[#F5364E] focus:outline-none transition-colors"
-                    />
-                </div>
-            </div>
 
-            {/* Smart Presets */}
-            <div className="px-2 py-1.5 border-b border-[#1a1a1a] shrink-0">
-                <div className="flex items-center justify-between mb-1 px-1">
-                    <div className="text-[9px] text-[#555] uppercase tracking-widest font-bold">Quick Presets</div>
+            <div className="px-2 py-2 border-b border-[#1a1a1a] shrink-0 space-y-2">
+                <div className="flex items-center justify-between px-1">
+                    <span className="text-[9px] text-[#555] uppercase tracking-widest font-bold">Categories</span>
                     <button
                         onClick={() => setPrioritizeByIssues(!prioritizeByIssues)}
                         className={`flex items-center gap-0.5 px-1 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider transition-colors ${
@@ -143,36 +127,16 @@ export default function SiteExplorer({ embedded = false }: SiteExplorerProps) {
                         Sort by Issues
                     </button>
                 </div>
-                <div className="flex gap-1.5 overflow-x-auto custom-scrollbar-hidden whitespace-nowrap pb-1">
-                    {SMART_PRESETS.map((preset) => (
-                        <button
-                            key={preset.id}
-                            onClick={() => {
-                                setLeftSidebarPreset(preset.id);
-                                setOpenCategories(preset.categories);
-                                setVisibleColumns(preset.columns);
-                                setActiveMacro(null);
-                            }}
-                            className={`px-2.5 py-1 rounded text-[10px] font-medium transition-all shrink-0 ${
-                                leftSidebarPreset === preset.id
-                                    ? 'bg-[#F5364E]/15 text-[#F5364E] border border-[#F5364E]/30 shadow-[0_0_10px_rgba(245,54,78,0.1)]'
-                                    : 'bg-[#1a1a1a] text-[#888] border border-[#222] hover:border-[#444] hover:text-[#ccc]'
-                            }`}
-                        >
-                            {preset.label}
-                        </button>
-                    ))}
-                </div>
-            </div>
-
-            <div className="px-2 py-1 border-b border-[#1a1a1a] shrink-0">
-                <div className="flex items-center justify-between px-1">
-                    <span className="text-[9px] text-[#555] uppercase tracking-widest font-bold">Categories</span>
-                    <div className="flex items-center gap-1 text-[9px]">
-                        <button onClick={() => setOpenCategories(allCategoryIds)} className="text-[#666] hover:text-[#ccc]">Expand</button>
-                        <span className="text-[#333]">|</span>
-                        <button onClick={() => setOpenCategories([])} className="text-[#666] hover:text-[#ccc]">Collapse</button>
-                    </div>
+                
+                <div className="relative">
+                    <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-[#444]" size={11} />
+                    <input
+                        type="text"
+                        value={categorySearch}
+                        onChange={(e) => setCategorySearch(e.target.value)}
+                        placeholder="Search... (⌘K)"
+                        className="w-full bg-[#0a0a0a]/50 border border-[#222] rounded pl-6 pr-2 py-1 text-[11px] text-[#e0e0e0] placeholder-[#444] focus:border-[#F5364E]/50 focus:outline-none transition-colors"
+                    />
                 </div>
             </div>
 

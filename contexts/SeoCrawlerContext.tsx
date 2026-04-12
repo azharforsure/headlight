@@ -4,7 +4,8 @@ import {
     ALL_COLUMNS,
     resolveIssueCheckId,
     matchesCategoryFilter,
-    AI_INSIGHTS_CATEGORY
+    AI_INSIGHTS_CATEGORY,
+    formatBytes
 } from '../components/seo-crawler/constants';
 import { SEO_ISSUES_TAXONOMY, ISSUE_TO_CHECK_MAP } from '../components/seo-crawler/IssueTaxonomy';
 import { AUDIT_MODES } from '../services/AuditModeConfig';
@@ -28,7 +29,7 @@ import {
 } from '../services/CrawlHistoryService';
 import { useAuth } from '../services/AuthContext';
 import { useOptionalProject } from '../services/ProjectContext';
-import { calculateInternalPageRank, calculatePredictiveScore } from '../services/StrategicIntelligence';
+import { calculatePredictiveScore, calculateAuthorityScore, calculateBusinessValueScore, calculateOpportunityScore } from '../services/StrategicIntelligence';
 import { persistCrawlResults, syncCrawlStatus, persistEnrichmentStatus } from '../services/CrawlPersistenceService';
 import { syncFromCrawl } from '../services/DashboardDataService';
 import { 
@@ -71,6 +72,19 @@ import type { CrawlerConfig, SettingsTabId } from '../services/CrawlerConfigType
 import { exportToGoogleDrive } from '../services/GoogleDriveExportService';
 import { exportToGitHub } from '../services/GitHubExportService';
 import { CrawlerConfigValidator, validateCrawlConfig } from '../services/CrawlerConfigValidator';
+import {
+    normalizeComparableText,
+    clampScore,
+    mergePagesByUrl,
+    normalizeCrawlerPage,
+    buildSitemapState,
+    hasOwn,
+    runPostCrawlScoring,
+    exportPagesAsCSV,
+    exportRawSessionData
+} from '../services/CrawlerDataUtils';
+import { useGraphDataWorker } from '../hooks/useGraphDataWorker';
+import { useParams } from 'react-router-dom';
 
 // Collaboration Services (P5)
 import { getTasks, createTask as createTaskService, updateTask as updateTaskService } from '../services/TaskService';
@@ -97,6 +111,21 @@ export type InspectorTab =
     | 'source'
     | 'jsdiff'
     | 'visual';
+
+export type AnalysisStage = 
+    | 'idle' 
+    | 'ai-analysis' 
+    | 'strategic-audit' 
+    | 'incremental-audit' 
+    | 'completed' 
+    | 'error';
+
+export interface AnalysisRuntime {
+    isAnalyzing: boolean;
+    stage: AnalysisStage;
+    progress: number;
+    label: string;
+}
 
 type RobotsTxtState = {
     raw: string;
@@ -154,8 +183,8 @@ export interface CrawlerContextType {
     setInspectorCollapsed: (c: boolean) => void;
     showAuditSidebar: boolean;
     setShowAuditSidebar: (s: boolean) => void;
-    activeAuditTab: 'overview' | 'issues' | 'opportunities' | 'geo' | 'tasks' | 'comments' | 'ai' | 'monitor' | 'migration' | 'history' | 'logs' | 'robots' | 'sitemap' | 'visual';
-    setActiveAuditTab: (t: 'overview' | 'issues' | 'opportunities' | 'geo' | 'tasks' | 'comments' | 'ai' | 'monitor' | 'migration' | 'history' | 'logs' | 'robots' | 'sitemap' | 'visual') => void;
+    activeAuditTab: 'overview' | 'issues' | 'opportunities' | 'geo' | 'tasks' | 'ai' | 'monitor' | 'migration' | 'history' | 'logs' | 'robots' | 'sitemap' | 'visual';
+    setActiveAuditTab: (t: 'overview' | 'issues' | 'opportunities' | 'geo' | 'tasks' | 'ai' | 'monitor' | 'migration' | 'history' | 'logs' | 'robots' | 'sitemap' | 'visual') => void;
     showSettings: boolean;
     setShowSettings: (s: boolean) => void;
     activeMacro: string | null;
@@ -236,8 +265,9 @@ export interface CrawlerContextType {
         rate: number;
         workerUtilization: number;
     };
+    analysisRuntime: AnalysisRuntime;
     elapsedTime: string;
-    setElapsedTime: (t: string) => void;
+    // R1: setElapsedTime removed — fully derived internal state, no consumer should set it
     formatBytes: (b: any) => string;
     handleExport: () => void;
     handleExportRawDB: () => Promise<void>;
@@ -304,6 +334,7 @@ export interface CrawlerContextType {
     clearCrawlerWorkspace: () => void;
     showTrialLimitAlert: boolean;
     setShowTrialLimitAlert: (s: boolean) => void;
+    runCompleteAnalysis: () => Promise<void>;
 
     // AI Layer
     aiResults: Map<string, PageAIResult>;
@@ -332,6 +363,22 @@ const MAX_IN_MEMORY_PAGES = 50000;
 const CRAWLER_LAYOUT_STORAGE_KEY = 'headlight:seo-crawler-layout';
 const CRAWLER_LAST_SESSION_STORAGE_KEY = 'headlight:seo-crawler-last-session';
 const CRAWLER_DRAFT_STORAGE_KEY = 'headlight:seo-crawler-draft';
+
+const getScopedCrawlerSessionStorageKey = (projectId: string | null | undefined) =>
+    projectId ? `${CRAWLER_LAST_SESSION_STORAGE_KEY}:${projectId}` : CRAWLER_LAST_SESSION_STORAGE_KEY;
+
+const getScopedCrawlerDraftStorageKey = (projectId: string | null | undefined) =>
+    projectId ? `${CRAWLER_DRAFT_STORAGE_KEY}:${projectId}` : CRAWLER_DRAFT_STORAGE_KEY;
+
+const getNormalizedHostname = (value: string | null | undefined) => {
+    if (!value) return '';
+    try {
+        const url = value.startsWith('http') ? value : `https://${value}`;
+        return new URL(url).hostname.replace(/^www\./i, '').toLowerCase();
+    } catch {
+        return String(value).replace(/^www\./i, '').toLowerCase();
+    }
+};
 const DEFAULT_VISIBLE_COLUMNS = [
     'url',
     'statusCode',
@@ -355,8 +402,8 @@ const DEFAULT_CONFIG: CrawlerConfig = {
     startUrls: [],
     mode: 'spider',
     industry: 'all',
-    limit: '',
-    maxDepth: '',
+    limit: '20000',
+    maxDepth: '10',
     threads: 5,
     crawlSpeed: 'normal',
     userAgent: 'Headlight Scanner 1.0',
@@ -451,9 +498,17 @@ const DEFAULT_CONFIG: CrawlerConfig = {
     retentionSessions: 10,
     autoBackupDestination: 'none',
     githubBackupRepo: '',
+
+    // URL LIST SETTINGS
+    urlListSource: 'manual',
+    manualUrls: '',
+    sitemapSource: 'auto',
+    importSitemapUrl: '',
+    uploadedFileName: '',
 };
 
-const getHashRouteSearchParams = () => {
+export const getHashRouteSearchParams = () => {
+
     if (typeof window === 'undefined') return new URLSearchParams();
 
     const params = new URLSearchParams(window.location.search || '');
@@ -494,181 +549,34 @@ const replaceHashRouteSearchParams = (mutate: (params: URLSearchParams) => void)
     );
 };
 
-const normalizeComparableText = (value: any) => {
-    if (typeof value !== 'string') return '';
-    return value.trim().replace(/\s+/g, ' ').toLowerCase();
-};
+// D2+D3+D4 fix: normalizeComparableText, clampScore, mergePagesByUrl, normalizeCrawlerPage,
+// buildSitemapState, and hasOwn are now imported from ../services/CrawlerDataUtils.ts
 
-const clampScore = (value: number) => Math.max(0, Math.min(100, Math.round(value)));
-
-const mergePagesByUrl = (existingPages: any[], nextPages: any[]) => {
-    const pageMap = new Map<string, any>();
-
-    existingPages.forEach((page) => {
-        if (page?.url) pageMap.set(page.url, page);
-    });
-
-    nextPages.forEach((page) => {
-        if (!page?.url) return;
-        pageMap.set(page.url, {
-            ...(pageMap.get(page.url) || {}),
-            ...page
-        });
-    });
-
-    return Array.from(pageMap.values());
-};
-
-const normalizeCrawlerPage = (page: any) => {
-    if (!page || typeof page.url !== 'string') return null;
-
-    const url = page.url.trim();
-    if (!url) return null;
-
-    const redirectChain = Array.isArray(page.redirectChain)
-        ? page.redirectChain.filter((item: unknown): item is string => typeof item === 'string' && item.length > 0)
-        : [];
-
-    let recommendedActionFactors = null;
-    if (typeof page.recommendedActionFactors === 'string') {
-        recommendedActionFactors = page.recommendedActionFactors;
-    } else if (Array.isArray(page.recommendedActionFactors)) {
-        try {
-            recommendedActionFactors = JSON.stringify(page.recommendedActionFactors);
-        } catch {
-            recommendedActionFactors = null;
-        }
-    }
-
-    return {
-        ...page,
-        url,
-        status: typeof page.status === 'string' ? page.status : '',
-        title: typeof page.title === 'string' ? page.title : '',
-        metaDesc: typeof page.metaDesc === 'string' ? page.metaDesc : '',
-        h1_1: typeof page.h1_1 === 'string' ? page.h1_1 : '',
-        h1_2: typeof page.h1_2 === 'string' ? page.h1_2 : '',
-        h2_1: typeof page.h2_1 === 'string' ? page.h2_1 : '',
-        h2_2: typeof page.h2_2 === 'string' ? page.h2_2 : '',
-        contentType: typeof page.contentType === 'string' ? page.contentType : '',
-        canonical: typeof page.canonical === 'string' ? page.canonical : '',
-        indexabilityStatus: typeof page.indexabilityStatus === 'string' ? page.indexabilityStatus : '',
-        metaRobots1: typeof page.metaRobots1 === 'string' ? page.metaRobots1 : '',
-        metaRobots2: typeof page.metaRobots2 === 'string' ? page.metaRobots2 : '',
-        xRobots: typeof page.xRobots === 'string' ? page.xRobots : '',
-        xRobotsNoindex: page.xRobotsNoindex === true,
-        xRobotsNofollow: page.xRobotsNofollow === true,
-        topicCluster: typeof page.topicCluster === 'string' ? page.topicCluster : '',
-        funnelStage: typeof page.funnelStage === 'string' ? page.funnelStage : '',
-        searchIntent: typeof page.searchIntent === 'string' ? page.searchIntent : '',
-        language: typeof page.language === 'string' ? page.language : '',
-        readability: typeof page.readability === 'string' ? page.readability : '',
-        redirectUrl: typeof page.redirectUrl === 'string' ? page.redirectUrl : '',
-        finalUrl: typeof page.finalUrl === 'string'
-            ? page.finalUrl
-            : (typeof page.redirectUrl === 'string' && page.redirectUrl)
-                ? page.redirectUrl
-                : url,
-        redirectChain,
-        redirectChainLength: Number.isFinite(Number(page.redirectChainLength))
-            ? Number(page.redirectChainLength)
-            : Math.max(0, redirectChain.length - 1),
-        inlinksList: Array.isArray(page.inlinksList) ? page.inlinksList : [],
-        outlinksList: Array.isArray(page.outlinksList) ? page.outlinksList : [],
-        externalLinks: Array.isArray(page.externalLinks) ? page.externalLinks : [],
-        images: Array.isArray(page.images) ? page.images : [],
-        headingHierarchy: Array.isArray(page.headingHierarchy) ? page.headingHierarchy : [],
-        schemaTypes: Array.isArray(page.schemaTypes) ? page.schemaTypes : [],
-        fontDisplayValues: Array.isArray(page.fontDisplayValues) ? page.fontDisplayValues : [],
-        uniqueThirdPartyDomains: Array.isArray(page.uniqueThirdPartyDomains) ? page.uniqueThirdPartyDomains : [],
-        exposedEmails: Array.isArray(page.exposedEmails) ? page.exposedEmails : [],
-        cookieDetails: Array.isArray(page.cookieDetails) ? page.cookieDetails : [],
-        hasHsts: typeof page.hasHsts === 'boolean'
-            ? page.hasHsts
-            : (typeof page.hstsMissing === 'boolean' ? !page.hstsMissing : undefined),
-        hasCsp: typeof page.hasCsp === 'boolean'
-            ? page.hasCsp
-            : (typeof page.cspPresent === 'boolean' ? page.cspPresent : undefined),
-        hasXFrameOptions: typeof page.hasXFrameOptions === 'boolean'
-            ? page.hasXFrameOptions
-            : (typeof page.xFrameMissing === 'boolean' ? !page.xFrameMissing : undefined),
-        hasXContentTypeOptions: typeof page.hasXContentTypeOptions === 'boolean'
-            ? page.hasXContentTypeOptions
-            : (typeof page.xContentTypeNoSniff === 'boolean' ? page.xContentTypeNoSniff : undefined),
-        hasCacheControl: typeof page.hasCacheControl === 'boolean' ? page.hasCacheControl : undefined,
-        hasEtag: typeof page.hasEtag === 'boolean' ? page.hasEtag : undefined,
-        hasLastModified: typeof page.hasLastModified === 'boolean' ? page.hasLastModified : undefined,
-        hasExpires: typeof page.hasExpires === 'boolean' ? page.hasExpires : undefined,
-        hasViewportMeta: typeof page.hasViewportMeta === 'boolean' ? page.hasViewportMeta : undefined,
-        viewportWidth: typeof page.viewportWidth === 'boolean' ? page.viewportWidth : undefined,
-        sslValid: typeof page.sslValid === 'boolean' ? page.sslValid : undefined,
-        responseHeaders: page.responseHeaders && typeof page.responseHeaders === 'object' ? page.responseHeaders : null,
-        recommendedActionFactors,
-
-        // Consolidated Volume Metrics (Main)
-        mainKwVolume: Number(page.mainKwSearchVolume || page.mainKwEstimatedVolume || 0),
-        mainKwVolumeSource: page.mainKwSearchVolume ? 'db' : (page.mainKwEstimatedVolume ? 'gsc' : 'none'),
-
-        // Consolidated Volume Metrics (Best)
-        bestKwVolume: Number(page.bestKwSearchVolume || page.bestKwEstimatedVolume || 0),
-        bestKwVolumeSource: page.bestKwSearchVolume ? 'db' : (page.bestKwEstimatedVolume ? 'gsc' : 'none'),
-    };
-};
-
-const buildSitemapState = (
-    totalUrls: unknown,
-    sources: unknown,
-    coverageParsed = true
-): { totalUrls: number; sources: string[]; coverageParsed?: boolean } | null => {
-    const normalizedSources = Array.isArray(sources)
-        ? sources.filter((source: unknown): source is string => typeof source === 'string' && source.trim().length > 0)
-        : [];
-
-    const parsedTotal = Number(totalUrls);
-    const normalizedTotal = Number.isFinite(parsedTotal) && parsedTotal >= 0 ? parsedTotal : 0;
-
-    if (normalizedSources.length === 0 && normalizedTotal <= 0) {
-        return null;
-    }
-
-    return {
-        totalUrls: normalizedTotal,
-        sources: normalizedSources,
-        coverageParsed
-    };
-};
-
-const hasOwn = (value: Record<string, any>, key: string) =>
-    Object.prototype.hasOwnProperty.call(value, key);
-
+/**
+ * Derives strategic intelligence signals for a page using canonical scoring
+ * from StrategicIntelligence.ts. This ensures score consistency across grid
+ * display, enrichment, and persistence paths.
+ */
 const derivePageIntelligence = (page: any) => {
     const impressions = Number(page.gscImpressions || 0);
     const clicks = Number(page.gscClicks || 0);
-    const ctr = Number(page.gscCtr || 0);
-    const position = Number(page.gscPosition || 0);
     const sessions = Number(page.ga4Sessions || 0);
     const users = Number(page.ga4Users || 0);
     const bounceRate = Number(page.ga4BounceRate || 0);
     const avgSessionDuration = Number(page.ga4EngagementTimePerPage || page.ga4AvgSessionDuration || 0);
     const referringDomains = Number(page.referringDomains || 0);
     const urlRating = Number(page.urlRating || 0);
-    const linkEquity = Number(page.linkEquity || 0);
-    const technicalPenalty = [
-        page.statusCode >= 400,
-        page.indexable === false,
-        !page.title,
-        !page.metaDesc,
-        page.loadTime > 1500
-    ].filter(Boolean).length * 12;
 
-    const computedAuthorityScore = clampScore((referringDomains * 2.5) + (urlRating * 4) + (linkEquity * 6));
-    const computedBusinessValueScore = clampScore((sessions * 2) + (users * 1.5) + Math.max(0, avgSessionDuration / 3) - (bounceRate * 30));
-    const computedOpportunityScore = clampScore((impressions / 25) + ((position > 0 && position <= 20) ? (24 - position) * 2 : 0) + ((ctr > 0 && ctr < 0.03) ? 18 : 0) + (computedAuthorityScore * 0.25) + (computedBusinessValueScore * 0.2) - technicalPenalty);
-    const authorityScore = Number(page.authorityScore ?? computedAuthorityScore);
-    const businessValueScore = Number(page.businessValueScore ?? computedBusinessValueScore);
-    const opportunityScore = Number(page.opportunityScore ?? computedOpportunityScore);
+    // Use canonical scoring functions from StrategicIntelligence.ts
+    const authorityScore = Number(page.authorityScore ?? calculateAuthorityScore(page));
+    const businessValueScore = Number(page.businessValueScore ?? calculateBusinessValueScore(page));
+    const opportunityScore = Number(page.opportunityScore ?? calculateOpportunityScore(page));
+
+    // Engagement/quality metrics (lightweight, no duplicate in services)
     const engagementRisk = clampScore((bounceRate * 100) - Math.min(40, avgSessionDuration / 5));
     const trafficQuality = clampScore((businessValueScore * 0.65) + (Math.max(0, 1 - bounceRate) * 35));
+
+    // Data coverage & confidence
     const coverageParts = [
         impressions > 0 || clicks > 0 ? 1 : 0,
         sessions > 0 || users > 0 ? 1 : 0,
@@ -693,6 +601,7 @@ const derivePageIntelligence = (page: any) => {
 };
 
 export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
+    const { projectId: routeProjectParam } = useParams<{ projectId: string }>();
     // ─── Real auth from AuthContext ───
     const { session, user, profile, signOut } = useAuth();
     const projectContext = useOptionalProject();
@@ -736,13 +645,13 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
     }, []);
     const [auditFilter, setAuditFilter] = useState<AuditFilterState>(DEFAULT_FILTER_STATE);
     const [customPresets, setCustomPresets] = useState<CustomAuditPreset[]>(() => getLocalPresets());
-    const [openCategories, setOpenCategories] = useState<string[]>(() => CATEGORIES.map((category) => category.id));
+    const [openCategories, setOpenCategories] = useState<string[]>([]);
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedPage, setSelectedPage] = useState<any | null>(null);
     const [activeTab, setActiveTab] = useState<InspectorTab>('general');
     const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
     const [showAuditSidebar, setShowAuditSidebar] = useState(false);
-    const [activeAuditTab, setActiveAuditTab] = useState<'overview' | 'issues' | 'opportunities' | 'geo' | 'tasks' | 'comments' | 'ai' | 'monitor' | 'migration' | 'history' | 'logs' | 'robots' | 'sitemap' | 'visual'>('overview');
+    const [activeAuditTab, setActiveAuditTab] = useState<'overview' | 'issues' | 'opportunities' | 'geo' | 'tasks' | 'ai' | 'monitor' | 'migration' | 'history' | 'logs' | 'robots' | 'sitemap' | 'visual'>('overview');
     const [showSettings, setShowSettings] = useState(false);
     const [activeMacro, setActiveMacro] = useState<string | null>(null);
     const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>(null);
@@ -802,7 +711,6 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
     const [showComparisonView, setShowComparisonView] = useState(false);
     const [showExportDialog, setShowExportDialog] = useState(false);
     const [isLoadingHistory, setIsLoadingHistory] = useState(false);
-    const [analysisPages, setAnalysisPages] = useState<any[]>([]);
     const [detectedGscSite, setDetectedGscSite] = useState<string | null>(null);
     const [detectedGa4Property, setDetectedGa4Property] = useState<string | null>(null);
 
@@ -818,6 +726,11 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         [currentSessionId],
         [] as any[]
     );
+
+    // R2 fix: Replace manual 1.2s debounce with React 18 useDeferredValue.
+    // This lets React naturally defer expensive downstream computations (stats, graph, health)
+    // without maintaining a separate copy of the pages array.
+    const analysisPages = useDeferredValue(pages);
 
     // ─── Auth-aware states (isAuthenticated from real session above) ───
     const trialPagesLimit = 100;
@@ -878,10 +791,43 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         return () => clearTimeout(timer);
     }, [config]);
 
+    // Sync from active project (especially during setup)
+    const lastActiveProjectId = useRef<string | null>(null);
+    useEffect(() => {
+        if (!activeProject) return;
+        
+        const params = getHashRouteSearchParams();
+        const isSetup = params.get('setup') === 'true';
+        const projectSwitched = lastActiveProjectId.current !== activeProject.id;
+        lastActiveProjectId.current = activeProject.id;
+
+        // Auto-populate URL if explicitly in setup mode or if we just switched projects
+        // On project switch, we FORCE sync to the new project URL to avoid clobbering with old project context
+        if ((isSetup || projectSwitched) && activeProject.url) {
+            setUrlInput(activeProject.url);
+        }
+
+        // Sync Industry
+        if (activeProject.industry && config.industry !== activeProject.industry) {
+            setConfig(prev => ({
+                ...prev,
+                industry: activeProject.industry
+            }));
+        }
+    }, [activeProject, config.industry]);
+
+
+
     const [theme, setTheme] = useState<'dark'|'light'|'system'|'high-contrast'>('dark');
     const [workerFilteredPages, setWorkerFilteredPages] = useState<any[] | null>(null);
     const [integrationConnections, setIntegrationConnections] = useState<Partial<Record<CrawlerIntegrationProvider, CrawlerIntegrationConnection>>>({});
     const [integrationsLoading, setIntegrationsLoading] = useState(false);
+    const [analysisRuntime, setAnalysisRuntime] = useState<AnalysisRuntime>({
+        isAnalyzing: false,
+        stage: 'idle',
+        progress: 0,
+        label: 'Run Analysis'
+    });
     const [integrationsSource, setIntegrationsSource] = useState<'anonymous' | 'project' | 'project-cache' | 'none'>('none');
     const [crawlRuntime, setCrawlRuntime] = useState<CrawlerContextType['crawlRuntime']>({
         stage: 'idle',
@@ -909,14 +855,49 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
     const sessionEntrySignatureRef = useRef<string | null>(null);
     const [hasHydrated, setHasHydrated] = useState(false);
     const initialUrlStateHydratedRef = useRef(false);
+    const analysisRuntimeRef = useRef<AnalysisRuntime>(analysisRuntime);
+    useEffect(() => {
+        analysisRuntimeRef.current = analysisRuntime;
+    }, [analysisRuntime]);
     const autoRestoreAttemptedRef = useRef(false);
+    const restoredDraftScopeRef = useRef<string | null>(null);
     const inMemoryPageLimitAlertedRef = useRef(false);
     const currentSessionIdRef = useRef<string | null>(null);
     const integrationsHydratedRef = useRef(false);
     const ghostCrawlerRef = useRef<GhostCrawler | null>(null);
-    const routeProjectId = getHashRouteSearchParams().get('projectId');
-    const integrationProjectId = activeProject?.id || routeProjectId || null;
+    const routeSearchParams = getHashRouteSearchParams();
+    const routeProjectId = routeProjectParam || routeSearchParams.get('projectId') || routeSearchParams.get('project') || null;
+    const scopedProjectId = routeProjectId || activeProject?.id || null;
+    const scopedLastSessionStorageKey = getScopedCrawlerSessionStorageKey(scopedProjectId);
+    const scopedDraftStorageKey = getScopedCrawlerDraftStorageKey(scopedProjectId);
+    const integrationProjectId = scopedProjectId;
     const integrationSecretScope = getCrawlerSecretScope(integrationProjectId);
+
+    const activeProjectHostname = useMemo(() => {
+        return getNormalizedHostname(activeProject?.domain || activeProject?.url || null);
+    }, [activeProject?.domain, activeProject?.url]);
+
+    const sessionMatchesProjectScope = useCallback((session: CrawlSession) => {
+        if (!scopedProjectId) return true;
+        if (session.projectId) return session.projectId === scopedProjectId;
+
+        if (!activeProjectHostname) return true;
+
+        return getNormalizedHostname(session.url) === activeProjectHostname;
+    }, [scopedProjectId, activeProjectHostname]);
+
+    // Reset restoration flags when project scope changes to allow re-hydration for new project
+    useEffect(() => {
+        if (scopedProjectId) {
+            autoRestoreAttemptedRef.current = false;
+            setHasHydrated(false);
+        }
+    }, [scopedProjectId]);
+
+    const projectScopedHistory = useMemo(() => {
+        if (!scopedProjectId) return crawlHistory;
+        return crawlHistory.filter(sessionMatchesProjectScope);
+    }, [crawlHistory, scopedProjectId, sessionMatchesProjectScope]);
 
     useEffect(() => {
         if (typeof window === 'undefined') return;
@@ -982,7 +963,12 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
 
 
     useEffect(() => {
-        pagesRef.current = pages;
+        // S3 fix: Only sync pagesRef from useLiveQuery when NOT crawling.
+        // During active crawls, flushPendingPageUpdates manages pagesRef directly
+        // to avoid stale useLiveQuery data overwriting fresh flush results.
+        if (!isCrawlActiveRef.current) {
+            pagesRef.current = pages;
+        }
     }, [pages]);
 
     useEffect(() => {
@@ -1080,93 +1066,96 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
     }, [integrationConnections.google, integrationConnections.bingWebmaster, integrationSecretScope]);
 
     // ─── Legacy Migration Effect ─────────────────────
+    // R3: This block migrates legacy 'googleSearchConsole' and 'googleAnalytics' integration
+    // keys to the unified 'google' key. Safe to remove once all users have migrated.
     useEffect(() => {
         if (!integrationsHydratedRef.current) return;
         
         const legacyGsc = (integrationConnections as any)['googleSearchConsole'];
         const legacyGa4 = (integrationConnections as any)['googleAnalytics'];
 
-        if (legacyGsc || legacyGa4) {
-            setIntegrationConnections((prev: any) => {
-                const next = { ...prev };
-                const googleConnection: any = next.google || {
-                    provider: 'google',
-                    label: 'Google Unified',
-                    status: 'connected',
-                    authType: 'oauth',
-                    ownership: activeProject?.id ? 'project' : 'anonymous',
-                    connectedAt: Date.now(),
-                    accountLabel: legacyGsc?.accountLabel || legacyGa4?.accountLabel || 'Migrated Account',
-                    sync: { status: 'idle' }
-                };
+        // R3 gate: Skip entirely if no legacy keys exist (most users)
+        if (!legacyGsc && !legacyGa4) return;
 
-                if (legacyGsc?.selection?.siteUrl) {
-                    googleConnection.sync = { ...googleConnection.sync, siteUrl: legacyGsc.selection.siteUrl };
-                }
-                if (legacyGa4?.selection?.propertyId) {
-                    googleConnection.sync = { ...googleConnection.sync, propertyId: legacyGa4.selection.propertyId };
-                }
+        setIntegrationConnections((prev: any) => {
+            const next = { ...prev };
+            const googleConnection: any = next.google || {
+                provider: 'google',
+                label: 'Google Unified',
+                status: 'connected',
+                authType: 'oauth',
+                ownership: activeProject?.id ? 'project' : 'anonymous',
+                connectedAt: Date.now(),
+                accountLabel: legacyGsc?.accountLabel || legacyGa4?.accountLabel || 'Migrated Account',
+                sync: { status: 'idle' }
+            };
 
-                next.google = googleConnection;
-                delete next['googleSearchConsole'];
-                delete next['googleAnalytics'];
-                
-                // Migrate secrets too
-                const gscSecrets = getCrawlerIntegrationSecret(integrationSecretScope, 'googleSearchConsole' as any);
-                const ga4Secrets = getCrawlerIntegrationSecret(integrationSecretScope, 'googleAnalytics' as any);
-                const accessToken = gscSecrets?.accessToken || gscSecrets?.access_token || ga4Secrets?.accessToken || ga4Secrets?.access_token;
-                const refreshToken = gscSecrets?.refreshToken || gscSecrets?.refresh_token || ga4Secrets?.refreshToken || ga4Secrets?.refresh_token;
-                if (accessToken || refreshToken) {
-                    storeCrawlerIntegrationSecret(integrationSecretScope, 'google', {
-                        accessToken: accessToken || '',
-                        access_token: accessToken || '',
-                        refreshToken: refreshToken || '',
-                        refresh_token: refreshToken || ''
-                    });
-                }
+            if (legacyGsc?.selection?.siteUrl) {
+                googleConnection.sync = { ...googleConnection.sync, siteUrl: legacyGsc.selection.siteUrl };
+            }
+            if (legacyGa4?.selection?.propertyId) {
+                googleConnection.sync = { ...googleConnection.sync, propertyId: legacyGa4.selection.propertyId };
+            }
 
-                return next;
-            });
-
-            if (integrationProjectId) {
-                const migratedConnections = {
-                    ...integrationConnections,
-                    google: {
-                        provider: 'google',
-                        label: legacyGsc?.label || legacyGa4?.label || 'Google Search & Analytics',
-                        status: 'connected',
-                        authType: 'oauth',
-                        ownership: 'project' as const,
-                        connectedAt: Date.now(),
-                        accountLabel: legacyGsc?.accountLabel || legacyGa4?.accountLabel || 'Migrated Account',
-                        selection: {
-                            siteUrl: legacyGsc?.selection?.siteUrl || integrationConnections.google?.selection?.siteUrl,
-                            propertyId: legacyGa4?.selection?.propertyId || integrationConnections.google?.selection?.propertyId
-                        },
-                        sync: {
-                            ...(integrationConnections.google?.sync || { status: 'idle' }),
-                            siteUrl: legacyGsc?.selection?.siteUrl || integrationConnections.google?.sync?.siteUrl,
-                            propertyId: legacyGa4?.selection?.propertyId || integrationConnections.google?.sync?.propertyId
-                        },
-                        hasCredentials: Boolean(
-                            getCrawlerIntegrationSecret(integrationSecretScope, 'google' as any).accessToken ||
-                            getCrawlerIntegrationSecret(integrationSecretScope, 'google' as any).access_token ||
-                            getCrawlerIntegrationSecret(integrationSecretScope, 'googleSearchConsole' as any).accessToken ||
-                            getCrawlerIntegrationSecret(integrationSecretScope, 'googleSearchConsole' as any).access_token ||
-                            getCrawlerIntegrationSecret(integrationSecretScope, 'googleAnalytics' as any).accessToken ||
-                            getCrawlerIntegrationSecret(integrationSecretScope, 'googleAnalytics' as any).access_token
-                        ),
-                        credentials: {}
-                    }
-                } as Partial<Record<CrawlerIntegrationProvider, CrawlerIntegrationConnection>>;
-
-                delete (migratedConnections as any).googleSearchConsole;
-                delete (migratedConnections as any).googleAnalytics;
-
-                replaceProjectCrawlerIntegrations(integrationProjectId, migratedConnections).catch((error) => {
-                    console.error('Failed to persist migrated Google integration:', error);
+            next.google = googleConnection;
+            delete next['googleSearchConsole'];
+            delete next['googleAnalytics'];
+            
+            // Migrate secrets too
+            const gscSecrets = getCrawlerIntegrationSecret(integrationSecretScope, 'googleSearchConsole' as any);
+            const ga4Secrets = getCrawlerIntegrationSecret(integrationSecretScope, 'googleAnalytics' as any);
+            const accessToken = gscSecrets?.accessToken || gscSecrets?.access_token || ga4Secrets?.accessToken || ga4Secrets?.access_token;
+            const refreshToken = gscSecrets?.refreshToken || gscSecrets?.refresh_token || ga4Secrets?.refreshToken || ga4Secrets?.refresh_token;
+            if (accessToken || refreshToken) {
+                storeCrawlerIntegrationSecret(integrationSecretScope, 'google', {
+                    accessToken: accessToken || '',
+                    access_token: accessToken || '',
+                    refreshToken: refreshToken || '',
+                    refresh_token: refreshToken || ''
                 });
             }
+
+            return next;
+        });
+
+        if (integrationProjectId) {
+            const migratedConnections = {
+                ...integrationConnections,
+                google: {
+                    provider: 'google',
+                    label: legacyGsc?.label || legacyGa4?.label || 'Google Search & Analytics',
+                    status: 'connected',
+                    authType: 'oauth',
+                    ownership: 'project' as const,
+                    connectedAt: Date.now(),
+                    accountLabel: legacyGsc?.accountLabel || legacyGa4?.accountLabel || 'Migrated Account',
+                    selection: {
+                        siteUrl: legacyGsc?.selection?.siteUrl || integrationConnections.google?.selection?.siteUrl,
+                        propertyId: legacyGa4?.selection?.propertyId || integrationConnections.google?.selection?.propertyId
+                    },
+                    sync: {
+                        ...(integrationConnections.google?.sync || { status: 'idle' }),
+                        siteUrl: legacyGsc?.selection?.siteUrl || integrationConnections.google?.sync?.siteUrl,
+                        propertyId: legacyGa4?.selection?.propertyId || integrationConnections.google?.sync?.propertyId
+                    },
+                    hasCredentials: Boolean(
+                        getCrawlerIntegrationSecret(integrationSecretScope, 'google' as any).accessToken ||
+                        getCrawlerIntegrationSecret(integrationSecretScope, 'google' as any).access_token ||
+                        getCrawlerIntegrationSecret(integrationSecretScope, 'googleSearchConsole' as any).accessToken ||
+                        getCrawlerIntegrationSecret(integrationSecretScope, 'googleSearchConsole' as any).access_token ||
+                        getCrawlerIntegrationSecret(integrationSecretScope, 'googleAnalytics' as any).accessToken ||
+                        getCrawlerIntegrationSecret(integrationSecretScope, 'googleAnalytics' as any).access_token
+                    ),
+                    credentials: {}
+                }
+            } as Partial<Record<CrawlerIntegrationProvider, CrawlerIntegrationConnection>>;
+
+            delete (migratedConnections as any).googleSearchConsole;
+            delete (migratedConnections as any).googleAnalytics;
+
+            replaceProjectCrawlerIntegrations(integrationProjectId, migratedConnections).catch((error) => {
+                console.error('Failed to persist migrated Google integration:', error);
+            });
         }
     }, [integrationConnections, integrationSecretScope, integrationProjectId]);
 
@@ -1194,30 +1183,30 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
     }, [leftSidebarWidth, auditSidebarWidth, detailsHeight]);
 
     useEffect(() => {
-        if (typeof window === 'undefined') return;
-        if (!hasHydrated) return; // Wait until hydrated
-
+        if (!hasHydrated || isLoadingHistory) return;
+        // Persistence Update: ONLY set the item if we have a valid session.
+        // DO NOT remove the item when currentSessionId is null, as null is a transient state 
+        // during project switches and workspace clearances. We want to 'remember' the last
+        // session even if it's not currently active in the UI.
         try {
             if (currentSessionId) {
-                window.localStorage.setItem(CRAWLER_LAST_SESSION_STORAGE_KEY, currentSessionId);
-            } else {
-                window.localStorage.removeItem(CRAWLER_LAST_SESSION_STORAGE_KEY);
+                window.localStorage.setItem(scopedLastSessionStorageKey, currentSessionId);
             }
         } catch (error) {
             console.error('Failed to persist last crawler session:', error);
         }
-    }, [currentSessionId, hasHydrated]);
+    }, [currentSessionId, hasHydrated, scopedLastSessionStorageKey]);
 
     useEffect(() => {
         if (typeof window === 'undefined') return;
         if (!hasHydrated) return;
         if (!currentSessionId) {
-            window.localStorage.removeItem(CRAWLER_DRAFT_STORAGE_KEY);
+            window.localStorage.removeItem(scopedDraftStorageKey);
             return;
         }
 
         try {
-            window.localStorage.setItem(CRAWLER_DRAFT_STORAGE_KEY, JSON.stringify({
+            window.localStorage.setItem(scopedDraftStorageKey, JSON.stringify({
                 sessionId: currentSessionId,
                 urlInput,
                 listUrls,
@@ -1228,7 +1217,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         } catch (error) {
             console.error('Failed to persist crawler draft state:', error);
         }
-    }, [currentSessionId, urlInput, listUrls, crawlingMode, config, hasHydrated]);
+    }, [currentSessionId, urlInput, listUrls, crawlingMode, config, hasHydrated, scopedDraftStorageKey]);
 
     useEffect(() => {
         if (typeof window === 'undefined') return;
@@ -1245,18 +1234,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         });
     }, [currentSessionId, crawlingMode]);
 
-    useEffect(() => {
-        if (!isCrawling) {
-            setAnalysisPages(pages);
-            return;
-        }
-
-        const timeoutId = window.setTimeout(() => {
-            setAnalysisPages(pages);
-        }, 1200);
-
-        return () => window.clearTimeout(timeoutId);
-    }, [pages, isCrawling]);
+    // R2 fix: analysisPages debounce removed — now using useDeferredValue(pages) above
 
     useEffect(() => {
         if (!isCrawling || !crawlStartTime) {
@@ -1386,6 +1364,11 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
     }, [loadCrawlHistory]);
 
     // ─── Keyboard shortcuts ───
+    // L3 fix: Use refs for handlers that aren't wrapped in useCallback to avoid stale closures
+    const handleExportRef = useRef<() => void>(() => {});
+    const handleStartPauseRef = useRef<(force?: boolean | React.MouseEvent | React.KeyboardEvent) => void>(() => {});
+    const saveCrawlSessionRef = useRef<(status?: 'completed' | 'paused' | 'failed') => Promise<void>>(async () => {});
+
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             // Cmd/Ctrl+F → focus search
@@ -1407,16 +1390,16 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
             // Cmd/Ctrl+E → export
             if ((e.metaKey || e.ctrlKey) && e.key === 'e') {
                 e.preventDefault();
-                handleExport();
+                handleExportRef.current();
             }
             if ((e.metaKey || e.ctrlKey) && e.key === 's') {
                 e.preventDefault();
-                saveCrawlSession('completed');
+                saveCrawlSessionRef.current('completed');
             }
             // Cmd/Ctrl+Enter → start/pause crawl
             if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
                 e.preventDefault();
-                handleStartPause();
+                handleStartPauseRef.current();
             }
         };
         window.addEventListener('keydown', handleKeyDown);
@@ -1479,7 +1462,9 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
                 urlRating: hasOwn(payload, 'urlRating') ? payload.urlRating : existingPage.urlRating ?? null,
                 referringDomains: hasOwn(payload, 'referringDomains') ? payload.referringDomains : existingPage.referringDomains ?? null,
                 backlinks: hasOwn(payload, 'backlinks') ? payload.backlinks : existingPage.backlinks ?? null,
-                opportunityScore: calculatePredictiveScore({ ...existingPage, ...payload }),
+                // S2 fix: Use health score for healthScore, opportunity for opportunityScore
+                healthScore: calculatePredictiveScore({ ...existingPage, ...payload }),
+                opportunityScore: hasOwn(payload, 'opportunityScore') ? payload.opportunityScore : existingPage.opportunityScore ?? null,
                 isHtmlPage: hasOwn(payload, 'isHtmlPage') ? payload.isHtmlPage : existingPage.isHtmlPage ?? false,
                 timestamp: Date.now()
             };
@@ -1551,7 +1536,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
 
         closeCrawlerSocket();
         setIsCrawling(false);
-        setAnalysisPages([]);
+        // R2 fix: analysisPages is now derived via useDeferredValue — no manual reset needed
         setLogs([]);
         setSelectedPage(null);
         setSelectedRows(new Set());
@@ -1570,6 +1555,12 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         setListUrls('');
         replaceHashRouteSearchParams((params) => {
             params.delete('url');
+            params.delete('session');
+            params.delete('setup');
+            params.delete('tab');
+            params.delete('activeTab');
+            params.delete('projectId');
+            params.delete('page');
         });
         setElapsedTime('0s');
         setCrawlRuntime({
@@ -1587,13 +1578,14 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
 
         try {
             if (typeof window !== 'undefined') {
-                window.localStorage.removeItem(CRAWLER_LAST_SESSION_STORAGE_KEY);
-                window.localStorage.removeItem(CRAWLER_DRAFT_STORAGE_KEY);
+                // We no longer remove scopedLastSessionStorageKey here to ensure
+                // that project-switching preserves the last used session pointer.
+                window.localStorage.removeItem(scopedDraftStorageKey);
             }
         } catch (error) {
             console.error('Failed to clear last crawler session pointer:', error);
         }
-    }, [isCrawling, closeCrawlerSocket, config.threads]);
+    }, [isCrawling, closeCrawlerSocket, config.threads, scopedDraftStorageKey, scopedLastSessionStorageKey]);
 
     const toggleCategory = (id: string) => {
         setOpenCategories(prev => prev.includes(id) ? prev.filter(c => c !== id) : [...prev, id]);
@@ -1676,12 +1668,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
             return;
         }
 
-        // Grab project ID from URL if we were redirected from Dashboard
-        const params = getHashRouteSearchParams();
-        const projectIdParam = params.get('projectId');
-        
-        // If we have an active project in context, use its ID, otherwise check URL params
-        const targetProjectId = activeProject?.id || projectIdParam || undefined;
+        const targetProjectId = scopedProjectId || undefined;
 
         const requestedSignature = buildSessionSignature(crawlingMode, urlsToScan);
         const canResumeCurrentSession = Boolean(
@@ -1934,16 +1921,11 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
                 setCrawlStartTime(null);
                 setCrawlRuntime(prev => ({ ...prev, stage: 'completed', queued: 0, activeWorkers: 0, workerUtilization: 0 }));
                 
-                // Re-calculate PageRank
+                // S4 fix: Shared post-crawl scoring pipeline
                 const completedPages = pagesRef.current;
                 if (completedPages.length > 0) {
                     addLog('Calculating Strategic PageRank & Health Scores...', 'info', { source: 'analysis' });
-                    const ranks = calculateInternalPageRank(completedPages);
-                    const updated = completedPages.map(p => {
-                        const internalPageRank = ranks[p.url] || 0;
-                        const updatedPage = { ...p, internalPageRank };
-                        return { ...updatedPage, healthScore: calculatePredictiveScore(updatedPage) };
-                    });
+                    const updated = runPostCrawlScoring(completedPages);
                     
                     // Final Persistence Pass to Dexie
                     if (currentSessionIdRef.current) {
@@ -2297,14 +2279,10 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
 
                     const runPostCrawlFlow = async () => {
                         if (currentSessionIdRef.current) {
+                            // S4 fix: Shared post-crawl scoring pipeline
                             const completedPages = [...pagesRef.current];
                             addLog('Calculating Strategic PageRank & Health Scores...', 'info', { source: 'analysis' });
-                            const ranks = calculateInternalPageRank(completedPages);
-                            const updated = completedPages.map(p => {
-                                const internalPageRank = ranks[p.url] || 0;
-                                const up = { ...p, internalPageRank };
-                                return { ...up, healthScore: calculatePredictiveScore(up) };
-                            });
+                            const updated = runPostCrawlScoring(completedPages);
 
                             await crawlDb.pages.bulkPut(updated);
                             addLog('Strategic analysis complete.', 'success', { source: 'analysis' });
@@ -2467,47 +2445,40 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         }
     }, [activeMacro, filteredIssuePages]);
 
-    const duplicateTitleSet = useMemo(() => {
-        const map = new Map();
+    // P1 fix: Single-pass duplicate detection instead of 4 separate array scans
+    const { duplicateTitleSet, duplicateMetaDescSet, duplicateH1Set, duplicateHashSet } = useMemo(() => {
+        const titleMap = new Map<string, number>();
+        const metaDescMap = new Map<string, number>();
+        const h1Map = new Map<string, number>();
+        const hashMap = new Map<string, number>();
+
         analysisPages.forEach(p => {
             if (p.title) {
                 const t = normalizeComparableText(p.title);
-                map.set(t, (map.get(t) || 0) + 1);
+                titleMap.set(t, (titleMap.get(t) || 0) + 1);
             }
-        });
-        return new Set([...map.entries()].filter(([, count]) => count > 1).map(([t]) => t));
-    }, [analysisPages]);
-
-    const duplicateMetaDescSet = useMemo(() => {
-        const map = new Map();
-        analysisPages.forEach(p => {
             if (p.metaDesc) {
                 const d = normalizeComparableText(p.metaDesc);
-                map.set(d, (map.get(d) || 0) + 1);
+                metaDescMap.set(d, (metaDescMap.get(d) || 0) + 1);
             }
-        });
-        return new Set([...map.entries()].filter(([, count]) => count > 1).map(([d]) => d));
-    }, [analysisPages]);
-
-    const duplicateH1Set = useMemo(() => {
-        const map = new Map();
-        analysisPages.forEach(p => {
             const h1 = normalizeComparableText(p.h1_1);
             if (h1) {
-                map.set(h1, (map.get(h1) || 0) + 1);
+                h1Map.set(h1, (h1Map.get(h1) || 0) + 1);
             }
-        });
-        return new Set([...map.entries()].filter(([, count]) => count > 1).map(([h1]) => h1));
-    }, [analysisPages]);
-
-    const duplicateHashSet = useMemo(() => {
-        const map = new Map();
-        analysisPages.forEach(p => {
             if (p.hash) {
-                map.set(p.hash, (map.get(p.hash) || 0) + 1);
+                hashMap.set(p.hash, (hashMap.get(p.hash) || 0) + 1);
             }
         });
-        return new Set([...map.entries()].filter(([, count]) => count > 1).map(([hash]) => hash));
+
+        const toSet = (map: Map<string, number>) =>
+            new Set([...map.entries()].filter(([, count]) => count > 1).map(([key]) => key));
+
+        return {
+            duplicateTitleSet: toSet(titleMap),
+            duplicateMetaDescSet: toSet(metaDescMap),
+            duplicateH1Set: toSet(h1Map),
+            duplicateHashSet: toSet(hashMap)
+        };
     }, [analysisPages]);
 
     const pagesWithDerivedSignals = useMemo(() => {
@@ -2583,6 +2554,8 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         );
     }, [pagesWithDerivedSignals]);
 
+    // P3 fix: Single-pass categoryCounts using page bucketing instead of N×M filters.
+    // Each page is tested once per category/sub combo and bucketed accordingly.
     const categoryCounts = useMemo(() => {
         if (pagesWithDerivedSignals.length === 0) return {} as Record<string, Record<string, number>>;
         const counts: Record<string, Record<string, number>> = {};
@@ -2595,19 +2568,32 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
                 : [])
         ];
 
+        // Initialize all counters
         for (const category of allCats) {
             counts[category.id] = {};
             for (const sub of category.sub) {
+                counts[category.id][sub] = 0;
+            }
+        }
+
+        // Single pass over pages — bucket each page into matching categories
+        for (const page of pagesWithDerivedSignals) {
+            for (const category of allCats) {
                 if (category.id === 'ai-clusters') {
-                    counts[category.id][sub] = pagesWithDerivedSignals.filter((page) =>
-                        sub === 'All' ? Boolean(page?.topicCluster) : page?.topicCluster === sub
-                    ).length;
+                    if (page?.topicCluster) {
+                        counts[category.id]['All']++;
+                        if (counts[category.id][page.topicCluster] !== undefined) {
+                            counts[category.id][page.topicCluster]++;
+                        }
+                    }
                     continue;
                 }
 
-                counts[category.id][sub] = pagesWithDerivedSignals.filter((page) =>
-                    matchesCategoryFilter(category.id, sub, page, { rootHostname })
-                ).length;
+                for (const sub of category.sub) {
+                    if (matchesCategoryFilter(category.id, sub, page, { rootHostname })) {
+                        counts[category.id][sub]++;
+                    }
+                }
             }
         }
 
@@ -2757,149 +2743,8 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         setSortConfig({ key, direction });
     };
 
-    const graphData = useMemo(() => {
-        if (analysisPages.length === 0) return { nodes: [], links: [] };
-
-        const nodes: any[] = [];
-        const links: any[] = [];
-        const addedNodes = new Set<string>();
-        const addedLinks = new Set<string>();
-        const validPageUrls = new Set<string>(analysisPages.map(page => page.url));
-        const pageByUrl = new Map<string, any>(analysisPages.map(page => [page.url, page]));
-        const rootUrl = analysisPages[0]?.url;
-        const sectionBuckets = new Map<string, string[]>();
-
-        analysisPages.forEach(page => {
-            let nodeName = page.url;
-            let dirPath = '/';
-            let sectionKey = 'Homepage';
-            let templateKey = 'root';
-
-            try {
-                const parsedUrl = new URL(page.url);
-                const segments = parsedUrl.pathname.split('/').filter(Boolean);
-                nodeName = parsedUrl.pathname === '/' ? (parsedUrl.hostname || page.url) : (parsedUrl.pathname || page.url);
-                dirPath = segments.length > 0 ? `/${segments.slice(0, 1).join('/')}` : '/';
-                sectionKey = segments[0]
-                    ? segments[0].replace(/[-_]+/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase())
-                    : 'Homepage';
-                templateKey = segments.slice(0, 2).join('/') || 'root';
-            } catch {
-                nodeName = page.url;
-            }
-
-            if (!addedNodes.has(page.url)) {
-                if (!sectionBuckets.has(sectionKey)) sectionBuckets.set(sectionKey, []);
-                sectionBuckets.get(sectionKey)?.push(page.url);
-
-                let group = 1;
-                if (page.contentType?.includes('image')) group = 2;
-                else if (page.contentType?.includes('javascript')) group = 3;
-                else if (page.contentType?.includes('css')) group = 4;
-
-                const issueCount = [
-                    page.statusCode >= 400,
-                    !page.title,
-                    !page.metaDesc,
-                    page.nonIndexable,
-                    page.loadTime > 3000
-                ].filter(Boolean).length;
-
-                nodes.push({
-                    id: page.url,
-                    name: nodeName,
-                    val: page.url === rootUrl ? 22 : Math.min(14, 4 + (page.inlinks || 0)),
-                    group: page.statusCode >= 400 ? 5 : group,
-                    status: page.statusCode,
-                    fullUrl: page.url,
-                    inlinks: Number(page.inlinks || 0),
-                    outlinks: Number(page.outlinks || 0),
-                    internalPageRank: Number(page.internalPageRank || 0),
-                    crawlDepth: Number(page.crawlDepth || 0),
-                    dirPath,
-                    title: page.title || nodeName,
-                    sectionKey,
-                    templateKey,
-                    issueCount
-                });
-                addedNodes.add(page.url);
-            }
-        });
-
-        const orderedSections = Array.from(sectionBuckets.keys()).sort((a, b) => {
-            if (a === 'Homepage') return -1;
-            if (b === 'Homepage') return 1;
-            return a.localeCompare(b);
-        });
-        const sectionCenters = new Map<string, { y: number; z: number }>();
-        const sectionSpacing = 240;
-        orderedSections.forEach((section, index) => {
-            const centeredIndex = index - ((orderedSections.length - 1) / 2);
-            const curveOffset = Math.sin(index * 0.9) * 180;
-            sectionCenters.set(section, {
-                y: centeredIndex * sectionSpacing,
-                z: curveOffset
-            });
-        });
-
-        const nodeOrderBySectionDepth = new Map<string, any[]>();
-        nodes.forEach((node) => {
-            const key = `${node.sectionKey}::${node.crawlDepth}`;
-            if (!nodeOrderBySectionDepth.has(key)) nodeOrderBySectionDepth.set(key, []);
-            nodeOrderBySectionDepth.get(key)?.push(node);
-        });
-        nodeOrderBySectionDepth.forEach((bucket) => {
-            bucket.sort((a, b) => {
-                const scoreA = (a.internalPageRank * 10) + (a.inlinks * 2) - (a.issueCount * 4);
-                const scoreB = (b.internalPageRank * 10) + (b.inlinks * 2) - (b.issueCount * 4);
-                if (scoreA !== scoreB) return scoreB - scoreA;
-                return String(a.name).localeCompare(String(b.name));
-            });
-        });
-
-        nodes.forEach((node) => {
-            const bucketKey = `${node.sectionKey}::${node.crawlDepth}`;
-            const bucket = nodeOrderBySectionDepth.get(bucketKey) || [node];
-            const bucketIndex = Math.max(0, bucket.findIndex((entry) => entry.id === node.id));
-            const center = sectionCenters.get(node.sectionKey) || { y: 0, z: 0 };
-            const siblingOffset = bucketIndex - ((bucket.length - 1) / 2);
-
-            node.x = 120 + (node.crawlDepth * 240);
-            node.y = center.y + (siblingOffset * 92);
-            node.z = center.z + (siblingOffset * 70) + (((bucketIndex % 3) - 1) * 60);
-        });
-
-        analysisPages.forEach(page => {
-            if (!page.outlinksList || !Array.isArray(page.outlinksList)) return;
-
-            page.outlinksList.forEach((targetUrl: string) => {
-                if (!validPageUrls.has(targetUrl)) return;
-
-                const linkKey = `${page.url}::${targetUrl}`;
-                if (addedLinks.has(linkKey)) return;
-
-                addedLinks.add(linkKey);
-
-                const targetPage = pageByUrl.get(targetUrl);
-                const sourceDepth = Number(page.crawlDepth || 0);
-                const targetDepth = Number(targetPage?.crawlDepth || 0);
-                const isStructural = Boolean(targetPage) && (
-                    targetDepth === sourceDepth + 1 ||
-                    (targetDepth === sourceDepth && targetPage?.url.startsWith(page.url.replace(/\/$/, '')))
-                );
-
-                links.push({
-                    source: page.url,
-                    target: targetUrl,
-                    isStructural,
-                    isCrossLink: !isStructural,
-                    sameSection: Boolean(targetPage) && nodes.find((node) => node.id === page.url)?.sectionKey === nodes.find((node) => node.id === targetUrl)?.sectionKey
-                });
-            });
-        });
-
-        return { nodes, links };
-    }, [analysisPages]);
+    // P2 fix: graphData computation offloaded to Web Worker (see workers/graphData.worker.ts)
+    const graphData = useGraphDataWorker(analysisPages);
 
     const handleNodeClick = (node: any) => {
         const foundPage = pages.find(p => p.url === node.id);
@@ -2954,6 +2799,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
     ) => {
         const sessionId = currentSessionIdRef.current;
         if (!sessionId) return;
+        const existingSessionProjectId = crawlHistory.find((session) => session.id === sessionId)?.projectId;
 
         const resolvedEntryUrls = crawlingMode === 'list'
             ? listUrls.split('\n').map(u => u.trim()).filter(Boolean)
@@ -2962,6 +2808,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
 
         const session: CrawlSession = {
             id: sessionId,
+            projectId: scopedProjectId || existingSessionProjectId,
             url: urlInput || pagesRef.current[0]?.url || resolvedEntryUrls[0] || '',
             startedAt: crawlStartTime || Date.now(),
             completedAt: resolvedStatus === 'completed' ? Date.now() : null,
@@ -2989,7 +2836,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         if (options?.includePages !== false) {
             await upsertPages(sessionId, pagesRef.current);
         }
-    }, [crawlingMode, listUrls, urlInput, crawlStartTime, stats.totalIssues, healthScore.score, healthScore.grade, config, isCrawling, crawlRuntime, ignoredUrls, urlTags, columnWidths, robotsTxt, sitemapData, auditFilter.industry, auditFilter.modes]);
+    }, [crawlingMode, listUrls, urlInput, crawlStartTime, stats.totalIssues, healthScore.score, healthScore.grade, config, isCrawling, crawlRuntime, ignoredUrls, urlTags, columnWidths, robotsTxt, sitemapData, auditFilter.industry, auditFilter.modes, crawlHistory, scopedProjectId]);
 
     // Periodic checkpoint during crawl — save metadata every 1.5s, pages every 30s
     const lastPagesCheckpointRef = useRef<number>(0);
@@ -3207,7 +3054,17 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
                     issues: getPageIssues(p).map(i => ({ id: i.id, label: i.label })),
                     gscKeywords: p.extractedKeywords?.map((k: any) => k.phrase) || [],
                 })),
-                (done, total, url) => setAiProgress({ done, total, url })
+                (done, total, url) => {
+                    setAiProgress({ done, total, url });
+                    if (analysisRuntimeRef.current.isAnalyzing && analysisRuntimeRef.current.stage === 'ai-analysis') {
+                        const subProgress = 40 + (done / total) * 50; // Map AI progress to 40-90%
+                        setAnalysisRuntime(prev => ({
+                            ...prev,
+                            progress: subProgress,
+                            label: `AI: ${done}/${total}`
+                        }));
+                    }
+                }
             );
 
             // 2. Originality Analysis (t3-content-originality)
@@ -3300,55 +3157,15 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
 
     const [elapsedTime, setElapsedTime] = useState('0s');
 
-    const formatBytes = (bytes: any) => {
-        if (!bytes || isNaN(Number(bytes))) return '-';
-        const b = Number(bytes);
-        if (b < 1024) return b + ' B';
-        if (b < 1048576) return (b / 1024).toFixed(1) + ' KB';
-        return (b / 1048576).toFixed(1) + ' MB';
-    };
+    // D1 fix: formatBytes is now imported from constants.tsx (single source of truth)
 
-    const handleExport = () => {
-        if (pages.length === 0) return;
-        const headers = ALL_COLUMNS.map(col => col.label).join(',');
-        const rows = pages.map(page => 
-            ALL_COLUMNS.map(col => {
-                const val = (page[col.key] === null || page[col.key] === undefined) ? '' : page[col.key];
-                // Handle potential object/array values in custom fields
-                const strVal = typeof val === 'object' ? JSON.stringify(val) : String(val);
-                return `"${strVal.replace(/"/g, '""')}"`;
-            }).join(',')
-        );
-        // Optimize memory by creating Blob directly from array of strings (no massive join)
-        const blob = new Blob([headers + "\n", ...rows.map(r => r + "\n")], { type: 'text/csv' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.setAttribute("href", url);
-        link.setAttribute("download", `headlight_scan_${new Date().toISOString().split('T')[0]}.csv`);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
-    };
+    // R4 fix: Export logic extracted to CrawlerDataUtils.ts
+    const handleExport = () => exportPagesAsCSV(pages);
 
     const handleExportRawDB = async () => {
         if (!currentSessionIdRef.current) return;
-        try {
-            const { exportSessionData } = await import('../services/CrawlHistoryService');
-            const blob = await exportSessionData(currentSessionIdRef.current);
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement("a");
-            link.setAttribute("href", url);
-            link.setAttribute("download", `headlight_raw_dump_${new Date().toISOString().split('T')[0]}.json`);
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            URL.revokeObjectURL(url);
-            addLog('Raw DB export complete.', 'success', { source: 'system' });
-        } catch (error) {
-            console.error('Failed to export raw DB:', error);
-            addLog('Failed to export raw DB.', 'error', { source: 'system' });
-        }
+        const result = await exportRawSessionData(currentSessionIdRef.current);
+        addLog(result.message, result.success ? 'success' : 'error', { source: 'system' });
     };
 
     // ─── AI-prioritized category ordering ───
@@ -3436,6 +3253,56 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         }
     }, [activeProject, config, crawlHistory, urlInput]);
 
+    const triggerGoogleDriveBackup = useCallback(async () => {
+        const googleConnection = integrationConnections.google;
+        const googleEmail = googleConnection?.accountLabel || null;
+        if (!googleEmail) {
+            // Only add log if manually triggered
+            addLog('Connect Google account in Integrations to enable Drive backups.', 'warn');
+            return;
+        }
+
+        try {
+            addLog('Preparing Google Drive backup...', 'info');
+            const accessToken = await refreshWithLock(googleEmail, refreshGoogleToken);
+            if (!accessToken) {
+                addLog('Failed to authorize Google Drive access. Please reconnect your account.', 'error');
+                return;
+            }
+
+            const activeProject = projectContext?.activeProject;
+            const projectName = activeProject?.name || 'Untitled Project';
+            const sessionId = currentSessionIdRef.current || 'unknown';
+            
+            // Get all pages for this session from DB
+            const sessionPages = await crawlDb.pages.where('crawlId').equals(sessionId).toArray();
+            const sessionData = await getSession(sessionId);
+
+            const content = JSON.stringify({
+                sessionId,
+                projectName,
+                timestamp: Date.now(),
+                url: urlInput,
+                config,
+                stats,
+                healthScore,
+                pages: sessionPages,
+                metadata: sessionData?.metadata || {}
+            }, null, 2);
+
+            await exportToGoogleDrive(accessToken, {
+                sessionId,
+                projectName: projectName,
+                content
+            });
+
+            addLog(`Snapshot synced to Google Drive (Headlight Backups).`, 'success', { source: 'session' });
+        } catch (err: any) {
+            console.error('[Google Drive Backup Error]', err);
+            addLog(`Backup failed: ${err.message}`, 'error');
+        }
+    }, [integrationConnections.google, projectContext?.activeProject, urlInput, stats, healthScore, config]);
+
     // ─── Session Management Hooks ───
     const saveCrawlSession = useCallback(async (status: 'completed' | 'paused' | 'failed' = 'completed') => {
         if (!currentSessionIdRef.current) return;
@@ -3444,10 +3311,20 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
             await persistSessionCheckpoint(status, { includePages: true });
             await loadCrawlHistory();
             addLog(`Session saved locally (${pagesRef.current.length} pages).`, 'success', { source: 'session' });
+
+            // If manual save triggered and Google Drive is the backup destination, sync it
+            if (config.autoBackupDestination === 'google-drive') {
+                triggerGoogleDriveBackup();
+            }
         } catch (err) {
             console.error('Failed to save session:', err);
         }
     }, [loadCrawlHistory, persistSessionCheckpoint]);
+
+    // L3 fix: Keep keyboard shortcut refs in sync with latest function instances
+    handleExportRef.current = handleExport;
+    handleStartPauseRef.current = handleStartPause;
+    saveCrawlSessionRef.current = saveCrawlSession;
 
     const loadSession = useCallback(async (sessionId: string) => {
         setIsLoadingHistory(true);
@@ -3455,6 +3332,20 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
             const savedPages = await getPages(sessionId);
             const sess = await getSession(sessionId);
             if (sess) {
+                if (scopedProjectId && !sessionMatchesProjectScope(sess)) {
+                    addLog('Skipped loading a session from a different project scope.', 'warn', { source: 'history' });
+                    return;
+                }
+
+                const effectiveSession = !sess.projectId && scopedProjectId
+                    ? { ...sess, projectId: scopedProjectId }
+                    : sess;
+
+                if (effectiveSession !== sess) {
+                    await saveSession(effectiveSession);
+                    loadCrawlHistory().catch(() => {});
+                }
+
                 const normalizedSavedPages = savedPages
                     .map((page: any) => normalizeCrawlerPage({
                         ...page,
@@ -3475,48 +3366,48 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
                 setDiffResult(null);
                 setCompareSessionId(null);
 
-                setCrawlingMode(sess.crawlingMode || sess.config?.crawlingMode || 'spider');
-                const entryUrls = sess.entryUrls || [];
-                if ((sess.crawlingMode || sess.config?.crawlingMode) === 'list') {
+                setCrawlingMode(effectiveSession.crawlingMode || effectiveSession.config?.crawlingMode || 'spider');
+                const entryUrls = effectiveSession.entryUrls || [];
+                if ((effectiveSession.crawlingMode || effectiveSession.config?.crawlingMode) === 'list') {
                     setListUrls(entryUrls.join('\n'));
                 } else {
-                    setUrlInput(entryUrls[0] || sess.url || '');
+                    setUrlInput(entryUrls[0] || effectiveSession.url || '');
                 }
-                if ((sess.crawlingMode || sess.config?.crawlingMode) !== 'list') {
+                if ((effectiveSession.crawlingMode || effectiveSession.config?.crawlingMode) !== 'list') {
                     setListUrls('');
                 }
                 sessionEntrySignatureRef.current = buildSessionSignature(
-                    sess.crawlingMode || sess.config?.crawlingMode || 'spider',
+                    effectiveSession.crawlingMode || effectiveSession.config?.crawlingMode || 'spider',
                     entryUrls
                 );
-                setConfig(sess.config || config);
+                setConfig(effectiveSession.config || config);
                 setAuditFilter({
-                    modes: Array.isArray(sess.auditModes) && sess.auditModes.length > 0
-                        ? (sess.auditModes as AuditMode[])
+                    modes: Array.isArray(effectiveSession.auditModes) && effectiveSession.auditModes.length > 0
+                        ? (effectiveSession.auditModes as AuditMode[])
                         : ['full'],
-                    industry: (sess.industryFilter as IndustryFilter) || 'all'
+                    industry: (effectiveSession.industryFilter as IndustryFilter) || 'all'
                 });
-                setIgnoredUrls(new Set(sess.ignoredUrls || []));
-                setUrlTags(sess.urlTags || {});
-                setColumnWidths(sess.columnWidths || {});
-                setRobotsTxt(sess.robotsTxt || null);
+                setIgnoredUrls(new Set(effectiveSession.ignoredUrls || []));
+                setUrlTags(effectiveSession.urlTags || {});
+                setColumnWidths(effectiveSession.columnWidths || {});
+                setRobotsTxt(effectiveSession.robotsTxt || null);
                 setSitemapData(
                     buildSitemapState(
-                        sess.sitemapData?.totalUrls ?? normalizedSavedPages.filter((page: any) => page.inSitemap).length,
-                        sess.sitemapData?.sources ?? sess.robotsTxt?.sitemaps,
-                        !!sess.sitemapData
+                        effectiveSession.sitemapData?.totalUrls ?? normalizedSavedPages.filter((page: any) => page.inSitemap).length,
+                        effectiveSession.sitemapData?.sources ?? effectiveSession.robotsTxt?.sitemaps,
+                        !!effectiveSession.sitemapData
                     )
                 );
-                setCrawlStartTime(sess.startedAt || null);
-                setCrawlRuntime(sess.runtime || {
-                    stage: sess.status === 'completed' ? 'completed' : sess.status === 'failed' ? 'error' : 'paused',
+                setCrawlStartTime(effectiveSession.startedAt || null);
+                setCrawlRuntime(effectiveSession.runtime || {
+                    stage: effectiveSession.status === 'completed' ? 'completed' : effectiveSession.status === 'failed' ? 'error' : 'paused',
                     queued: 0,
                     activeWorkers: 0,
                     discovered: normalizedSavedPages.length,
                     crawled: normalizedSavedPages.length,
                     maxDepthSeen: Math.max(0, ...normalizedSavedPages.map((page: any) => page.crawlDepth || 0)),
-                    concurrency: parseInt(String(sess.config?.threads), 10) || 5,
-                    mode: sess.crawlingMode || sess.config?.crawlingMode || 'spider',
+                    concurrency: parseInt(String(effectiveSession.config?.threads), 10) || 5,
+                    mode: effectiveSession.crawlingMode || effectiveSession.config?.crawlingMode || 'spider',
                     rate: 0,
                     workerUtilization: 0
                 });
@@ -3529,7 +3420,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         } finally {
             setIsLoadingHistory(false);
         }
-    }, [buildSessionSignature, config, setSelectedPage, setSelectedRows, setCurrentSessionId, setIgnoredUrls, setUrlTags, setColumnWidths]);
+    }, [buildSessionSignature, config, setSelectedPage, setSelectedRows, setCurrentSessionId, setIgnoredUrls, setUrlTags, setColumnWidths, scopedProjectId, addLog, sessionMatchesProjectScope, loadCrawlHistory]);
 
     // ─── DB init (runs once, separate from restore logic) ───
     useEffect(() => {
@@ -3571,11 +3462,11 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         }
 
         const sessionIdFromUrl = getHashRouteSearchParams().get('session');
-        const preferredSessionId = sessionIdFromUrl || window.localStorage.getItem(CRAWLER_LAST_SESSION_STORAGE_KEY);
-        const draftRaw = window.localStorage.getItem(CRAWLER_DRAFT_STORAGE_KEY);
+        const preferredSessionId = sessionIdFromUrl || window.localStorage.getItem(scopedLastSessionStorageKey);
+        const draftRaw = window.localStorage.getItem(scopedDraftStorageKey);
 
-        // Restore draft form state (URL input, mode, config) — always safe, no async
-        if (draftRaw) {
+        // Restore draft form state only once per project scope.
+        if (draftRaw && restoredDraftScopeRef.current !== scopedDraftStorageKey) {
             try {
                 const draft = JSON.parse(draftRaw);
                 if (!urlInput && typeof draft.urlInput === 'string') setUrlInput(draft.urlInput);
@@ -3586,8 +3477,10 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
                 if (draft.config && typeof draft.config === 'object') {
                     setConfig((prev: any) => ({ ...prev, ...draft.config }));
                 }
+                restoredDraftScopeRef.current = scopedDraftStorageKey;
             } catch (error) {
                 console.error('Failed to restore crawler draft state:', error);
+                restoredDraftScopeRef.current = scopedDraftStorageKey;
             }
         }
 
@@ -3600,14 +3493,14 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
 
         // History hasn't loaded yet — wait for the next render when it does
         // This is the critical fix: we only proceed when crawlHistory is populated
-        if (crawlHistory.length === 0 && preferredSessionId) {
+        if (projectScopedHistory.length === 0 && preferredSessionId) {
             // If there's a preferredSessionId but history is empty, we might just be
             // waiting on the async DB read. Don't mark as attempted yet.
             return;
         }
 
-        const restoreTarget = crawlHistory.find((s) => s.id === preferredSessionId)?.id
-            ?? (crawlHistory.length > 0 ? crawlHistory[0].id : null);
+        const restoreTarget = projectScopedHistory.find((s) => s.id === preferredSessionId)?.id
+            ?? (projectScopedHistory.length > 0 ? projectScopedHistory[0].id : null);
 
         autoRestoreAttemptedRef.current = true;
 
@@ -3618,7 +3511,50 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         } else {
             setHasHydrated(true);
         }
-    }, [crawlHistory, isLoadingHistory, currentSessionId, loadSession, urlInput, listUrls]);
+    }, [projectScopedHistory, isLoadingHistory, currentSessionId, loadSession, urlInput, listUrls, scopedLastSessionStorageKey, scopedDraftStorageKey]);
+
+    useEffect(() => {
+        if (!scopedProjectId) return;
+        if (isCrawling) return;
+
+        const activeSession = currentSessionId
+            ? crawlHistory.find((session) => session.id === currentSessionId)
+            : null;
+
+        if (activeSession && sessionMatchesProjectScope(activeSession)) {
+            return;
+        }
+
+        if (!currentSessionId && !hasHydrated) {
+            return;
+        }
+
+        setSelectedPage(null);
+        setSelectedRows(new Set());
+        setCurrentSessionId(null);
+        currentSessionIdRef.current = null;
+        pagesRef.current = [];
+        setDiffResult(null);
+        setCompareSessionId(null);
+        setLogs([]);
+        setRobotsTxt(null);
+        setSitemapData(null);
+        setCrawlStartTime(null);
+        setCrawlRuntime((prev) => ({
+            ...prev,
+            stage: 'idle',
+            queued: 0,
+            activeWorkers: 0,
+            discovered: 0,
+            crawled: 0,
+            maxDepthSeen: 0,
+            rate: 0,
+            workerUtilization: 0
+        }));
+        autoRestoreAttemptedRef.current = false;
+        restoredDraftScopeRef.current = null;
+        setHasHydrated(false);
+    }, [scopedProjectId, currentSessionId, crawlHistory, isCrawling, hasHydrated, setSelectedRows, sessionMatchesProjectScope]);
 
     const resumeCrawlSession = useCallback(async (sessionId: string) => {
         await loadSession(sessionId);
@@ -3798,7 +3734,18 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
                 indexNowAutoSubmit: config.indexNowAutoSubmit,
                 externalEnrichment: config.externalEnrichment,
                 industry: config.industry
-            }, (msg) => addLog(msg, 'info', { source: 'enrichment' }));
+            }, (msg) => {
+                addLog(msg, 'info', { source: 'enrichment' });
+                // Update progress if in complete analysis mode
+                if (analysisRuntimeRef.current.isAnalyzing && analysisRuntimeRef.current.stage === 'strategic-audit') {
+                    // map enrichment messages to 0-40% range
+                    setAnalysisRuntime(prev => ({
+                        ...prev,
+                        progress: Math.min(38, prev.progress + 2), 
+                        label: msg.length > 20 ? msg.slice(0, 17) + '...' : msg
+                    }));
+                }
+            });
 
             // Persistent Sync Coverage Check
             const enrichedPages = await crawlDb.pages.where('crawlId').equals(currentSessionId).toArray();
@@ -3972,7 +3919,96 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         await runAIAnalysis(filtered);
     }, [pagesWithDerivedSignals, runAIAnalysis, addLog, rootHostname]);
 
-    const value = {
+    const runCompleteAnalysis = useCallback(async () => {
+        if (analysisRuntime.isAnalyzing || pagesWithDerivedSignals.length === 0) return;
+
+        setAnalysisRuntime({
+            isAnalyzing: true,
+            stage: 'strategic-audit',
+            progress: 0,
+            label: 'Starting Audit...'
+        });
+
+        try {
+            // 1. Strategic Audit (GSC, GA4, Enrichment) - Run first for foundational data
+            await runFullEnrichment();
+            
+            setAnalysisRuntime(prev => ({
+                ...prev,
+                stage: 'ai-analysis',
+                progress: 40,
+                label: 'Analyzing AI...'
+            }));
+
+            // 2. AI Analysis - Interprets data on top of enriched signals
+            await runAIAnalysis(pagesWithDerivedSignals);
+
+            setAnalysisRuntime(prev => ({
+                ...prev,
+                stage: 'incremental-audit',
+                progress: 90,
+                label: 'Finalizing Enrichment...'
+            }));
+
+            // 3. Automatic Incremental Enrichment (Auto-Continuation for Massive Sites)
+            // Fetch fresh counts from DB to avoid stale closure state
+            const htmlPages = await crawlDb.pages.where('crawlId').equals(currentSessionIdRef.current || '').toArray();
+            const totalHtml = htmlPages.filter(p => p.isHtmlPage).length;
+            const enrichedCount = htmlPages.filter(p => p.gscEnrichedAt || p.ga4EnrichedAt || p.backlinkEnrichedAt).length;
+            
+            // Only auto-continue if there's a significant gap (e.g., > 500 pages or large % missing)
+            if (totalHtml > 500 && enrichedCount < totalHtml) {
+                addLog(`Auto-continuing enrichment for remaining ${totalHtml - enrichedCount} pages...`, 'info', { source: 'analysis' });
+                await runIncrementalEnrichment();
+            }
+
+            setAnalysisRuntime({
+                isAnalyzing: false,
+                stage: 'completed',
+                progress: 100,
+                label: 'Analysis Complete'
+            });
+
+            addLog('Complete Analysis finished successfully.', 'success', { source: 'analysis' });
+            
+            setTimeout(() => {
+                setAnalysisRuntime(prev => ({
+                    ...prev,
+                    stage: 'idle',
+                    progress: 0,
+                    label: 'Run Analysis'
+                }));
+            }, 3000);
+
+        } catch (err: any) {
+            console.error('Complete Analysis failed:', err);
+            setAnalysisRuntime({
+                isAnalyzing: false,
+                stage: 'error',
+                progress: 0,
+                label: 'Analysis Failed'
+            });
+            addLog(`Complete Analysis failed: ${err.message}`, 'error', { source: 'analysis' });
+        }
+    }, [pagesWithDerivedSignals, runAIAnalysis, runFullEnrichment, runIncrementalEnrichment, addLog, analysisRuntime.isAnalyzing]);
+
+    // ─── Automatic Google Drive Backups ───
+    useEffect(() => {
+        if (crawlRuntime.stage === 'completed' && config.autoBackupDestination === 'google-drive' && pages.length > 0) {
+            // We use a ref to prevent double-uploading if the stage flickers
+            const lastBackupRefKey = `last_backup_${currentSessionId}`;
+            const alreadyBackedUp = sessionStorage.getItem(lastBackupRefKey);
+            
+            if (!alreadyBackedUp) {
+                sessionStorage.setItem(lastBackupRefKey, 'true');
+                triggerGoogleDriveBackup();
+            }
+        }
+    }, [crawlRuntime.stage, config.autoBackupDestination, currentSessionId, pages.length, triggerGoogleDriveBackup]);
+
+    // L1 fix: Memoize value to prevent all consumers from re-rendering on every state change.
+    // useState setters, useCallback functions, and refs are stable — only reactive values listed.
+    const value = useMemo(() => ({
         crawlingMode, setCrawlingMode, urlInput, setUrlInput, listUrls, setListUrls, showListModal, setShowListModal,
         isCrawling, setIsCrawling, pages: pagesWithDerivedSignals, logs, setLogs, crawlStartTime, setCrawlStartTime,
         crawlDb,
@@ -3996,12 +4032,12 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         theme, setTheme, integrationConnections, integrationsLoading, integrationsSource, saveIntegrationConnection, removeIntegrationConnection, wsRef, addLog, toggleCategory, handleStartPause,
         clearCrawlerWorkspace,
         showTrialLimitAlert, setShowTrialLimitAlert,
-        dynamicClusters, categoryCounts, healthScore, auditInsights, strategicOpportunities, crawlRate, crawlRuntime, elapsedTime, setElapsedTime,
+        dynamicClusters, categoryCounts, healthScore, auditInsights, strategicOpportunities, crawlRate, crawlRuntime, analysisRuntime, elapsedTime,
         formatBytes, handleExport, handleExportRawDB, handleImport, filteredPages, handleSort, graphData, handleNodeClick,
-        crawlHistory, currentSessionId, compareSessionId, diffResult, showComparisonView, setShowComparisonView, showExportDialog, setShowExportDialog, isLoadingHistory,
+        crawlHistory: projectScopedHistory, currentSessionId, compareSessionId, diffResult, showComparisonView, setShowComparisonView, showExportDialog, setShowExportDialog, isLoadingHistory,
         saveCrawlSession, loadSession, resumeCrawlSession, compareSessions, deleteCrawlSession, loadCrawlHistory,
         detectedGscSite, setDetectedGscSite, detectedGa4Property, setDetectedGa4Property,
-        runFullEnrichment, runIncrementalEnrichment, runSelectedEnrichment,
+        runFullEnrichment, runIncrementalEnrichment, runSelectedEnrichment, runCompleteAnalysis,
         isAuthenticated, user, profile, signOut, trialPagesLimit,
         prioritizedCategories, prioritizeByIssues, setPrioritizeByIssues,
         sidebarCollapsed, setSidebarCollapsed,
@@ -4014,7 +4050,51 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         tasks, setTasks, teamMembers, showCollabOverlay, setShowCollabOverlay,
         collabOverlayTarget, setCollabOverlayTarget, activeCommentTarget, setActiveCommentTarget,
         exportSubset, createTaskForCategory, bulkAIAnalyzeCategory
-    };
+    }), [
+        // Reactive state values only (setters are stable React identity)
+        crawlingMode, urlInput, listUrls, showListModal,
+        isCrawling, pagesWithDerivedSignals, logs, crawlStartTime,
+        activeCategories, activeCategory,
+        auditFilter, activeCheckIds, activeCheckCategories, filteredIssuePages,
+        customPresets,
+        openCategories, searchQuery,
+        selectedPage, activeTab, inspectorCollapsed, showAuditSidebar,
+        activeAuditTab, showSettings, activeMacro,
+        sortConfig, showColumnPicker, visibleColumns,
+        viewMode, showAiInsights, showAiChat, graphDimensions,
+        categorySearch, leftSidebarPreset,
+        logSearch, logTypeFilter, selectedRows,
+        gridScrollTop, leftSidebarWidth,
+        auditSidebarWidth, detailsHeight,
+        gridScrollOffset, isDraggingLeftSidebar, isDraggingSidebar,
+        isDraggingDetails,
+        showAutoFixModal, autoFixItems,
+        isFixing, autoFixProgress, stats, columns, config, settingsTab,
+        theme, integrationConnections, integrationsLoading, integrationsSource,
+        showTrialLimitAlert,
+        dynamicClusters, categoryCounts, healthScore, auditInsights, strategicOpportunities, crawlRate, crawlRuntime, elapsedTime,
+        handleExport, handleImport, filteredPages, graphData,
+        projectScopedHistory, currentSessionId, compareSessionId, diffResult, showComparisonView, showExportDialog, isLoadingHistory,
+        detectedGscSite, detectedGa4Property,
+        isAuthenticated, user, profile, trialPagesLimit,
+        prioritizedCategories, prioritizeByIssues,
+        sidebarCollapsed,
+        showScheduleModal,
+        ignoredUrls, urlTags,
+        robotsTxt, sitemapData,
+        columnWidths,
+        aiResults, aiProgress, aiNarrative, isAnalyzingAI,
+        tasks, teamMembers, showCollabOverlay,
+        collabOverlayTarget, activeCommentTarget,
+        // Stable callback/ref deps included for completeness
+        applyAuditMode, saveCustomPreset, loadCustomPreset,
+        addLog, toggleCategory, handleStartPause, clearCrawlerWorkspace,
+        handleExportRawDB, handleSort, handleNodeClick,
+        saveCrawlSession, loadSession, resumeCrawlSession, compareSessions, deleteCrawlSession, loadCrawlHistory,
+        runFullEnrichment, runIncrementalEnrichment, runSelectedEnrichment,
+        saveIntegrationConnection, removeIntegrationConnection, signOut,
+        runAIAnalysis, exportSubset, createTaskForCategory, bulkAIAnalyzeCategory
+    ]);
 
     return (
         <SeoCrawlerContext.Provider value={value}>

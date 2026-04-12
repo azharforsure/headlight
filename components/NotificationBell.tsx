@@ -3,21 +3,32 @@ import { Bell, MessageSquare, CheckSquare, Sparkles, ExternalLink } from 'lucide
 import { useAuth } from '../services/AuthContext';
 import { useProject } from '../services/ProjectContext';
 import { useNotifications } from '../hooks/useNotifications';
+import { useSeoCrawler } from '../contexts/SeoCrawlerContext';
 
 export const NotificationBell = () => {
     const { user } = useAuth();
     const { activeProject } = useProject();
+    const crawler = useSeoCrawler();
     
     const [isOpen, setIsOpen] = useState(false);
-    const { notifications, unreadCount, markAsRead } = useNotifications(user?.id, activeProject?.id);
+    const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications(user?.id, activeProject?.id);
+
+    const handleViewAll = () => {
+        if (crawler) {
+            crawler.setActiveAuditTab('logs');
+            crawler.setShowAuditSidebar(true);
+        }
+        setIsOpen(false);
+    };
 
     return (
         <div className="relative">
             <button 
+                id="header-notification-bell"
                 onClick={() => setIsOpen(!isOpen)}
                 className="p-2 text-gray-400 hover:text-white hover:bg-white/5 rounded-xl transition-all relative"
             >
-                <Bell size={20} />
+                <Bell size={14} />
                 {unreadCount > 0 && (
                     <span className="absolute top-1.5 right-1.5 w-4 h-4 bg-brand-red text-white text-[9px] font-bold rounded-full flex items-center justify-center border-2 border-[#050505]">
                         {unreadCount}
@@ -32,15 +43,25 @@ export const NotificationBell = () => {
                         onClick={() => setIsOpen(false)}
                     />
                     <div className="absolute right-0 mt-2 w-80 bg-[#111] border border-white/10 rounded-2xl shadow-2xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
-                        <div className="p-4 border-b border-white/5 flex justify-between items-center">
+                        <div className="p-4 border-b border-white/5 flex justify-between items-center bg-[#151515]">
                             <h3 className="font-bold text-white text-sm">Notifications</h3>
-                            <button className="text-[10px] text-gray-500 hover:text-white font-bold uppercase">Mark all read</button>
+                            {unreadCount > 0 && (
+                                <button 
+                                    onClick={() => markAllAsRead()}
+                                    className="text-[10px] text-brand-red hover:text-white font-bold uppercase transition-colors"
+                                >
+                                    Mark all read
+                                </button>
+                            )}
                         </div>
 
                         <div className="max-h-[400px] overflow-y-auto custom-scrollbar">
                             {notifications.length === 0 ? (
-                                <div className="p-10 text-center text-gray-500 italic text-xs">
-                                    No notifications yet.
+                                <div className="p-10 text-center space-y-3">
+                                    <div className="w-10 h-10 bg-white/5 rounded-full flex items-center justify-center mx-auto text-gray-700">
+                                        <Bell size={18} />
+                                    </div>
+                                    <p className="text-gray-500 italic text-xs">No notifications yet.</p>
                                 </div>
                             ) : (
                                 notifications.map(n => (
@@ -50,7 +71,7 @@ export const NotificationBell = () => {
                                         className={`p-4 border-b border-white/5 last:border-0 hover:bg-white/[0.02] cursor-pointer transition-colors relative ${!n.read ? 'bg-brand-red/[0.02]' : ''}`}
                                     >
                                         {!n.read && (
-                                            <div className="absolute left-1.5 top-1/2 -translate-y-1/2 w-1.5 h-1.5 bg-brand-red rounded-full" />
+                                            <div className="absolute left-1.5 top-1/2 -translate-y-1/2 w-1.5 h-1.5 bg-brand-red rounded-full shadow-[0_0_8px_rgba(245,54,78,0.5)]" />
                                         )}
                                         <div className="flex gap-3">
                                             <div className={`w-8 h-8 rounded-full shrink-0 flex items-center justify-center ${
@@ -63,7 +84,7 @@ export const NotificationBell = () => {
                                                  <Sparkles size={14} />}
                                             </div>
                                             <div className="flex-1 min-w-0">
-                                                <p className={`text-xs ${!n.read ? 'text-white font-bold' : 'text-gray-300'}`}>{n.title}</p>
+                                                <p className={`text-xs leading-relaxed ${!n.read ? 'text-white font-bold' : 'text-gray-300'}`}>{n.title}</p>
                                                 {n.body && (
                                                     <p className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{n.body}</p>
                                                 )}
@@ -88,8 +109,11 @@ export const NotificationBell = () => {
                             )}
                         </div>
 
-                        <div className="p-3 bg-white/[0.02] border-t border-white/5 text-center">
-                            <button className="text-[10px] font-bold text-gray-500 hover:text-white uppercase tracking-widest">
+                        <div className="p-3 bg-[#151515] border-t border-white/5 text-center">
+                            <button 
+                                onClick={handleViewAll}
+                                className="w-full py-2 text-[10px] font-bold text-gray-400 hover:text-white hover:bg-white/5 rounded-lg transition-all uppercase tracking-widest"
+                            >
                                 View All Activity
                             </button>
                         </div>

@@ -38,5 +38,12 @@ export function useNotifications(userId?: string, projectId?: string) {
     setUnreadCount((prev) => Math.max(0, prev - 1));
   };
 
-  return { notifications, unreadCount, markAsRead };
+  const markAllAsRead = async () => {
+    if (!userId) return;
+    await import('../services/NotificationService').then(m => m.markAllNotificationsRead(userId, projectId));
+    setNotifications((prev) => prev.map((item) => ({ ...item, read: true })));
+    setUnreadCount(0);
+  };
+
+  return { notifications, unreadCount, markAsRead, markAllAsRead };
 }

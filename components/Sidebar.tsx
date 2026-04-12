@@ -136,7 +136,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, setCurrentView })
                                 {projects.map((p) => (
                                     <button
                                         key={p.id}
-                                        onClick={() => { switchProject(p.id); setIsProjectMenuOpen(false); }}
+                                        onClick={() => { 
+                                            navigate(`/project/${p.id}/dashboard?view=${currentView}`);
+                                            setIsProjectMenuOpen(false); 
+                                        }}
                                         className={`w-full flex items-center gap-3 p-2 hover:bg-white/5 transition-colors ${activeProject?.id === p.id ? 'bg-white/5' : ''}`}
                                     >
                                         <div className="w-6 h-6 rounded-md bg-gradient-to-br from-brand-red to-orange-500 flex items-center justify-center text-[10px] font-bold text-white uppercase">
@@ -186,7 +189,16 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, setCurrentView })
                             <span className="text-[10px] font-bold text-gray-600 uppercase tracking-widest font-heading">Core</span>
                         </div>
                     )}
-                    <SidebarItem icon={<LayoutDashboard size={18} />} label="Overview" active={currentView === 'dashboard'} onClick={() => setCurrentView('dashboard')} collapsed={isCollapsed} />
+                    <SidebarItem 
+                        icon={<LayoutDashboard size={18} />} 
+                        label="Overview" 
+                        active={currentView === 'dashboard'} 
+                        onClick={() => {
+                            if (activeProject) navigate(`/project/${activeProject.id}/dashboard`);
+                            else setCurrentView('dashboard');
+                        }} 
+                        collapsed={isCollapsed} 
+                    />
                 </div>
 
                 {/* Intelligence (Strategy) */}
@@ -196,9 +208,37 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, setCurrentView })
                             <span className="text-[10px] font-bold text-gray-600 uppercase tracking-widest font-heading">Intelligence</span>
                         </div>
                     )}
-                    <SidebarItem icon={<Search size={18} />} label="Keyword Research" active={currentView === 'keyword_research'} onClick={() => setCurrentView('keyword_research')} collapsed={isCollapsed} />
-                    <SidebarItem icon={<Sparkles size={18} />} label="Content Predictor" active={currentView === 'content_predictor'} onClick={() => setCurrentView('content_predictor')} badge="AI" collapsed={isCollapsed} />
-                    <SidebarItem icon={<Globe size={18} />} label="Competitors" active={currentView === 'competitors'} onClick={() => setCurrentView('competitors')} collapsed={isCollapsed} />
+                    <SidebarItem 
+                        icon={<Search size={18} />} 
+                        label="Keyword Research" 
+                        active={currentView === 'keyword_research'} 
+                        onClick={() => {
+                            if (activeProject) navigate(`/project/${activeProject.id}/dashboard?view=keyword_research`);
+                            else setCurrentView('keyword_research');
+                        }} 
+                        collapsed={isCollapsed} 
+                    />
+                    <SidebarItem 
+                        icon={<Sparkles size={18} />} 
+                        label="Content Predictor" 
+                        active={currentView === 'content_predictor'} 
+                        onClick={() => {
+                            if (activeProject) navigate(`/project/${activeProject.id}/dashboard?view=content_predictor`);
+                            else setCurrentView('content_predictor');
+                        }} 
+                        badge="AI" 
+                        collapsed={isCollapsed} 
+                    />
+                    <SidebarItem 
+                        icon={<Globe size={18} />} 
+                        label="Competitors" 
+                        active={currentView === 'competitors'} 
+                        onClick={() => {
+                            if (activeProject) navigate(`/project/${activeProject.id}/dashboard?view=competitors`);
+                            else setCurrentView('competitors');
+                        }} 
+                        collapsed={isCollapsed} 
+                    />
                 </div>
 
                 {/* Performance (Tracking) */}
@@ -208,9 +248,37 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, setCurrentView })
                             <span className="text-[10px] font-bold text-gray-600 uppercase tracking-widest font-heading">Performance</span>
                         </div>
                     )}
-                    <SidebarItem icon={<Target size={18} />} label="Rank Tracker" active={currentView === 'rank_tracker'} onClick={() => setCurrentView('rank_tracker')} collapsed={isCollapsed} />
-                    <SidebarItem icon={<Share2 size={18} />} label="Mentions" active={currentView === 'mentions'} onClick={() => setCurrentView('mentions')} collapsed={isCollapsed} />
-                    <SidebarItem icon={<Activity size={18} />} label="Site Audit" active={currentView === 'site_audit'} onClick={() => setCurrentView('site_audit')} hasNotification collapsed={isCollapsed} />
+                    <SidebarItem 
+                        icon={<Target size={18} />} 
+                        label="Rank Tracker" 
+                        active={currentView === 'rank_tracker'} 
+                        onClick={() => {
+                            if (activeProject) navigate(`/project/${activeProject.id}/dashboard?view=rank_tracker`);
+                            else setCurrentView('rank_tracker');
+                        }} 
+                        collapsed={isCollapsed} 
+                    />
+                    <SidebarItem 
+                        icon={<Share2 size={18} />} 
+                        label="Mentions" 
+                        active={currentView === 'mentions'} 
+                        onClick={() => {
+                            if (activeProject) navigate(`/project/${activeProject.id}/dashboard?view=mentions`);
+                            else setCurrentView('mentions');
+                        }} 
+                        collapsed={isCollapsed} 
+                    />
+                    <SidebarItem 
+                        icon={<Activity size={18} />} 
+                        label="Site Audit" 
+                        active={currentView === 'site_audit'} 
+                        onClick={() => {
+                            if (activeProject) navigate(`/project/${activeProject.id}/dashboard?view=site_audit`);
+                            else setCurrentView('site_audit');
+                        }} 
+                        hasNotification 
+                        collapsed={isCollapsed} 
+                    />
                 </div>
 
                 {/* Operations (Execution) */}
@@ -220,7 +288,16 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, setCurrentView })
                             <span className="text-[10px] font-bold text-gray-600 uppercase tracking-widest font-heading">Operations</span>
                         </div>
                     )}
-                    <SidebarItem icon={<Lightbulb size={18} />} label="Opportunities" active={currentView === 'opportunities'} onClick={() => setCurrentView('opportunities')} collapsed={isCollapsed} />
+                    <SidebarItem 
+                        icon={<Lightbulb size={18} />} 
+                        label="Opportunities" 
+                        active={currentView === 'opportunities'} 
+                        onClick={() => {
+                            if (activeProject) navigate(`/project/${activeProject.id}/dashboard?view=opportunities`);
+                            else setCurrentView('opportunities');
+                        }} 
+                        collapsed={isCollapsed} 
+                    />
                     <SidebarItem 
                         icon={<CheckSquare size={18} />} 
                         label="Tasks" 
@@ -230,8 +307,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, setCurrentView })
                         }} 
                         collapsed={isCollapsed} 
                     />
-                    <SidebarItem icon={<Briefcase size={18} />} label="Agency Hub" active={currentView === 'agency_hub'} onClick={() => setCurrentView('agency_hub')} collapsed={isCollapsed} />
-                    <SidebarItem icon={<BellRing size={18} />} label="Automations" active={currentView === 'automation'} onClick={() => setCurrentView('automation')} collapsed={isCollapsed} />
+                    <SidebarItem icon={<Briefcase size={18} />} label="Agency Hub" active={currentView === 'agency_hub'} onClick={() => {
+                        if (activeProject) navigate(`/project/${activeProject.id}/dashboard?view=agency_hub`);
+                        else setCurrentView('agency_hub');
+                    }} collapsed={isCollapsed} />
+                    <SidebarItem icon={<BellRing size={18} />} label="Automations" active={currentView === 'automation'} onClick={() => {
+                        if (activeProject) navigate(`/project/${activeProject.id}/dashboard?view=automation`);
+                        else setCurrentView('automation');
+                    }} collapsed={isCollapsed} />
                 </div>
             </div>
 
@@ -241,14 +324,20 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, setCurrentView })
                     icon={<Settings size={18} />}
                     label="Project Settings"
                     active={currentView === 'settings_project'}
-                    onClick={() => setCurrentView('settings_project')}
+                    onClick={() => {
+                        if (activeProject) navigate(`/project/${activeProject.id}/dashboard?view=settings_project`);
+                        else setCurrentView('settings_project');
+                    }}
                     collapsed={isCollapsed}
                 />
                 <SidebarItem
                     icon={<Users size={18} />}
                     label="Account Settings"
                     active={currentView === 'settings_account'}
-                    onClick={() => setCurrentView('settings_account')}
+                    onClick={() => {
+                        if (activeProject) navigate(`/project/${activeProject.id}/dashboard?view=settings_account`);
+                        else setCurrentView('settings_account');
+                    }}
                     collapsed={isCollapsed}
                 />
 

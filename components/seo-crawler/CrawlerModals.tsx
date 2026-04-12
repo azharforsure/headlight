@@ -4,11 +4,14 @@ import {
     FastForward, Palette, CheckCircle2, Database, LinkIcon, Calendar, Clock,
     Play, Repeat, Bell, Shield, Upload, Sparkles
 } from 'lucide-react';
-import { useSeoCrawler } from '../../contexts/SeoCrawlerContext';
+import { useSeoCrawler, getHashRouteSearchParams } from '../../contexts/SeoCrawlerContext';
 import { IntegrationsTab } from './IntegrationsTab';
 import SettingsPanel from './settings/SettingsPanel';
 
 export default function CrawlerModals() {
+    const params = getHashRouteSearchParams();
+    const isSetup = params.get('setup') === 'true';
+
     const googleClientId = (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID;
     const bingClientId = (import.meta as any).env?.VITE_BING_CLIENT_ID;
     const configuredCrawlerApiUrl = (import.meta as any).env?.VITE_CRAWLER_API_URL;
@@ -76,7 +79,7 @@ export default function CrawlerModals() {
                 </div>
             )}
 
-            {showSettings && <SettingsPanel />}
+            {showSettings && !isSetup && <SettingsPanel />}
 
             {showAutoFixModal && (
                 <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">

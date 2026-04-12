@@ -146,6 +146,40 @@
   @apply bg-white/10 rounded-full hover:bg-white/20 transition-colors;
 }
 
+/* Named scrollbar utility classes used throughout the app */
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 9999px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* Hidden scrollbar — scrollable but no visible bar */
+.custom-scrollbar-hidden {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.custom-scrollbar-hidden::-webkit-scrollbar {
+  display: none;
+}
+
 .bottom-sheet-enter {
   transform: translateY(100%);
 }

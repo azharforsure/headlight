@@ -25,13 +25,12 @@ export const formatDuration = (ms: any) => {
     return `${Math.round(Number(ms))}ms`;
 };
 
-export const formatBytes = (bytes: any) => {
+// D1 fix: Re-export from constants.tsx to avoid duplicate implementations.
+// Wraps the canonical version with null/NaN handling for inspector context.
+import { formatBytes as _formatBytesFn } from '../constants';
+export const formatBytes = (bytes: any): string => {
     if (bytes === null || bytes === undefined || Number.isNaN(Number(bytes))) return EMPTY_VALUE;
-    const value = Number(bytes);
-    if (value < 1024) return `${value} B`;
-    if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
-    if (value < 1024 * 1024 * 1024) return `${(value / 1024 / 1024).toFixed(2)} MB`;
-    return `${(value / 1024 / 1024 / 1024).toFixed(2)} GB`;
+    return _formatBytesFn(Number(bytes));
 };
 
 export const getSafeHostname = (url: string | undefined | null) => {

@@ -4,7 +4,9 @@ import {
   RefreshCw, 
   X,
   Sparkles,
-  Bot
+  Bot,
+  HardDrive,
+  Cloud
 } from 'lucide-react';
 import { useSeoCrawler } from '../../contexts/SeoCrawlerContext';
 import { 
@@ -173,16 +175,7 @@ export function IntegrationsTab() {
   };
 
   return (
-    <div className="max-w-2xl mx-auto space-y-4 animate-in fade-in duration-300">
-      <div className="pb-4 border-b border-white/[0.06] flex items-center justify-between">
-        <div>
-          <h3 className="text-xs font-bold text-white uppercase tracking-[0.2em]">Integrations & AI</h3>
-          <p className="mt-1 text-[11px] text-white/30">
-            Connect data sources and configure AI analysis models.
-          </p>
-        </div>
-      </div>
-
+    <div className="space-y-6 animate-in fade-in duration-300">
       <div className="space-y-6">
         {/* Google Card */}
         <div className="rounded-lg border border-white/[0.06] bg-white/[0.01] p-5">
@@ -238,57 +231,52 @@ export function IntegrationsTab() {
           )}
         </div>
 
-        {/* MCP Servers */}
+        {/* GBP */}
+        <div className="rounded-lg border border-white/[0.04] bg-white/[0.01] p-5">
+          <div className="flex items-center justify-between mb-1">
+            <h4 className="text-xs font-semibold text-white/90">GOOGLE BUSINESS PROFILE</h4>
+          </div>
+          <p className="text-[11px] text-white/40 mb-4">Local SEO performance signals and GBP insights.</p>
+          {!integrationConnections.google ? (
+            <span className="text-[10px] text-white/20 italic">Connect Google account first</span>
+          ) : (
+            <button className="px-4 py-2 text-[10px] font-bold rounded border border-white/10 bg-white/[0.04] text-white/70 hover:bg-white/[0.1] hover:text-white">
+              Enable GBP Sync
+            </button>
+          )}
+        </div>
+
+        {/* Google Drive Card */}
         <div className="rounded-lg border border-white/[0.06] bg-white/[0.01] p-5">
           <div className="flex items-center justify-between mb-1">
-            <h4 className="text-xs font-semibold text-white/90 uppercase tracking-wider">Model Context Protocol (MCP)</h4>
-            <div className={`w-2 h-2 rounded-full ${mcpServers.length > 0 ? 'bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.4)]' : 'bg-white/10'}`} />
+            <h4 className="text-xs font-semibold text-white/90 uppercase tracking-wider">Google Drive</h4>
+            <div className={`w-2 h-2 rounded-full ${integrationConnections.google ? 'bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.4)]' : 'bg-white/10'}`} />
           </div>
-          <p className="text-[11px] text-white/40 mb-4">Connect to external AI tool providers (Linear, Amplitude, Slack).</p>
+          <p className="text-[11px] text-white/40 mb-4">Unified connection for search data and automated cloud storage.</p>
           
-          <div className="space-y-3">
-            {mcpServers.map(server => (
-              <div key={server.id} className="flex items-center justify-between p-3 bg-white/[0.02] border border-white/5 rounded-lg group">
-                <div className="flex flex-col">
-                  <span className="text-[11px] font-bold text-white/80">{server.name}</span>
-                  <span className="text-[9px] text-white/30 font-mono">{server.url}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-400 text-[9px] font-bold border border-indigo-500/20">Connected</span>
-                  <button className="p-1 text-white/20 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all">
-                    <X size={12} />
-                  </button>
-                </div>
+          {integrationConnections.google ? (
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <button 
+                  onClick={handleConnectGoogle} 
+                  className="text-[10px] text-white/40 hover:text-white transition-colors"
+                >
+                  Use a different account
+                </button>
               </div>
-            ))}
-
-            <div className="pt-2 space-y-2">
-              <div className="grid grid-cols-2 gap-2">
-                <input 
-                  type="text" 
-                  placeholder="Server Name (e.g. Linear)" 
-                  value={newServerName}
-                  onChange={(e) => setNewServerName(e.target.value)}
-                  className="px-3 py-2 text-[11px] bg-white/[0.03] border border-white/10 rounded focus:border-indigo-500/50 outline-none text-white"
-                />
-                <input 
-                  type="text" 
-                  placeholder="https://mcp.example.com" 
-                  value={newServerUrl}
-                  onChange={(e) => setNewServerUrl(e.target.value)}
-                  className="px-3 py-2 text-[11px] bg-white/[0.03] border border-white/10 rounded focus:border-indigo-500/50 outline-none text-white"
-                />
-              </div>
-              <button 
-                onClick={handleAddMcpServer}
-                disabled={!newServerName || !newServerUrl}
-                className="w-full px-4 py-2 text-[10px] font-bold rounded border border-white/10 bg-white/[0.04] text-white/70 hover:bg-white/[0.08] hover:text-white disabled:opacity-50"
-              >
-                + Add MCP Server
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-4 px-2 border border-dashed border-white/10 rounded-lg bg-white/[0.01]">
+              <Cloud className="text-white/10 mb-2" size={24} />
+              <p className="text-[10px] text-white/30 text-center mb-4 max-w-[200px]">Connect your Google account to enable automatic cloud backups.</p>
+              <button onClick={handleConnectGoogle} className="px-4 py-2 text-[10px] font-bold rounded border border-white/10 bg-white/[0.04] text-white/70 hover:bg-white/[0.08] hover:text-white">
+                Connect Google Drive
               </button>
             </div>
-          </div>
+          )}
         </div>
+
+
 
         {/* Backlink Upload */}
         <FileUploadBox
@@ -372,19 +360,56 @@ export function IntegrationsTab() {
           )}
         </div>
 
-        {/* GBP */}
-        <div className="rounded-lg border border-white/[0.04] bg-white/[0.01] p-5">
+        {/* MCP Servers */}
+        <div className="rounded-lg border border-white/[0.06] bg-white/[0.01] p-5">
           <div className="flex items-center justify-between mb-1">
-            <h4 className="text-xs font-semibold text-white/90">GOOGLE BUSINESS PROFILE</h4>
+            <h4 className="text-xs font-semibold text-white/90 uppercase tracking-wider">Model Context Protocol (MCP)</h4>
+            <div className={`w-2 h-2 rounded-full ${mcpServers.length > 0 ? 'bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.4)]' : 'bg-white/10'}`} />
           </div>
-          <p className="text-[11px] text-white/40 mb-4">Local SEO performance signals and GBP insights.</p>
-          {!integrationConnections.google ? (
-            <span className="text-[10px] text-white/20 italic">Connect Google account first</span>
-          ) : (
-            <button className="px-4 py-2 text-[10px] font-bold rounded border border-white/10 bg-white/[0.04] text-white/70 hover:bg-white/[0.1] hover:text-white">
-              Enable GBP Sync
-            </button>
-          )}
+          <p className="text-[11px] text-white/40 mb-4">Connect to external AI tool providers (Linear, Amplitude, Slack).</p>
+          
+          <div className="space-y-3">
+            {mcpServers.map(server => (
+              <div key={server.id} className="flex items-center justify-between p-3 bg-white/[0.02] border border-white/5 rounded-lg group">
+                <div className="flex flex-col">
+                  <span className="text-[11px] font-bold text-white/80">{server.name}</span>
+                  <span className="text-[9px] text-white/30 font-mono">{server.url}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-400 text-[9px] font-bold border border-indigo-500/20">Connected</span>
+                  <button className="p-1 text-white/20 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all">
+                    <X size={12} />
+                  </button>
+                </div>
+              </div>
+            ))}
+
+            <div className="pt-2 space-y-2">
+              <div className="grid grid-cols-2 gap-2">
+                <input 
+                  type="text" 
+                  placeholder="Server Name (e.g. Linear)" 
+                  value={newServerName}
+                  onChange={(e) => setNewServerName(e.target.value)}
+                  className="px-3 py-2 text-[11px] bg-white/[0.03] border border-white/10 rounded focus:border-indigo-500/50 outline-none text-white"
+                />
+                <input 
+                  type="text" 
+                  placeholder="https://mcp.example.com" 
+                  value={newServerUrl}
+                  onChange={(e) => setNewServerUrl(e.target.value)}
+                  className="px-3 py-2 text-[11px] bg-white/[0.03] border border-white/10 rounded focus:border-indigo-500/50 outline-none text-white"
+                />
+              </div>
+              <button 
+                onClick={handleAddMcpServer}
+                disabled={!newServerName || !newServerUrl}
+                className="w-full px-4 py-2 text-[10px] font-bold rounded border border-white/10 bg-white/[0.04] text-white/70 hover:bg-white/[0.08] hover:text-white disabled:opacity-50"
+              >
+                + Add MCP Server
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>

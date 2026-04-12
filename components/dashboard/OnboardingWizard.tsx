@@ -6,11 +6,13 @@ import { IndustryType } from '../../services/app-types';
 import { upsertProjectCrawlerIntegration } from '../../services/CrawlerIntegrationsService';
 import { addKeywords } from '../../services/DashboardDataService';
 import { exchangeGoogleCode, openGoogleOAuthPopup } from '../../services/GoogleOAuthHelper';
+import { useNavigate } from 'react-router-dom';
 
 type Step = 1 | 2 | 3;
 
 export const OnboardingWizard = ({ onComplete }: { onComplete?: () => void }) => {
-    const { addProject, refreshProjects } = useProject();
+    const { addProject, refreshProjects, projects } = useProject();
+    const navigate = useNavigate();
     const { user } = useAuth();
     const [step, setStep] = useState<Step>(1);
     const [loading, setLoading] = useState(false);
@@ -112,6 +114,11 @@ export const OnboardingWizard = ({ onComplete }: { onComplete?: () => void }) =>
 
     const finishOnboarding = async () => {
         await refreshProjects();
+        // Determine where to land: use the created projectId if available, otherwise fallback to first project
+        const targetId = createdProjectId || (projects.length > 0 ? projects[0].id : null);
+        if (targetId) {
+            navigate(`/project/${targetId}/dashboard`);
+        }
         if (onComplete) onComplete();
     };
 

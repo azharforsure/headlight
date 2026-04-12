@@ -18,7 +18,7 @@ export function openCrawler(
 ) {
   if (!projectId) return;
 
-  const params = new URLSearchParams({ project: projectId });
+  const params = new URLSearchParams();
   
   switch (target.view) {
     case 'main':
@@ -45,7 +45,8 @@ export function openCrawler(
       break;
   }
   
-  const crawlerUrl = `/crawler?${params.toString()}`;
+  const query = params.toString();
+  const crawlerUrl = `/project/${projectId}/crawler${query ? `?${query}` : ''}`;
   
   if (options?.newTab) {
     window.open(crawlerUrl, '_blank');
