@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Send, CheckCircle, Clock, User, MessageSquare, Plus, Trash2, Smile, AlertCircle } from 'lucide-react';
-import { useSeoCrawler } from '../../contexts/SeoCrawlerContext';
+import { useOptionalSeoCrawler } from '../../contexts/SeoCrawlerContext';
 import { useAuth } from '../../services/AuthContext';
 import { useProject } from '../../services/ProjectContext';
 import { getComments, createComment, resolveComment, addReaction } from '../../services/CollaborationService';
@@ -15,7 +15,20 @@ interface CollaborationOverlayProps {
 }
 
 export const CollaborationOverlay: React.FC<CollaborationOverlayProps> = ({ isOpen, onClose }) => {
-    const { collabOverlayTarget, teamMembers, tasks, setTasks } = useSeoCrawler();
+    const crawler = useOptionalSeoCrawler();
+    const { 
+        collabOverlayTarget: contextTarget, 
+        teamMembers: contextMembers = [], 
+        tasks: contextTasks = [], 
+        setTasks: contextSetTasks = () => {} 
+    } = crawler || {};
+
+    // Fallback for when used outside SeoCrawlerProvider (e.g. in Tasks page)
+    const collabOverlayTarget = contextTarget;
+    const teamMembers = contextMembers;
+    const tasks = contextTasks;
+    const setTasks = contextSetTasks;
+
     const { activeProject } = useProject();
     const { user, profile } = useAuth();
     

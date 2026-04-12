@@ -13,6 +13,7 @@ import { getMembers } from '../services/TeamService';
 import type { CrawlTask, ProjectMember, TaskStatus } from '../services/app-types';
 import { CollaborationOverlay } from '../components/seo-crawler/CollaborationOverlay';
 import { NotificationBell } from '../components/NotificationBell';
+import { SeoCrawlerContext } from '../contexts/SeoCrawlerContext';
 
 type ViewMode = 'board' | 'list' | 'myTasks' | 'calendar';
 
@@ -301,11 +302,6 @@ const TaskList = ({ tasks, onTaskClick }: { tasks: CrawlTask[], onTaskClick: (t:
     );
 };
 
-// Simplified context wrapper for CollaborationOverlay to work outside SeoCrawlerProvider
-import { createContext, useContext, ReactNode } from 'react';
-
-const FakeSeoCrawlerContext = createContext<any>(null);
-
 const CollaborationOverlayWrapper = ({ isOpen, onClose, target, tasks, setTasks, members, activeProject }: any) => {
     const value = {
         collabOverlayTarget: target,
@@ -313,12 +309,12 @@ const CollaborationOverlayWrapper = ({ isOpen, onClose, target, tasks, setTasks,
         setTasks,
         teamMembers: members,
         activeProject
-    };
+    } as any;
 
     return (
-        <FakeSeoCrawlerContext.Provider value={value}>
+        <SeoCrawlerContext.Provider value={value}>
             <CollaborationOverlayWithFakeContext isOpen={isOpen} onClose={onClose} />
-        </FakeSeoCrawlerContext.Provider>
+        </SeoCrawlerContext.Provider>
     );
 };
 

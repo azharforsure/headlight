@@ -358,7 +358,7 @@ export interface CrawlerContextType {
     bulkAIAnalyzeCategory: (category: { group: string; sub: string; condition?: (p: any) => boolean }) => Promise<void>;
 }
 
-const SeoCrawlerContext = createContext<CrawlerContextType | undefined>(undefined);
+export const SeoCrawlerContext = createContext<CrawlerContextType | undefined>(undefined);
 const MAX_IN_MEMORY_PAGES = 50000;
 const CRAWLER_LAYOUT_STORAGE_KEY = 'headlight:seo-crawler-layout';
 const CRAWLER_LAST_SESSION_STORAGE_KEY = 'headlight:seo-crawler-last-session';
@@ -4109,4 +4109,8 @@ export function useSeoCrawler() {
         throw new Error('useSeoCrawler must be used within a SeoCrawlerProvider');
     }
     return context;
+}
+
+export function useOptionalSeoCrawler() {
+    return useContext(SeoCrawlerContext);
 }

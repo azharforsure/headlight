@@ -3,12 +3,12 @@ import { Bell, MessageSquare, CheckSquare, Sparkles, ExternalLink } from 'lucide
 import { useAuth } from '../services/AuthContext';
 import { useProject } from '../services/ProjectContext';
 import { useNotifications } from '../hooks/useNotifications';
-import { useSeoCrawler } from '../contexts/SeoCrawlerContext';
+import { useOptionalSeoCrawler } from '../contexts/SeoCrawlerContext';
 
 export const NotificationBell = () => {
     const { user } = useAuth();
     const { activeProject } = useProject();
-    const crawler = useSeoCrawler();
+    const crawler = useOptionalSeoCrawler();
     
     const [isOpen, setIsOpen] = useState(false);
     const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications(user?.id, activeProject?.id);
