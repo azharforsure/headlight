@@ -141,6 +141,11 @@ export interface CrawledPage {
   businessComputedScore: number | null;
   searchIntent: string | null;
   inSitemap: boolean | null;
+  sitemapBrokenUrls?: number;
+  sitemapLastmodAccurate?: boolean | null;
+  sitemapLastmodMismatchCount?: number;
+  sitemapValidationSampleSize?: number;
+  sitemapValidationTruncated?: boolean;
   finalUrl: string | null;
   
   // ─── Tier 3: AI Analysis (Phase C) ───
@@ -187,20 +192,25 @@ export interface CrawledPage {
   firstArchived?: string | null;
   lastArchived?: string | null;
   sslGrade?: string;
+  sslChainComplete?: boolean | null;
   contentEncoding?: string;
   contentTypeMime?: string;
   contentTypeCharset?: string;
   contentTypeValid?: boolean;
   redirectLoop?: boolean;
+  cnameChainLength?: number;
   fcp?: number | null;
   httpRequestCount?: number;
   totalJsBytes?: number;
   totalCssBytes?: number;
   unusedCssPercent?: number;
   unusedJsPercent?: number;
+  minFontSize?: number | null;
   oversizedImages?: number;
   brokenImages?: number;
   jsConsoleErrors?: string[];
+  hydrationMismatch?: boolean;
+  spaRouteBroken?: boolean;
   hasTwitterCard?: boolean;
   twitterCardType?: string;
   twitterImage?: string;
@@ -541,6 +551,34 @@ class CrawlDB extends Dexie {
             page.gbpReviewCount = null;
             page.gbpAvgRating = null;
             page.gbpEnrichedAt = null;
+        });
+    });
+
+    this.version(12).stores({
+        pages: 'url, crawlId, isHtmlPage, statusCode, [crawlId+statusCode]',
+        sessions: 'id, projectId, startedAt',
+    }).upgrade(tx => {
+        return tx.table('pages').toCollection().modify(page => {
+            page.sslGrade = page.sslGrade ?? null;
+            page.sslChainComplete = page.sslChainComplete ?? null;
+            page.cnameChainLength = page.cnameChainLength ?? 0;
+            page.minFontSize = page.minFontSize ?? null;
+            page.hydrationMismatch = page.hydrationMismatch ?? false;
+            page.spaRouteBroken = page.spaRouteBroken ?? false;
+        });
+    });
+
+    this.version(13).stores({
+        pages: 'url, crawlId, isHtmlPage, statusCode, [crawlId+statusCode]',
+        sessions: 'id, projectId, startedAt',
+    }).upgrade(tx => {
+        return tx.table('pages').toCollection().modify(page => {
+            page.spaRouteBroken = page.spaRouteBroken ?? false;
+            page.sitemapBrokenUrls = page.sitemapBrokenUrls ?? 0;
+            page.sitemapLastmodAccurate = page.sitemapLastmodAccurate ?? null;
+            page.sitemapLastmodMismatchCount = page.sitemapLastmodMismatchCount ?? 0;
+            page.sitemapValidationSampleSize = page.sitemapValidationSampleSize ?? 0;
+            page.sitemapValidationTruncated = page.sitemapValidationTruncated ?? false;
         });
     });
   }

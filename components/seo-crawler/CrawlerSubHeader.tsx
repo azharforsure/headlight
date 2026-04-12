@@ -39,7 +39,7 @@ export default function CrawlerSubHeader() {
     }, [showColumnPicker, setShowColumnPicker]);
 
     return (
-        <div className="h-[44px] border-b border-[#222] bg-[#111] flex items-center justify-between px-4 shrink-0 transition-colors w-full z-[100]">
+        <div className="h-[44px] border-b border-[#222] bg-[#111] flex items-center justify-between px-4 shrink-0 transition-colors w-full z-[30]">
             <div className="flex items-center gap-3 overflow-x-auto custom-scrollbar-hidden mr-4">
                 {/* Audit Mode & Industry Filters */}
                 <div className="hidden md:flex items-center gap-2 mr-2">

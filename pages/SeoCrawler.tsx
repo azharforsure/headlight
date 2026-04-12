@@ -125,7 +125,7 @@ function SeoCrawlerLayout() {
     return (
         <div className="flex flex-col h-screen bg-[var(--bg-main)] text-[var(--text-secondary)] font-sans overflow-hidden">
             <CrawlerHeader />
-            <CrawlerSubHeader />
+            {!showComparisonView && <CrawlerSubHeader />}
 
             <div className="flex-1 flex min-h-0 relative overflow-hidden">
                 {!isCompactLayout && (

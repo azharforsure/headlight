@@ -73,7 +73,11 @@ export const ALL_COLUMNS = [
     { key: 'redirectChainLength', label: 'Redirect Hops', width: '120px', group: 'Technical' },
     { key: 'isRedirectLoop', label: 'Redirect Loop', width: '120px', group: 'Technical' },
     { key: 'redirectType', label: 'Redirect Type', width: '120px', group: 'Technical' },
+    { key: 'cnameChainLength', label: 'CNAME Hops', width: '110px', group: 'Technical' },
     { key: 'inSitemap', label: 'In Sitemap', width: '110px', group: 'Technical' },
+    { key: 'sitemapBrokenUrls', label: 'Broken Sitemap URLs', width: '150px', group: 'Technical' },
+    { key: 'sitemapLastmodAccurate', label: 'Sitemap Lastmod Accurate', width: '170px', group: 'Technical' },
+    { key: 'sitemapLastmodMismatchCount', label: 'Sitemap Lastmod Mismatches', width: '190px', group: 'Technical' },
     { key: 'cookies', label: 'Cookies', width: '80px', group: 'Technical' },
     { key: 'language', label: 'Language', width: '80px', group: 'Technical' },
     { key: 'xRobotsNoindex', label: 'X-Robots Noindex', width: '140px', group: 'Technical' },
@@ -244,6 +248,7 @@ export const ALL_COLUMNS = [
     { key: 'viewportWidth', label: 'Device Width Viewport', width: '150px', group: 'Mobile' },
     { key: 'smallTapTargets', label: 'Small Tap Targets', width: '130px', group: 'Mobile' },
     { key: 'smallFontCount', label: 'Small Fonts', width: '110px', group: 'Mobile' },
+    { key: 'minFontSize', label: 'Min Font Size', width: '120px', group: 'Mobile' },
 
     // URL Structure
     { key: 'urlLength', label: 'URL Length', width: '100px', group: 'URL Structure' },
@@ -322,6 +327,8 @@ export const ALL_COLUMNS = [
     { key: 'htmlErrors', label: 'W3C Errors', width: '110px', group: 'Technical' },
     { key: 'securityGrade', label: 'Security Grade', width: '120px', group: 'Security' },
     { key: 'sslGrade', label: 'SSL Grade', width: '100px', group: 'Security' },
+    { key: 'sslChainComplete', label: 'SSL Chain Complete', width: '150px', group: 'Security' },
+    { key: 'hydrationMismatch', label: 'Hydration Mismatch', width: '150px', group: 'Security' },
     { key: 'industry', label: 'Detected Industry', width: '140px', group: 'Business' },
     { key: 'hasTwitterCard', label: 'Twitter Card', width: '110px', group: 'Business' },
     { key: 'twitterCardType', label: 'Twitter Card Type', width: '150px', group: 'Business' },
@@ -348,6 +355,7 @@ export const ALL_COLUMNS = [
     { key: 'jsRenderDiff.jsOnlyLinks', label: 'JS Only Links', width: '120px', group: 'Technical' },
     { key: 'jsRenderDiff.jsOnlyImages', label: 'JS Only Images', width: '130px', group: 'Technical' },
     { key: 'jsRenderDiff.criticalContentJsOnly', label: 'JS Required', width: '120px', group: 'Technical' },
+    { key: 'spaRouteBroken', label: 'SPA Route Broken', width: '130px', group: 'Technical' },
     { key: 'googlebotVisits30d', label: 'Googlebot (30d)', width: '130px', group: 'Log Analysis' },
     { key: 'botCrawlBudgetShare', label: 'Crawl Budget %', width: '130px', group: 'Log Analysis' },
 ];
@@ -537,8 +545,8 @@ export const CATEGORY_FILTERS: Record<string, Record<string, CategoryFilterFn>> 
         All: () => true,
         Ecommerce: (page) => page?.industry === 'ecommerce',
         SaaS: (page) => page?.industry === 'saas',
-        Local: (page) => page?.industry === 'local_business',
-        News: (page) => page?.industry === 'news_media',
+        Local: (page) => page?.industry === 'local',
+        News: (page) => page?.industry === 'news',
         Healthcare: (page) => page?.industry === 'healthcare'
     },
     'ai-discoverability': {

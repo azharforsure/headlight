@@ -951,29 +951,58 @@ parentPort.on('message', (task) => {
           industrySignals.priceVisible = $('[class*="price"], [itemprop="price"], [data-price]').length > 0;
           industrySignals.hasBreadcrumbUI = $('[class*="breadcrumb"], nav[aria-label*="breadcrumb"], .breadcrumbs').length > 0;
           industrySignals.hasFacetedNav = $('[class*="filter"], [class*="facet"], [class*="refinement"]').length > 0;
+          industrySignals.hasStockStatus = /instock|outofstock|availability/i.test(JSON.stringify(schemaBlocks)) || $('[class*="stock"], [class*="availability"]').length > 0;
+          industrySignals.hasPaginationNav = $('a[rel="next"], a[rel="prev"], nav[aria-label*="pagination"], .pagination').length > 0;
+          industrySignals.hasFilterCanonicals = Boolean(canonical) && /[?&](color|size|sort|filter|brand|price)=/i.test(url);
         }
 
-        if (industry === 'local_business' || industry === 'all') {
+        if (industry === 'local' || industry === 'all') {
           industrySignals.hasLocalBusinessSchema = schemaTypes.some(t => ['LocalBusiness', 'Restaurant', 'Store', 'MedicalBusiness'].includes(t));
           industrySignals.hasMap = hasEmbeddedMap;
           industrySignals.hasOpeningHours = JSON.stringify(schemaBlocks).includes('openingHours');
+          industrySignals.hasGmbLink = $('a[href*="google.com/maps"], a[href*="g.page"], a[href*="maps.app.goo.gl"]').length > 0;
+          industrySignals.hasDirectionsPage = $('a[href*="direction"], a[href*="location"], a[href*="find-us"]').length > 0;
+          industrySignals.hasServiceAreaPages = $('a[href*="service-area"], a[href*="locations"], a[href*="areas-we-serve"]').length > 0;
+          industrySignals.directoryLinks = $('a[href*="yelp.com"], a[href*="yellowpages.com"], a[href*="bbb.org"], a[href*="tripadvisor.com"]').length;
         }
 
-        if (industry === 'news_media' || industry === 'blog_content' || industry === 'all') {
+        if (industry === 'news' || industry === 'blog' || industry === 'all') {
           industrySignals.hasArticleSchema = schemaTypes.some(t => ['NewsArticle', 'Article', 'BlogPosting'].includes(t));
           industrySignals.hasAuthorByline = $('[class*="author"], [rel="author"], [itemprop="author"]').length > 0;
           industrySignals.hasNewsletterForm = $('form[action*="subscribe"], [class*="newsletter"]').length > 0;
+          industrySignals.hasAmpVersion = Boolean(amphtml);
+          industrySignals.hasCommentSection = $('[id*="comments"], [class*="comments"], [class*="disqus"]').length > 0;
+          industrySignals.hasRelatedArticles = $('[class*="related"], [class*="recommended"], [class*="more-posts"]').length > 0;
         }
 
         if (industry === 'saas' || industry === 'all') {
           industrySignals.hasPricingTable = $('[class*="pricing"], [class*="plans"], [class*="tier"]').length > 0;
           industrySignals.hasDocsLink = $('a[href*="/docs"], a[href*="/documentation"], a[href*="/help"]').length > 0;
           industrySignals.hasStatusPage = $('a[href*="status."], a[href*="/status"]').length > 0;
+          industrySignals.hasChangelog = $('a[href*="changelog"], a[href*="release-notes"], a[href*="whats-new"]').length > 0;
+          industrySignals.hasIntegrationsPage = $('a[href*="integrations"], a[href*="marketplace"], a[href*="apps"]').length > 0;
+          industrySignals.hasComparisonPages = $('a[href*="/compare"], a[href*="/comparison"], a[href*="/vs-"], a[href*="/alternative"]').length > 0;
+          industrySignals.hasSecurityPage = $('a[href*="/security"], a[href*="/trust"], a[href*="/compliance"], a[href*="soc-2"]').length > 0;
+          industrySignals.hasTrialFlow = $('a[href*="trial"], a[href*="signup"], a[href*="start-free"]').length > 0;
         }
 
         if (industry === 'healthcare' || industry === 'all') {
           industrySignals.hasMedicalAuthor = /\b(MD|DO|NP|PA|RN|PhD)\b/.test(textContent);
           industrySignals.hasMedicalDisclaimer = /not (a substitute|intended).*(medical|professional) (advice|diagnosis|treatment)/i.test(textContent);
+          industrySignals.hasMedicalReview = /medically reviewed by|reviewed by\s+[A-Z][a-z]+/i.test(textContent);
+          industrySignals.hasMedicalSchema = schemaTypes.some(t => ['MedicalWebPage', 'MedicalCondition', 'Drug', 'Physician'].includes(t));
+        }
+
+        if (industry === 'finance' || industry === 'all') {
+          industrySignals.hasFinancialDisclaimer = /not financial advice|for informational purposes only|consult (a|your) financial advisor/i.test(textContent);
+          industrySignals.hasFinancialCredentials = /\b(CFP|CPA|CFA|ChFC|RIA)\b/.test(textContent);
+          industrySignals.financialDataDate = visibleDate || '';
+        }
+
+        if (industry === 'education' || industry === 'all') {
+          industrySignals.hasCourseSchema = schemaTypes.includes('Course') || schemaTypes.includes('EducationalOccupationalProgram');
+          industrySignals.hasAccreditation = /accredited|accreditation|ABET|WASC|HLC|NEASC|SACSCOC/i.test(textContent);
+          industrySignals.hasSyllabus = /syllabus|curriculum|course outline|learning outcomes|module \d+/i.test(textContent);
         }
 
         // ─── Custom Extraction (Phase 7) ────────────────────

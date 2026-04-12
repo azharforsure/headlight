@@ -43,7 +43,6 @@ const CHECK_CATEGORY_TO_TREE_IDS: Record<CheckCategory, string[]> = {
     business_signals: ['ai-insights'],
     social_media: ['content'],
     competitor: ['ai-insights'],
-    citations_reviews: ['links'],
     ads_ppc: ['ai-insights'],
     conversion_ux: ['ai-insights'],
     tech_debt: ['security', 'performance'],
@@ -52,7 +51,8 @@ const CHECK_CATEGORY_TO_TREE_IDS: Record<CheckCategory, string[]> = {
     news: ['content', 'schema'],
     saas: ['content', 'ai-insights'],
     healthcare: ['healthcare'],
-    education_specific: ['content']
+    finance: ['content', 'ai-insights'],
+    education: ['content']
 };
 
 export function getActiveChecks(state: AuditFilterState): CheckDefinition[] {

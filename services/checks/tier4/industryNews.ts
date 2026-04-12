@@ -13,7 +13,7 @@ export const checkNewsArticleSchema: CheckEvaluator = (page, ctx) => {
     value: { hasNewsSchema },
     expected: 'NewsArticle, Article, or BlogPosting schema on content pages',
     message: hasNewsSchema ? 'Content schema detected.' : 'No article-related schema found on this content page.',
-    auditModes: ['full', 'news_blog' as any], industries: ['news', 'blog']
+    auditModes: ['full', 'news_editorial'], industries: ['news', 'blog']
   };
 };
 
@@ -28,7 +28,7 @@ export const checkNewsPubDate: CheckEvaluator = (page) => {
     value: { date: page.visibleDate },
     expected: 'Visible publication date on articles',
     message: hasDate ? `Publication date detected: ${page.visibleDate}` : 'No visible publication date found on this article.',
-    auditModes: ['full', 'news_blog' as any], industries: ['news', 'blog']
+    auditModes: ['full', 'news_editorial'], industries: ['news', 'blog']
   };
 };
 
@@ -43,7 +43,7 @@ export const checkNewsAuthor: CheckEvaluator = (page) => {
     value: { hasAuthor },
     expected: 'Author byline on articles',
     message: hasAuthor ? 'Author byline detected.' : 'No author attribution found. Important for E-E-A-T.',
-    auditModes: ['full', 'news_blog' as any], industries: ['news', 'blog']
+    auditModes: ['full', 'news_editorial'], industries: ['news', 'blog']
   };
 };
 

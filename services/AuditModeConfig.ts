@@ -182,15 +182,14 @@ export const AUDIT_MODES: AuditModeConfig[] = [
 
 export const INDUSTRY_FILTERS: IndustryConfig[] = [
     { id: 'all', label: 'All Industries', description: 'Universal checks', icon: '🌐', extraChecksLabel: '' },
-    { id: 'local_business', label: 'Local Business', description: 'Local service and store sites', icon: '📍', extraChecksLabel: '+ NAP, map pack, GMB checks' },
+    { id: 'local', label: 'Local Business', description: 'Local service and store sites', icon: '📍', extraChecksLabel: '+ NAP, map pack, GMB checks' },
     { id: 'ecommerce', label: 'E-commerce', description: 'Product and catalog websites', icon: '🛒', extraChecksLabel: '+ product, catalog, pricing checks' },
     { id: 'saas', label: 'SaaS', description: 'Software products and platforms', icon: '💻', extraChecksLabel: '+ docs, pricing, onboarding checks' },
-    { id: 'blog_content', label: 'Blog / Content', description: 'Editorial and knowledge content', icon: '📝', extraChecksLabel: '+ freshness, author, topic checks' },
-    { id: 'news_media', label: 'News / Media', description: 'Publishing-heavy news sites', icon: '📰', extraChecksLabel: '+ article schema, recency checks' },
-    { id: 'agency', label: 'Agency', description: 'Agency and consultancy sites', icon: '🏢', extraChecksLabel: '+ portfolio and trust checks' },
+    { id: 'blog', label: 'Blog / Content', description: 'Editorial and knowledge content', icon: '📝', extraChecksLabel: '+ freshness, author, topic checks' },
+    { id: 'news', label: 'News / Media', description: 'Publishing-heavy news sites', icon: '📰', extraChecksLabel: '+ article schema, recency checks' },
+    { id: 'finance', label: 'Finance', description: 'Financial advice and fintech sites', icon: '💰', extraChecksLabel: '+ compliance and freshness checks' },
     { id: 'education', label: 'Education', description: 'Schools, LMS, and course sites', icon: '🎓', extraChecksLabel: '+ course and structure checks' },
     { id: 'healthcare', label: 'Healthcare', description: 'Medical and wellness properties', icon: '🏥', extraChecksLabel: '+ author trust and medical checks' },
     { id: 'real_estate', label: 'Real Estate', description: 'Listings and brokerage platforms', icon: '🏠', extraChecksLabel: '+ listing and local intent checks' },
-    { id: 'restaurant_food', label: 'Restaurant / Food', description: 'Menu and reservation websites', icon: '🍽️', extraChecksLabel: '+ menu and local entity checks' },
-    { id: 'global_multiregion', label: 'Global / Multi-region', description: 'Internationalized websites', icon: '🌍', extraChecksLabel: '+ hreflang and geo checks' }
+    { id: 'restaurant', label: 'Restaurant / Food', description: 'Menu and reservation websites', icon: '🍽️', extraChecksLabel: '+ menu and local entity checks' }
 ];

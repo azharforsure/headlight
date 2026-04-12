@@ -22,6 +22,7 @@ export interface SiteContext {
   allPages: any[];
   rootHostname: string;
   industry: string;
+  projectId?: string;
   competitorPages?: any[];
   sitemapUrls?: Set<string>;
   robotsRules?: any;

@@ -7,7 +7,7 @@ import { fileURLToPath } from 'url';
 import { Pool, request as undiciRequest } from 'undici';
 import { completeAI } from './aiGateway.js';
 import VisualDiffService from './VisualDiffService.js';
-import { lookup } from 'dns';
+import { lookup, resolveCname } from 'dns';
 import { promisify } from 'util';
 import { brotliDecompressSync, gunzipSync, inflateSync } from 'zlib';
 import tls from 'tls';
@@ -17,6 +17,7 @@ const __dirname = path.dirname(__filename);
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const dnsLookup = promisify(lookup);
+const dnsResolveCname = promisify(resolveCname);
 const withTimeout = (promise, ms, timeoutMessage) => new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error(timeoutMessage)), ms);
     promise
@@ -292,6 +293,81 @@ function extractContentTypeInfo(contentType = '') {
         contentTypeCharset,
         contentTypeValid: Boolean(contentTypeMime) && (!requiresUtf8Charset || contentTypeCharset === 'utf-8')
     };
+}
+
+async function measureCnameChainLength(hostname, maxDepth = 10, visited = new Set()) {
+    if (!hostname || visited.has(hostname) || visited.size >= maxDepth) {
+        return visited.size;
+    }
+
+    visited.add(hostname);
+
+    try {
+        const records = await withTimeout(
+            dnsResolveCname(hostname),
+            3000,
+            `CNAME lookup timeout for ${hostname}`
+        );
+        const nextHost = Array.isArray(records) ? records[0] : null;
+        if (!nextHost) return Math.max(0, visited.size - 1);
+        return measureCnameChainLength(nextHost, maxDepth, visited);
+    } catch {
+        return Math.max(0, visited.size - 1);
+    }
+}
+
+function inferCipherStrength(cipher = {}) {
+    const name = String(cipher.standardName || cipher.name || '').toUpperCase();
+    if (!name) return 'unknown';
+    if (name.includes('CHACHA20') || name.includes('AES_256') || name.includes('AES256')) return 'strong';
+    if (name.includes('AES_128') || name.includes('AES128')) return 'modern';
+    if (name.includes('RC4') || name.includes('3DES') || name.includes('DES')) return 'weak';
+    return 'modern';
+}
+
+function computeSslGrade(sslInfo = {}, securityInfo = {}) {
+    if (!sslInfo?.sslValid) return 'F';
+    let score = 100;
+
+    if (sslInfo.sslIsWeakProtocol) score -= 40;
+    else if (!sslInfo.sslIsTls13 && !sslInfo.sslIsTls12) score -= 20;
+
+    if (sslInfo.sslCipherStrength === 'weak') score -= 25;
+    else if (sslInfo.sslCipherStrength === 'unknown') score -= 10;
+
+    if (sslInfo.sslChainComplete === false) score -= 20;
+    if (!securityInfo?.hasHsts) score -= 10;
+    if (sslInfo.sslIsExpiringSoon) score -= 10;
+
+    if (score >= 95) return 'A+';
+    if (score >= 90) return 'A';
+    if (score >= 80) return 'B';
+    if (score >= 70) return 'C';
+    if (score >= 60) return 'D';
+    return 'F';
+}
+
+function inferSpaRouteBroken(currentUrl, jsRenderDiff = null) {
+    if (!jsRenderDiff) return false;
+
+    try {
+        const parsed = new URL(currentUrl);
+        const isRootPath = !parsed.pathname || parsed.pathname === '/';
+        if (isRootPath) return false;
+    } catch {
+        return false;
+    }
+
+    const staticWords = Number(jsRenderDiff.staticWordCount || 0);
+    const renderedWords = Number(jsRenderDiff.renderedWordCount || 0);
+    const textDiffPercent = Number(jsRenderDiff.textDiffPercent || 0);
+
+    return Boolean(
+        jsRenderDiff.criticalContentJsOnly &&
+        renderedWords >= 250 &&
+        staticWords <= 120 &&
+        textDiffPercent >= 50
+    );
 }
 
 function extractHtmlLinkSets(html = '', currentUrl, baseHostname, options = {}) {
@@ -750,6 +826,99 @@ async function fetchSitemapUrls(sitemapUrl, requestHeaders, maxUrls = 500000) {
     return urls;
 }
 
+function compareLastModifiedDates(sitemapLastmod, actualLastModified, toleranceMs = 48 * 60 * 60 * 1000) {
+    const sitemapTime = Date.parse(String(sitemapLastmod || ''));
+    const actualTime = Date.parse(String(actualLastModified || ''));
+
+    if (!Number.isFinite(sitemapTime) || !Number.isFinite(actualTime)) {
+        return null;
+    }
+
+    return Math.abs(sitemapTime - actualTime) <= toleranceMs;
+}
+
+async function fetchUrlStatusMetadata(targetUrl, requestHeaders) {
+    const attempt = async (method) => {
+        const response = await undiciRequest(targetUrl, {
+            method,
+            headers: requestHeaders,
+            headersTimeout: 5000,
+            bodyTimeout: 5000,
+            maxRedirections: 3
+        });
+        const normalizedHeaders = normalizeResponseHeaders(response.headers);
+        await response.body.dump().catch(() => {});
+        return {
+            statusCode: response.statusCode,
+            lastModified: String(normalizedHeaders['last-modified'] || '').trim()
+        };
+    };
+
+    try {
+        const headResult = await attempt('HEAD');
+        if (![405, 501].includes(headResult.statusCode)) {
+            return headResult;
+        }
+    } catch {}
+
+    try {
+        return await attempt('GET');
+    } catch {
+        return { statusCode: 0, lastModified: '' };
+    }
+}
+
+async function validateSitemapEntries(sitemapEntries, requestHeaders, pagePayloads, maxChecks = 200) {
+    const normalizedPayloadMap = new Map();
+    for (const [url, payload] of pagePayloads.entries()) {
+        normalizedPayloadMap.set(normalizeUrl(url), payload);
+    }
+
+    const crawledEntries = [];
+    const uncrawledEntries = [];
+    for (const entry of sitemapEntries) {
+        const normalizedEntryUrl = normalizeUrl(entry?.url);
+        if (!normalizedEntryUrl) continue;
+        const enrichedEntry = { ...entry, url: normalizedEntryUrl };
+        if (normalizedPayloadMap.has(normalizedEntryUrl)) crawledEntries.push(enrichedEntry);
+        else uncrawledEntries.push(enrichedEntry);
+    }
+
+    const validationTargets = [...crawledEntries, ...uncrawledEntries].slice(0, maxChecks);
+    const pageUpdates = [];
+    let brokenUrls = 0;
+    let lastmodMismatchCount = 0;
+    let validatedLastmodCount = 0;
+
+    await Promise.all(validationTargets.map(async (entry) => {
+        const metadata = await fetchUrlStatusMetadata(entry.url, requestHeaders);
+        if (metadata.statusCode >= 400 || metadata.statusCode === 0) {
+            brokenUrls += 1;
+        }
+
+        const payload = normalizedPayloadMap.get(entry.url);
+        const actualLastModified = payload?.lastModified || metadata.lastModified || '';
+        const accurate = compareLastModifiedDates(entry.lastmod, actualLastModified);
+        if (accurate === null || !payload) return;
+
+        payload.sitemapLastmodAccurate = accurate;
+        pageUpdates.push({ url: payload.url, sitemapLastmodAccurate: accurate });
+        validatedLastmodCount += 1;
+        if (!accurate) {
+            lastmodMismatchCount += 1;
+        }
+    }));
+
+    return {
+        brokenUrls,
+        lastmodMismatchCount,
+        validatedLastmodCount,
+        sampleSize: validationTargets.length,
+        truncated: sitemapEntries.length > validationTargets.length,
+        pageUpdates
+    };
+}
+
 // ─── Worker Pool with Crash Recovery ────────────────────────
 class WorkerPool {
     constructor(workerPath, numThreads, emit = () => {}) {
@@ -1084,17 +1253,33 @@ function checkSslCertificate(hostname) {
         try {
             socket = tls.connect(443, hostname, { servername: hostname, rejectUnauthorized: false }, () => {
                 const cert = socket.getPeerCertificate();
+                const detailedCert = socket.getPeerCertificate(true);
                 const protocol = socket.getProtocol() || '';
+                const cipher = socket.getCipher() || {};
                 const validTo = cert?.valid_to ? new Date(cert.valid_to) : null;
                 const daysUntilExpiry = validTo && !Number.isNaN(validTo.getTime())
                     ? Math.floor((validTo.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
                     : null;
+                let sslChainComplete = Boolean(socket.authorized);
+
+                try {
+                    let current = detailedCert;
+                    let depth = 0;
+                    while (current?.issuerCertificate && current.issuerCertificate !== current && depth < 10) {
+                        current = current.issuerCertificate;
+                        depth += 1;
+                    }
+                    sslChainComplete = sslChainComplete || depth > 0;
+                } catch {}
 
                 finish({
                     sslValid: Boolean(socket.authorized),
                     sslAuthorizationError: socket.authorizationError || '',
                     sslIssuer: cert?.issuer?.O || cert?.issuer?.CN || '',
                     sslProtocol: protocol,
+                    sslCipher: cipher.standardName || cipher.name || '',
+                    sslCipherStrength: inferCipherStrength(cipher),
+                    sslChainComplete,
                     sslExpiryDate: cert?.valid_to || '',
                     sslDaysUntilExpiry: daysUntilExpiry,
                     sslIsExpiringSoon: daysUntilExpiry !== null && daysUntilExpiry < 30,
@@ -1109,6 +1294,9 @@ function checkSslCertificate(hostname) {
                 sslAuthorizationError: 'TLS timeout',
                 sslIssuer: '',
                 sslProtocol: '',
+                sslCipher: '',
+                sslCipherStrength: 'unknown',
+                sslChainComplete: false,
                 sslExpiryDate: '',
                 sslDaysUntilExpiry: null,
                 sslIsExpiringSoon: false,
@@ -1122,6 +1310,9 @@ function checkSslCertificate(hostname) {
                 sslAuthorizationError: error?.message || 'TLS error',
                 sslIssuer: '',
                 sslProtocol: '',
+                sslCipher: '',
+                sslCipherStrength: 'unknown',
+                sslChainComplete: false,
                 sslExpiryDate: '',
                 sslDaysUntilExpiry: null,
                 sslIsExpiringSoon: false,
@@ -1458,6 +1649,7 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
     const pagePayloads = new Map();
     const failedUrls = new Map();
     const dnsTimings = new Map();
+    const dnsCnameChains = new Map();
     const sslResults = new Map();
 
     let urlsCrawled = initialState?.urlsCrawled || 0;
@@ -1620,7 +1812,13 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
         }
 
         const startedAt = Date.now();
-        await cachedDnsLookup(hostname);
+        await Promise.allSettled([
+            cachedDnsLookup(hostname),
+            (async () => {
+                const chainLength = await measureCnameChainLength(hostname);
+                dnsCnameChains.set(hostname, chainLength);
+            })()
+        ]);
         const duration = Math.max(0, Date.now() - startedAt);
         dnsTimings.set(hostname, duration);
         return duration;
@@ -1645,7 +1843,10 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
                 sslIsExpiringSoon: false,
                 sslIsTls13: false,
                 sslIsTls12: false,
-                sslIsWeakProtocol: false
+                sslIsWeakProtocol: false,
+                sslCipher: '',
+                sslCipherStrength: 'unknown',
+                sslChainComplete: false
             }))
             .then((result) => {
                 sslResults.set(hostname, result);
@@ -2063,6 +2264,29 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
                                 // B7 — Horizontal Scroll
                                 const hasHorizontalScroll = document.documentElement.scrollWidth > window.innerWidth;
 
+                                let smallTapTargets = 0;
+                                try {
+                                    const tapTargets = document.querySelectorAll('a, button, input, select, textarea, [role="button"]');
+                                    tapTargets.forEach((el) => {
+                                        const rect = el.getBoundingClientRect();
+                                        if (rect.width > 0 && rect.height > 0 && (rect.width < 48 || rect.height < 48)) {
+                                            smallTapTargets++;
+                                        }
+                                    });
+                                } catch {}
+
+                                let smallFontCount = 0;
+                                let minFontSize = null;
+                                try {
+                                    const textElements = document.querySelectorAll('p, li, a, button, span, input, label');
+                                    textElements.forEach((el) => {
+                                        const size = parseFloat(window.getComputedStyle(el).fontSize || '0');
+                                        if (!Number.isFinite(size) || size <= 0) return;
+                                        if (minFontSize === null || size < minFontSize) minFontSize = size;
+                                        if (size < 12) smallFontCount++;
+                                    });
+                                } catch {}
+
                                 return {
                                     fcp: window.__headlightVitals?.fcp ?? null,
                                     lcp: window.__headlightVitals?.lcp ?? null,
@@ -2070,15 +2294,21 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
                                     inp: window.__headlightVitals?.inp ?? null,
                                     contrastIssues,
                                     focusIssues,
-                                    hasHorizontalScroll
+                                    hasHorizontalScroll,
+                                    smallTapTargets,
+                                    smallFontCount,
+                                    minFontSize
                                 };
-                            }).catch(() => ({ fcp: null, lcp: null, cls: null, inp: null, contrastIssues: 0, focusIssues: 0, hasHorizontalScroll: false }));
+                            }).catch(() => ({ fcp: null, lcp: null, cls: null, inp: null, contrastIssues: 0, focusIssues: 0, hasHorizontalScroll: false, smallTapTargets: 0, smallFontCount: 0, minFontSize: null }));
                             
                             webVitals = { fcp: clientData.fcp, lcp: clientData.lcp, cls: clientData.cls, inp: clientData.inp };
                             pagePayloadAttributes = { 
                                 contrastIssues: clientData.contrastIssues, 
                                 focusIssues: clientData.focusIssues, 
                                 hasHorizontalScroll: clientData.hasHorizontalScroll,
+                                smallTapTargets: clientData.smallTapTargets,
+                                smallFontCount: clientData.smallFontCount,
+                                minFontSize: clientData.minFontSize,
                                 jsConsoleErrors: jsConsoleErrors.slice(0, 5) 
                             };
                         }
@@ -2270,6 +2500,10 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
                 const compressionInfo = extractCompressionInfo(rawHeaders);
                 const contentTypeInfo = extractContentTypeInfo(contentType);
                 const sslInfo = await sslPromise || {};
+                const enhancedSslInfo = {
+                    ...sslInfo,
+                    sslGrade: computeSslGrade(sslInfo, securityInfo)
+                };
                 const effectiveTransferredBytes = transferredBytes || sizeBytes || (html ? Buffer.byteLength(html, 'utf8') : 0);
                 const effectiveTotalTransferred = totalTransferred || effectiveTransferredBytes;
                 const carbonMetrics = computeCarbonMetrics(effectiveTotalTransferred);
@@ -2319,7 +2553,8 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
                         ...cookieInfo,
                         ...xRobotsInfo,
                         dnsResolutionTime: dnsTimings.get(parsed.hostname) || 0,
-                        ...sslInfo,
+                        cnameChainLength: dnsCnameChains.get(parsed.hostname) || 0,
+                        ...enhancedSslInfo,
                         // Sitemap data if available
                         sitemapLastmod: sitemapData[toSitemapKey(currentUrl)]?.lastmod || '',
                         sitemapPriority: sitemapData[toSitemapKey(currentUrl)]?.priority || '',
@@ -2543,7 +2778,8 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
                             ...cacheInfo,
                             ...cookieInfo,
                             dnsResolutionTime: dnsTimings.get(parsed.hostname) || 0,
-                            ...sslInfo,
+                            cnameChainLength: dnsCnameChains.get(parsed.hostname) || 0,
+                            ...enhancedSslInfo,
                             // Accessibility / advanced DOM checks
                             hasMainLandmark: data.hasMainLandmark,
                             hasNavLandmark: data.hasNavLandmark,
@@ -2585,8 +2821,11 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
                             hasSessionId: data.hasSessionId,
                             hasViewportMeta: data.hasViewportMeta,
                             viewportWidth: data.viewportWidth,
-                            smallTapTargets: data.smallTapTargets,
-                            smallFontCount: data.smallFontCount,
+                            smallTapTargets: pagePayloadAttributes.smallTapTargets ?? data.smallTapTargets,
+                            smallFontCount: pagePayloadAttributes.smallFontCount ?? data.smallFontCount,
+                            minFontSize: pagePayloadAttributes.minFontSize ?? null,
+                            hydrationMismatch: Boolean(data.jsRenderDiff?.hydrationMismatch || (data.jsRenderDiff?.textDiffPercent > 20)),
+                            spaRouteBroken: inferSpaRouteBroken(currentUrl, data.jsRenderDiff),
                             visibleDate: data.visibleDate,
                             genericAnchorCount: data.genericAnchorCount,
                             anchorTextDiversity: data.anchorTextDiversity,
@@ -3075,6 +3314,42 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
 
             Object.assign(payload, update);
             onEvent('UPDATE_PAGE', update);
+        }
+
+        if (Object.keys(sitemapData).length > 0) {
+            onEvent('LOG', { message: 'Validating sitemap URLs and lastmod freshness...', type: 'info' });
+            const sitemapValidation = await validateSitemapEntries(
+                Object.values(sitemapData),
+                requestHeaders,
+                pagePayloads,
+                200
+            );
+
+            for (const update of sitemapValidation.pageUpdates) {
+                onEvent('UPDATE_PAGE', update);
+            }
+
+            const rootPayload =
+                Array.from(pagePayloads.values()).find((page) => Number(page?.crawlDepth) === 0) ||
+                pagePayloads.get(firstUrl) ||
+                null;
+
+            if (rootPayload) {
+                Object.assign(rootPayload, {
+                    sitemapBrokenUrls: sitemapValidation.brokenUrls,
+                    sitemapLastmodMismatchCount: sitemapValidation.lastmodMismatchCount,
+                    sitemapValidationSampleSize: sitemapValidation.sampleSize,
+                    sitemapValidationTruncated: sitemapValidation.truncated
+                });
+
+                onEvent('UPDATE_PAGE', {
+                    url: rootPayload.url,
+                    sitemapBrokenUrls: sitemapValidation.brokenUrls,
+                    sitemapLastmodMismatchCount: sitemapValidation.lastmodMismatchCount,
+                    sitemapValidationSampleSize: sitemapValidation.sampleSize,
+                    sitemapValidationTruncated: sitemapValidation.truncated
+                });
+            }
         }
 
         // 4. Enrich top pages with AI-powered recommendations
