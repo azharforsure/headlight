@@ -388,6 +388,10 @@ export interface CrawlerContextType {
     setCrawlingCompetitorDomain: React.Dispatch<React.SetStateAction<string | null>>;
     refreshAllCompetitors: () => Promise<void>;
 
+    // ─── Competitive Mode View ───
+    competitiveViewMode: CompetitiveViewMode;
+    setCompetitiveViewMode: (mode: CompetitiveViewMode) => void;
+
     // Competitive mode
     competitiveState: CompetitiveModeState;
     setCompetitiveViewMode: (mode: CompetitiveViewMode) => void;
@@ -4152,6 +4156,10 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
     const [ownProfile, setOwnProfile] = useState<CompetitorProfile | null>(null);
     const [showAddCompetitorInput, setShowAddCompetitorInput] = useState(false);
     const [crawlingCompetitorDomain, setCrawlingCompetitorDomain] = useState<string | null>(null);
+    
+    // ─── Competitive Mode View ───
+    const [competitiveViewMode, setCompetitiveViewMode] = useState<CompetitiveViewMode>('matrix');
+
     const [competitiveState, setCompetitiveState] = useState<CompetitiveModeState>(DEFAULT_COMPETITIVE_STATE);
 
     const refreshAllCompetitors = useCallback(async () => {
@@ -4178,10 +4186,6 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
     }, [activeProject?.id, competitorProfiles]);
 
     // ─── Competitive Mode Actions ───
-
-    const setCompetitiveViewMode = useCallback((mode: CompetitiveViewMode) => {
-      setCompetitiveState(prev => ({ ...prev, viewMode: mode }));
-    }, []);
 
     const toggleCompetitiveMode = useCallback((active: boolean) => {
       setCompetitiveState(prev => ({ ...prev, isActive: active }));
@@ -4435,8 +4439,9 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         crawlingCompetitorDomain, setCrawlingCompetitorDomain, refreshAllCompetitors,
 
         // Competitive mode
-        competitiveState,
+        competitiveViewMode,
         setCompetitiveViewMode,
+        competitiveState,
         toggleCompetitiveMode,
         setActiveCompetitors,
         buildOwnProfile,
@@ -4496,7 +4501,8 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         runAIAnalysis, exportSubset, createTaskForCategory, bulkAIAnalyzeCategory,
         competitorProfiles, ownProfile,
         showAddCompetitorInput, crawlingCompetitorDomain, setCrawlingCompetitorDomain, refreshAllCompetitors,
-        competitiveState, setCompetitiveViewMode, toggleCompetitiveMode, setActiveCompetitors,
+        competitiveViewMode,
+        competitiveState, toggleCompetitiveMode, setActiveCompetitors,
         buildOwnProfile, addCompetitorAndCrawl, removeCompetitor, recrawlCompetitor,
         recrawlAllCompetitors, refreshCompetitorScores, generateCompetitiveBrief
     ]);
