@@ -8,6 +8,7 @@ import {
     formatBytes
 } from '../components/seo-crawler/constants';
 import { UNIFIED_ISSUE_TAXONOMY, getIssuesForMode, getPageIssues, ISSUE_TO_CHECK_MAP } from '../services/UnifiedIssueTaxonomy';
+import { buildDashboardData } from '../services/CategoryScoreCalculator';
 
 import { AUDIT_MODES } from '../services/AuditModeConfig';
 import {
@@ -132,6 +133,8 @@ export interface AnalysisRuntime {
     label: string;
 }
 
+export type AuditTab = 'dashboard' | 'overview' | 'issues' | 'opportunities' | 'geo' | 'tasks' | 'ai' | 'monitor' | 'migration' | 'history' | 'logs' | 'robots' | 'sitemap' | 'visual';
+
 type RobotsTxtState = {
     raw: string;
     sitemaps: string[];
@@ -191,8 +194,8 @@ export interface CrawlerContextType {
     setInspectorCollapsed: (c: boolean) => void;
     showAuditSidebar: boolean;
     setShowAuditSidebar: (s: boolean) => void;
-    activeAuditTab: 'overview' | 'issues' | 'opportunities' | 'geo' | 'tasks' | 'ai' | 'monitor' | 'migration' | 'history' | 'logs' | 'robots' | 'sitemap' | 'visual';
-    setActiveAuditTab: (t: 'overview' | 'issues' | 'opportunities' | 'geo' | 'tasks' | 'ai' | 'monitor' | 'migration' | 'history' | 'logs' | 'robots' | 'sitemap' | 'visual') => void;
+    activeAuditTab: 'dashboard' | 'overview' | 'issues' | 'opportunities' | 'geo' | 'tasks' | 'ai' | 'monitor' | 'migration' | 'history' | 'logs' | 'robots' | 'sitemap' | 'visual';
+    setActiveAuditTab: (t: 'dashboard' | 'overview' | 'issues' | 'opportunities' | 'geo' | 'tasks' | 'ai' | 'monitor' | 'migration' | 'history' | 'logs' | 'robots' | 'sitemap' | 'visual') => void;
     showSettings: boolean;
     setShowSettings: (s: boolean) => void;
     activeMacro: string | null;
@@ -661,7 +664,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
     const [activeTab, setActiveTab] = useState<InspectorTab>('general');
     const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
     const [showAuditSidebar, setShowAuditSidebar] = useState(false);
-    const [activeAuditTab, setActiveAuditTab] = useState<'overview' | 'issues' | 'opportunities' | 'geo' | 'tasks' | 'ai' | 'monitor' | 'migration' | 'history' | 'logs' | 'robots' | 'sitemap' | 'visual'>('overview');
+    const [activeAuditTab, setActiveAuditTab] = useState<AuditTab>('dashboard');
     const [showSettings, setShowSettings] = useState(false);
     const [activeMacro, setActiveMacro] = useState<string | null>(null);
     const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>(null);
@@ -2455,15 +2458,23 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
     }, [auditFilter.modes, auditFilter.industry]);
 
     const activeViewType = useMemo(() => {
-        // Use the first active mode to determine the view type
+        // Handle explicit sidebar tab overrides first
+        if (activeAuditTab === 'dashboard') return 'issue_dashboard';
+        if (activeAuditTab === 'geo') return 'geo_view';
+        if (activeAuditTab === 'visual') return 'visual_heat_map';
+        if (activeAuditTab === 'opportunities') return 'opportunity_view';
+        if (activeAuditTab === 'ai') return 'ai_view';
+
+        // Otherwise, use the first active mode to determine the view type
         const primaryMode = auditFilter.modes[0] || 'full';
         return AUDIT_MODES[primaryMode]?.viewType || 'grid';
-    }, [auditFilter.modes]);
+    }, [auditFilter.modes, activeAuditTab]);
 
     const activeSidebarSections = useMemo(() => {
         const primaryMode = auditFilter.modes[0] || 'full';
         return AUDIT_MODES[primaryMode]?.sidebarSections || ['overview', 'issues', 'details'];
     }, [auditFilter.modes]);
+
 
 
     const applyAuditMode = useCallback((modes: AuditMode[], industry: IndustryFilter) => {
@@ -2583,6 +2594,11 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
             };
         });
     }, [pages, duplicateTitleSet, duplicateMetaDescSet, duplicateH1Set, duplicateHashSet]);
+
+    const issueDashboardData = useMemo(() => {
+        if (activeViewType !== 'issue_dashboard') return null;
+        return buildDashboardData(pagesWithDerivedSignals, auditFilter);
+    }, [pagesWithDerivedSignals, auditFilter, activeViewType]);
 
     useEffect(() => {
         // Initialize stats worker
@@ -4121,7 +4137,9 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         theme, setTheme, integrationConnections, integrationsLoading, integrationsSource, saveIntegrationConnection, removeIntegrationConnection, wsRef, addLog, toggleCategory, handleStartPause,
         clearCrawlerWorkspace,
         showTrialLimitAlert, setShowTrialLimitAlert,
-        dynamicClusters, categoryCounts, healthScore, auditInsights, strategicOpportunities, crawlRate, crawlRuntime, analysisRuntime, elapsedTime,
+        dynamicClusters, categoryCounts, healthScore, auditInsights, strategicOpportunities, 
+        issueDashboardData,
+        crawlRate, crawlRuntime, analysisRuntime, elapsedTime,
         formatBytes, handleExport, handleExportRawDB, handleImport, filteredPages, handleSort, graphData, handleNodeClick,
         crawlHistory: projectScopedHistory, currentSessionId, compareSessionId, diffResult, showComparisonView, setShowComparisonView, showExportDialog, setShowExportDialog, isLoadingHistory,
         saveCrawlSession, loadSession, resumeCrawlSession, compareSessions, deleteCrawlSession, loadCrawlHistory,

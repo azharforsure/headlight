@@ -69,15 +69,19 @@ class SeoCrawlerErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundar
     }
 }
 
+import { CrawlerUIProvider } from '../contexts/CrawlerUIContext';
+
 export default function SeoCrawlerWrapper() {
     const params = getHashRouteSearchParams();
     const isSetup = params.get('setup') === 'true';
 
     return (
         <SeoCrawlerErrorBoundary>
-            <SeoCrawlerProvider>
-                <SeoCrawlerLayout />
-            </SeoCrawlerProvider>
+            <CrawlerUIProvider>
+                <SeoCrawlerProvider>
+                    <SeoCrawlerLayout />
+                </SeoCrawlerProvider>
+            </CrawlerUIProvider>
         </SeoCrawlerErrorBoundary>
     );
 }

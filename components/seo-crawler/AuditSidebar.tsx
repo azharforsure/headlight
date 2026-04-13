@@ -80,6 +80,7 @@ export default function AuditSidebar({ embedded = false }: AuditSidebarProps) {
     }, [issueGroups]);
 
     const allTabs = useMemo(() => [
+        { id: 'dashboard', label: 'Dashboard' },
         { id: 'overview', label: 'Overview' },
         { id: 'issues', label: 'Issues', count: totalIssueCount },
         { id: 'opportunities', label: 'Opportunities', count: strategicOpportunities.length },

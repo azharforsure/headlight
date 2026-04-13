@@ -1,5 +1,6 @@
 import React from 'react';
 import { useSeoCrawler } from '../../contexts/SeoCrawlerContext';
+import AuditPane from './AuditPane';
 import IssueDashboardView from './views/IssueDashboardView';
 import CompetitorMatrixView from './views/CompetitorMatrixView';
 import AiDiscoverabilityView from './views/AiDiscoverabilityView';
@@ -21,8 +22,10 @@ export default function AuditViewRouter() {
             return <StrategicOpportunityView />;
         case 'visual_heat_map':
             return <VisualHeatMapView />;
+        case 'issue_dashboard':
+            return <IssueDashboardView />;
         case 'grid':
         default:
-            return <IssueDashboardView />;
+            return <AuditPane />;
     }
 }
