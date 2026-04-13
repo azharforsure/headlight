@@ -21,8 +21,16 @@ import {
   CartesianGrid,
 } from 'recharts';
 import type { CompetitorProfile } from '../../../../services/CompetitorMatrixConfig';
+import {
+  BRAND_RED,
+  COMP_COLORS,
+  EMPTY_STATE_BOX,
+  EMPTY_STATE_TEXT,
+  SECTION_HEADER_WITH_MARGIN,
+  YOU_BADGE,
+} from '../../competitive/shared/styles';
 
-const COLORS = ['#F5364E', '#6366f1', '#06b6d4', '#f59e0b', '#10b981', '#ec4899'];
+const COLORS = [BRAND_RED, ...COMP_COLORS];
 const getColor = (i: number) => COLORS[i % COLORS.length];
 
 const normalize = (val: unknown, max = 100): number => {
@@ -34,7 +42,7 @@ const normalize = (val: unknown, max = 100): number => {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="space-y-3">
-      <h3 className="text-[11px] font-bold uppercase tracking-widest text-[#444]">{title}</h3>
+      <h3 className={SECTION_HEADER_WITH_MARGIN}>{title}</h3>
       {children}
     </div>
   );
@@ -54,7 +62,7 @@ function ChartCard({
   return (
     <div className={`rounded-xl border border-[#1a1a1e] bg-[#0d0d0f] p-4 ${className}`}>
       <div className="mb-3">
-        <div className="text-[11px] font-bold text-[#ccc]">{title}</div>
+        <div className="text-[11px] font-semibold text-[#888]">{title}</div>
         {subtitle && <div className="mt-0.5 text-[9px] text-[#555]">{subtitle}</div>}
       </div>
       {children}
@@ -272,8 +280,10 @@ export default function CompetitorChartsView() {
 
   if (allProfiles.length === 0) {
     return (
-      <div className="flex h-full items-center justify-center text-[12px] text-[#555]">
-        No competitor data yet. Add competitors and run a crawl.
+      <div className="flex h-full items-center justify-center bg-[#0a0a0a] p-8">
+        <div className={EMPTY_STATE_BOX}>
+          <p className={EMPTY_STATE_TEXT}>No competitor data yet. Add competitors and run a crawl.</p>
+        </div>
       </div>
     );
   }
@@ -285,13 +295,13 @@ export default function CompetitorChartsView() {
   }));
 
   return (
-    <div className="custom-scrollbar h-full overflow-y-auto bg-[#0a0a0a] px-5 py-5">
+    <div className="custom-scrollbar h-full overflow-y-auto bg-[#0a0a0a] p-5 space-y-5">
       <div className="mb-5 flex flex-wrap items-center gap-4">
         {profileLegend.map((p) => (
           <div key={p.domain} className="flex items-center gap-1.5">
             <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: p.color }} />
             <span className={`text-[10px] font-bold ${p.isOwn ? 'text-white' : 'text-[#888]'}`}>
-              {p.domain} {p.isOwn && <span className="text-[8px] text-[#F5364E]">YOU</span>}
+              {p.domain} {p.isOwn && <span className={YOU_BADGE}>YOU</span>}
             </span>
           </div>
         ))}

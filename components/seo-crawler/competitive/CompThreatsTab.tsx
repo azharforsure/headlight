@@ -1,10 +1,13 @@
 import React, { useMemo, useEffect, useState } from 'react';
-import { AlertTriangle, ShieldAlert, TrendingDown, TrendingUp, Zap } from 'lucide-react';
+import { AlertTriangle, ShieldAlert, Zap } from 'lucide-react';
 import { useSeoCrawler } from '../../../contexts/SeoCrawlerContext';
 import { useOptionalProject } from '../../../services/ProjectContext';
 import type { CompetitorProfile } from '../../../services/CompetitorMatrixConfig';
 import { getCompetitorAlerts, getRankShiftAlerts } from '../../../services/CrawlerBridgeService';
 import ThreatMeter from './shared/ThreatMeter';
+import DeltaIndicator from './shared/DeltaIndicator';
+import EmptyState from './shared/EmptyState';
+import { SIDEBAR_SCROLL } from './shared/styles';
 
 export default function CompThreatsTab() {
     const { competitiveState } = useSeoCrawler();
@@ -46,12 +49,12 @@ export default function CompThreatsTab() {
     };
 
     if (activeComps.length === 0) {
-        return <div className="p-4 text-center text-[12px] text-[#555]">No competitors added. Add competitors to see threat analysis.</div>;
+        return <EmptyState message="No competitors added." submessage="Add competitors to see threat analysis." />;
     }
 
     return (
-        <div className="custom-scrollbar h-full space-y-4 overflow-y-auto p-3">
-            <div className="rounded-xl border border-[#222] bg-[#0d0d0f] p-3">
+        <div className={SIDEBAR_SCROLL}>
+            <div className="rounded-xl border border-[#1a1a1e] bg-[#0d0d0f] p-4">
                 {activeComps.map((comp) => (
                     <div key={comp.domain} className="mb-3 last:mb-0">
                         <ThreatMeter level={(comp.threatLevel as 'Critical' | 'High' | 'Moderate' | 'Low') || 'Low'} label={comp.domain} />
@@ -59,8 +62,8 @@ export default function CompThreatsTab() {
                 ))}
             </div>
 
-            <div className="rounded-xl border border-[#222] bg-[#0d0d0f] p-3">
-                <div className="mb-3 text-[10px] font-bold uppercase tracking-wider text-[#666]">Threat Heatmap</div>
+            <div className="rounded-xl border border-[#1a1a1e] bg-[#0d0d0f] p-4">
+                <div className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-[#555]">Threat Heatmap</div>
                 <div className="overflow-x-auto">
                     <table className="w-full">
                         <thead>
@@ -104,7 +107,7 @@ export default function CompThreatsTab() {
             </div>
 
             {activeComps.map((comp) => (
-                <div key={comp.domain} className="rounded-xl border border-[#222] bg-[#0d0d0f] p-3">
+                <div key={comp.domain} className="rounded-xl border border-[#1a1a1e] bg-[#0d0d0f] p-4">
                     <div className="mb-2 flex items-center gap-2">
                         <AlertTriangle size={12} className="text-[#F5364E]" />
                         <span className="text-[11px] font-bold text-white">{comp.domain}</span>
@@ -139,8 +142,8 @@ export default function CompThreatsTab() {
                                         {metric.unit}
                                     </span>
                                     {diff !== 0 && (
-                                        <span className={`ml-1 ${diff > 0 ? 'text-red-400' : 'text-green-400'}`}>
-                                            {diff > 0 ? <TrendingUp size={10} /> : <TrendingDown size={10} />}
+                                        <span className="ml-1">
+                                            <DeltaIndicator diff={-diff} size={10} />
                                         </span>
                                     )}
                                 </div>
@@ -155,14 +158,14 @@ export default function CompThreatsTab() {
                 </div>
             ))}
 
-            <div className="rounded-xl border border-[#222] bg-[#0d0d0f] p-3">
+            <div className="rounded-xl border border-[#1a1a1e] bg-[#0d0d0f] p-4">
                 <div className="mb-3 flex items-center gap-2">
                     <ShieldAlert size={12} className="text-orange-400" />
                     <span className="text-[11px] font-bold text-white">Competitive Intelligence</span>
                 </div>
                 <div className="space-y-2">
                     {compAlerts.length === 0 ? (
-                        <div className="rounded border border-dashed border-[#222] py-6 text-center text-[11px] text-[#444]">
+                        <div className="rounded-lg border border-dashed border-[#222] bg-[#0a0a0c] py-6 text-center text-[11px] text-[#444]">
                             No recent competitor moves detected.
                         </div>
                     ) : (
@@ -183,14 +186,14 @@ export default function CompThreatsTab() {
                 </div>
             </div>
 
-            <div className="rounded-xl border border-[#222] bg-[#0d0d0f] p-3">
+            <div className="rounded-xl border border-[#1a1a1e] bg-[#0d0d0f] p-4">
                 <div className="mb-3 flex items-center gap-2">
                     <Zap size={12} className="text-blue-400" />
                     <span className="text-[11px] font-bold text-white">Rank Guard Alerts</span>
                 </div>
                 <div className="space-y-2">
                     {rankAlerts.length === 0 ? (
-                        <div className="rounded border border-dashed border-[#222] py-6 text-center text-[11px] text-[#444]">
+                        <div className="rounded-lg border border-dashed border-[#222] bg-[#0a0a0c] py-6 text-center text-[11px] text-[#444]">
                             Rankings are currently stable.
                         </div>
                     ) : (

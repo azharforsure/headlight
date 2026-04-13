@@ -5,6 +5,7 @@ import type { CompetitorProfile } from '../../../services/CompetitorMatrixConfig
 import { analyzeCompetitorOverlap } from '../../../services/CompetitorDiscoveryService';
 import { findKeywordGaps } from '../../../services/KeywordDiscoveryService';
 import GapList, { type GapItem } from './shared/GapList';
+import { SUBTAB_ACTIVE, SUBTAB_BASE, SUBTAB_INACTIVE } from './shared/styles';
 
 type SubTab = 'keywords' | 'content' | 'links';
 
@@ -84,9 +85,7 @@ export default function CompGapsTab() {
                     <button
                         key={t.id}
                         onClick={() => setSubTab(t.id)}
-                        className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-all ${
-                            subTab === t.id ? 'bg-[#F5364E]/10 text-[#F5364E]' : 'text-[#666] hover:bg-[#111] hover:text-[#aaa]'
-                        }`}
+                        className={`${SUBTAB_BASE} ${subTab === t.id ? SUBTAB_ACTIVE : SUBTAB_INACTIVE}`}
                     >
                         {t.icon}
                         {t.label}
@@ -94,11 +93,11 @@ export default function CompGapsTab() {
                 ))}
             </div>
 
-            <div className="custom-scrollbar flex-1 space-y-3 overflow-y-auto p-3">
+            <div className="custom-scrollbar flex-1 space-y-4 overflow-y-auto p-4">
                 {subTab === 'keywords' && (
                     <>
-                        <div className="rounded-xl border border-[#222] bg-[#0d0d0f] p-3">
-                            <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-[#666]">Keyword Universe</div>
+                        <div className="rounded-xl border border-[#1a1a1e] bg-[#0d0d0f] p-4">
+                            <div className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-[#555]">Keyword Universe</div>
                             <div className="mt-2 grid grid-cols-3 gap-2">
                                 <div className="text-center">
                                     <div className="font-mono text-[18px] font-black text-white">{contentGaps.commonKeywords.length}</div>
@@ -117,8 +116,8 @@ export default function CompGapsTab() {
                             </div>
                         </div>
 
-                        <div className="rounded-xl border border-[#222] bg-[#0d0d0f] p-3">
-                            <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-[#666]">
+                        <div className="rounded-xl border border-[#1a1a1e] bg-[#0d0d0f] p-4">
+                            <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[#555]">
                                 Keyword Gaps ({keywordGapItems.length})
                             </div>
                             <GapList items={keywordGapItems.slice(0, 10)} emptyMessage="No keyword gaps detected. Great coverage!" />
@@ -133,8 +132,8 @@ export default function CompGapsTab() {
 
                 {subTab === 'content' && (
                     <>
-                        <div className="rounded-xl border border-[#222] bg-[#0d0d0f] p-3">
-                            <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-[#666]">Content Type Comparison</div>
+                        <div className="rounded-xl border border-[#1a1a1e] bg-[#0d0d0f] p-4">
+                            <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[#555]">Content Type Comparison</div>
                             {activeComps.length === 0 && <div className="py-2 text-[11px] text-[#555]">No competitors selected.</div>}
                             {activeComps.map((comp) => (
                                 <div key={comp.domain} className="mb-3">
@@ -175,8 +174,8 @@ export default function CompGapsTab() {
                             ))}
                         </div>
 
-                        <div className="rounded-xl border border-[#222] bg-[#0d0d0f] p-3">
-                            <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-[#666]">
+                        <div className="rounded-xl border border-[#1a1a1e] bg-[#0d0d0f] p-4">
+                            <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[#555]">
                                 Topic Gaps ({contentGaps.uniqueKeywords.length})
                             </div>
                             <GapList
@@ -197,8 +196,8 @@ export default function CompGapsTab() {
                         {!linkGaps && <div className="py-8 text-center text-[11px] text-[#555]">No link data available yet.</div>}
                         {linkGaps && (
                             <>
-                                <div className="rounded-xl border border-[#222] bg-[#0d0d0f] p-3">
-                                    <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-[#666]">Backlink Gap</div>
+                                <div className="rounded-xl border border-[#1a1a1e] bg-[#0d0d0f] p-4">
+                                    <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[#555]">Backlink Gap</div>
                                     <div className="space-y-2">
                                         <div className="flex items-center justify-between">
                                             <span className="text-[11px] text-[#888]">Your Referring Domains</span>
@@ -223,8 +222,8 @@ export default function CompGapsTab() {
                                     </div>
                                 </div>
 
-                                <div className="rounded-xl border border-[#222] bg-[#0d0d0f] p-3">
-                                    <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-[#666]">URL Rating Comparison</div>
+                                <div className="rounded-xl border border-[#1a1a1e] bg-[#0d0d0f] p-4">
+                                    <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[#555]">URL Rating Comparison</div>
                                     <div className="flex items-center gap-3">
                                         <div className="flex-1 text-center">
                                             <div className="font-mono text-[20px] font-black text-white">{linkGaps.yourUR}</div>
@@ -244,8 +243,8 @@ export default function CompGapsTab() {
                                     </div>
                                 </div>
 
-                                <div className="rounded-xl border border-[#222] bg-[#0d0d0f] p-3">
-                                    <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-[#666]">Per Competitor</div>
+                                <div className="rounded-xl border border-[#1a1a1e] bg-[#0d0d0f] p-4">
+                                    <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[#555]">Per Competitor</div>
                                     {activeComps.map((comp) => {
                                         const rd = Number(comp.referringDomains || 0);
                                         return (

@@ -11,6 +11,7 @@ import {
   ExternalLink,
   ChevronsUpDown,
 } from 'lucide-react';
+import { YOU_BADGE } from '../../competitive/shared/styles';
 
 // ─── Helpers ────────────────────────────────────
 function getProfileValue(
@@ -224,7 +225,7 @@ export default function CompetitorMatrixGrid() {
                   {profile.domain}
                 </div>
                 {i === 0 && (
-                  <span className="text-[8px] font-black uppercase tracking-widest text-[#F5364E]">
+                  <span className={YOU_BADGE}>
                     YOU
                   </span>
                 )}

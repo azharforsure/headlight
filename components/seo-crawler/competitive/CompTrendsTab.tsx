@@ -1,7 +1,10 @@
 import React, { useMemo, useState } from 'react';
-import { TrendingUp, TrendingDown, Minus, Clock } from 'lucide-react';
+import { Clock } from 'lucide-react';
 import { useSeoCrawler } from '../../../contexts/SeoCrawlerContext';
 import type { CompetitorProfile } from '../../../services/CompetitorMatrixConfig';
+import DeltaIndicator from './shared/DeltaIndicator';
+import EmptyState from './shared/EmptyState';
+import { COMP_COLORS, SIDEBAR_SCROLL } from './shared/styles';
 
 type TrendMetricKey =
   | 'estimatedOrganicTraffic'
@@ -23,14 +26,6 @@ const TREND_METRICS: Array<{ key: TrendMetricKey; label: string }> = [
   { key: 'schemaCoveragePct', label: 'Schema Coverage' },
   { key: 'blogPostsPerMonth', label: 'Blog Posts/Mo' },
 ];
-
-const COMP_COLORS = ['#6366f1', '#06b6d4', '#f59e0b', '#10b981', '#ec4899'];
-
-function DeltaIcon({ diff }: { diff: number }) {
-  if (diff > 0) return <TrendingUp size={10} className="text-green-400" />;
-  if (diff < 0) return <TrendingDown size={10} className="text-red-400" />;
-  return <Minus size={10} className="text-[#555]" />;
-}
 
 function PositionBar({ yours, values }: { yours: number; values: number[] }) {
   const all = [yours, ...values].filter((v) => v > 0);
@@ -135,17 +130,13 @@ export default function CompTrendsTab() {
   }, [crawlHistory, activeComps]);
 
   if (!ownProfile && activeComps.length === 0) {
-    return (
-      <div className="p-4 text-center text-[12px] text-[#555]">
-        No competitive data yet. Run a crawl and add competitors to see trends.
-      </div>
-    );
+    return <EmptyState message="No competitive data yet." submessage="Run a crawl and add competitors to see trends." />;
   }
 
   return (
-    <div className="custom-scrollbar h-full space-y-4 overflow-y-auto p-3">
-      <div className="rounded-xl border border-[#222] bg-[#0d0d0f] p-4">
-        <div className="mb-3 text-[11px] font-bold uppercase tracking-wider text-[#555]">Your Position vs Competitors</div>
+    <div className={SIDEBAR_SCROLL}>
+      <div className="rounded-xl border border-[#1a1a1e] bg-[#0d0d0f] p-4">
+        <div className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-[#555]">Your Position vs Competitors</div>
         <div className="space-y-2">
           {metricComparison.map((m) => (
             <button
@@ -164,7 +155,7 @@ export default function CompTrendsTab() {
                   <span className="text-[10px] text-[#444]">vs</span>
                   <span className="font-mono text-[11px] text-[#888]">{m.compAvg.toLocaleString()}</span>
                   <span className="ml-1">
-                    <DeltaIcon diff={m.diff} />
+                    <DeltaIndicator diff={m.diff} size={11} />
                   </span>
                 </div>
               </div>
@@ -174,8 +165,8 @@ export default function CompTrendsTab() {
         </div>
       </div>
 
-      <div className="rounded-xl border border-[#222] bg-[#0d0d0f] p-4">
-        <div className="mb-3 text-[11px] font-bold uppercase tracking-wider text-[#555]">
+      <div className="rounded-xl border border-[#1a1a1e] bg-[#0d0d0f] p-4">
+        <div className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-[#555]">
           {TREND_METRICS.find((m) => m.key === selectedMetric)?.label} - Breakdown
         </div>
         <div className="space-y-1.5">
@@ -209,14 +200,14 @@ export default function CompTrendsTab() {
         </div>
       </div>
 
-      <div className="rounded-xl border border-[#222] bg-[#0d0d0f] p-4">
+      <div className="rounded-xl border border-[#1a1a1e] bg-[#0d0d0f] p-4">
         <div className="mb-3 flex items-center gap-2">
           <Clock size={12} className="text-[#555]" />
-          <span className="text-[11px] font-bold uppercase tracking-wider text-[#555]">Change Log</span>
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-[#555]">Change Log</span>
         </div>
 
         {changeLog.length === 0 ? (
-          <div className="rounded border border-dashed border-[#222] py-6 text-center text-[11px] text-[#444]">
+          <div className="rounded-lg border border-dashed border-[#222] bg-[#0a0a0c] py-6 text-center text-[11px] text-[#444]">
             No changes detected yet. Run multiple crawls to track competitor movements.
           </div>
         ) : (

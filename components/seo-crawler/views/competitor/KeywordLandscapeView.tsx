@@ -15,6 +15,7 @@ import {
   CartesianGrid,
 } from 'recharts';
 import type { CompetitorProfile } from '../../../../services/CompetitorMatrixConfig';
+import { BRAND_RED, EMPTY_STATE_BOX, EMPTY_STATE_TEXT } from '../../competitive/shared/styles';
 
 const INTENT_STYLES: Record<string, string> = {
   informational: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
@@ -151,7 +152,7 @@ export default function KeywordLandscapeView() {
           { label: 'Keyword Gaps', value: stats.gapCount, color: 'text-purple-400' },
         ].map((s) => (
           <div key={s.label} className="rounded-xl border border-[#1a1a1e] bg-[#111] px-4 py-3">
-            <div className={`font-mono text-[22px] font-black ${s.color}`}>{s.value.toLocaleString()}</div>
+            <div className={`font-mono text-[18px] font-black ${s.color}`}>{s.value.toLocaleString()}</div>
             <div className="mt-0.5 text-[10px] uppercase tracking-wider text-[#555]">{s.label}</div>
           </div>
         ))}
@@ -166,7 +167,7 @@ export default function KeywordLandscapeView() {
             </p>
           </div>
           <div className="flex items-center gap-4 text-[9px] text-[#666]">
-            <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full bg-[#F5364E]" /> High opportunity</span>
+            <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: BRAND_RED }} /> High opportunity</span>
             <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full bg-[#F59E0B]" /> Medium</span>
             <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full bg-[#3B82F6]" /> Stable</span>
           </div>
@@ -174,8 +175,10 @@ export default function KeywordLandscapeView() {
 
         <div className="rounded-xl border border-[#1a1a1e] bg-[#0d0d0f] p-2">
           {scatterData.length === 0 ? (
-            <div className="flex h-[320px] items-center justify-center text-[12px] text-[#555]">
-              No ranking keyword data. Connect Google Search Console to populate this chart.
+            <div className="flex h-[320px] items-center justify-center p-4">
+              <div className={EMPTY_STATE_BOX}>
+                <p className={EMPTY_STATE_TEXT}>No ranking keyword data. Connect Google Search Console to populate this chart.</p>
+              </div>
             </div>
           ) : (
             <ResponsiveContainer width="100%" height={340}>

@@ -5,6 +5,9 @@ import CompScoreCard from './shared/CompScoreCard';
 import ThreatMeter from './shared/ThreatMeter';
 import WinLoseBar from './shared/WinLoseBar';
 import RadarComparisonChart from './shared/RadarComparisonChart';
+import DeltaIndicator from './shared/DeltaIndicator';
+import EmptyState from './shared/EmptyState';
+import { SIDEBAR_SCROLL } from './shared/styles';
 
 function getNestedValue(obj: unknown, path: string): unknown {
     return path.split('.').reduce<unknown>((acc, key) => {
@@ -163,27 +166,22 @@ export default function CompOverviewTab() {
     }, [ownProfile, activeComps]);
 
     if (!ownProfile && activeComps.length === 0) {
-        return (
-            <div className="p-4 text-center text-[12px] text-[#555]">
-                <p className="mb-2">No competitive data yet.</p>
-                <p>Add competitors and run a crawl to see your competitive overview.</p>
-            </div>
-        );
+        return <EmptyState message="No competitive data yet." submessage="Add competitors and run a crawl to see your overview." />;
     }
 
     return (
-        <div className="custom-scrollbar h-full space-y-4 overflow-y-auto p-3">
-            <div className="rounded-xl border border-[#222] bg-[#0d0d0f] p-3">
+        <div className={SIDEBAR_SCROLL}>
+            <div className="rounded-xl border border-[#1a1a1e] bg-[#0d0d0f] p-4">
                 <ThreatMeter level={overallThreat} label="Overall Competitive Threat" />
             </div>
 
-            <div className="rounded-xl border border-[#222] bg-[#0d0d0f] p-3">
-                <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-[#666]">Competitive Radar</div>
+            <div className="rounded-xl border border-[#1a1a1e] bg-[#0d0d0f] p-4">
+                <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[#555]">Competitive Radar</div>
                 <RadarComparisonChart data={radarData} domains={radarDomains} />
             </div>
 
-            <div className="rounded-xl border border-[#222] bg-[#0d0d0f] p-3">
-                <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-[#666]">Head-to-Head</div>
+            <div className="rounded-xl border border-[#1a1a1e] bg-[#0d0d0f] p-4">
+                <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[#555]">Head-to-Head</div>
                 {winLossData.length > 0 ? (
                     winLossData.map((wl) => <WinLoseBar key={wl.domain} {...wl} />)
                 ) : (
@@ -204,24 +202,30 @@ export default function CompOverviewTab() {
             </div>
 
             {advantages.length > 0 && (
-                <div className="rounded-xl border border-green-500/20 bg-green-500/5 p-3">
+                <div className="rounded-xl border border-green-500/20 bg-green-500/5 p-4">
                     <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-green-400">Your Advantages</div>
                     {advantages.map((a, i) => (
-                        <div key={`${a.label}-${i}`} className="flex justify-between py-1 text-[11px]">
-                            <span className="text-[#ccc]">{a.label}</span>
-                            <span className="font-mono font-bold text-green-400">{a.delta}</span>
+                        <div key={`${a.label}-${i}`} className="flex items-center justify-between py-1.5 text-[11px]">
+                            <span className="text-[#888]">{a.label}</span>
+                            <span className="inline-flex items-center gap-1.5 font-mono font-bold text-green-400">
+                                <DeltaIndicator diff={1} size={10} />
+                                {a.delta}
+                            </span>
                         </div>
                     ))}
                 </div>
             )}
 
             {vulnerabilities.length > 0 && (
-                <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-3">
+                <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-4">
                     <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-red-400">Vulnerabilities</div>
                     {vulnerabilities.map((v, i) => (
-                        <div key={`${v.label}-${i}`} className="flex justify-between py-1 text-[11px]">
-                            <span className="text-[#ccc]">{v.label}</span>
-                            <span className="font-mono font-bold text-red-400">{v.delta}</span>
+                        <div key={`${v.label}-${i}`} className="flex items-center justify-between py-1.5 text-[11px]">
+                            <span className="text-[#888]">{v.label}</span>
+                            <span className="inline-flex items-center gap-1.5 font-mono font-bold text-red-400">
+                                <DeltaIndicator diff={-1} size={10} />
+                                {v.delta}
+                            </span>
                         </div>
                     ))}
                 </div>
