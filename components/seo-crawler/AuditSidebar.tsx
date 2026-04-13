@@ -3,13 +3,14 @@ import {
     ChevronRight, CheckCircle2, AlertTriangle, ArrowRight,
     Search, PanelRightOpen, Clock, Trash2, GitCompare, ExternalLink,
     RefreshCw, BarChart3, FileText, Map as MapIcon, Globe, Sparkles,
-    MessageSquare, CheckSquare, User, Upload, Radar, Route, Bot
+    MessageSquare, CheckSquare, User, Upload, Radar, Route
 } from 'lucide-react';
 import { useSeoCrawler } from '../../contexts/SeoCrawlerContext';
 import LogFileAnalysisService from '../../services/LogFileAnalysisService';
 import ChangeMonitorService from '../../services/ChangeMonitorService';
 import MigrationPlannerService, { type MigrationMapping } from '../../services/MigrationPlannerService';
 import OverviewTab from './audit-tabs/OverviewTab';
+import CompSidebarRouter from './competitive/CompSidebarRouter';
 
 interface AuditSidebarProps {
     embedded?: boolean;
@@ -39,8 +40,7 @@ export default function AuditSidebar({ embedded = false }: AuditSidebarProps) {
         tasks, setShowCollabOverlay, setCollabOverlayTarget,
         crawlDb, addLog,
         activeSidebarSections,
-        activeViewType,
-        ownProfile, competitorProfiles
+        activeViewType
     } = useSeoCrawler();
 
     // Reset active tab if it's no longer available in the current mode
@@ -340,7 +340,7 @@ export default function AuditSidebar({ embedded = false }: AuditSidebarProps) {
                 )}
 
                 {/* TASKS TAB */}
-                {activeAuditTab === 'tasks' && (
+                {activeAuditTab === 'tasks' && activeViewType !== 'competitor_matrix' && (
                     <div className="space-y-4 animate-in fade-in duration-200">
                         <div className="flex items-center justify-between">
                             <h4 className="text-[11px] font-bold text-[#888] uppercase tracking-widest flex items-center gap-1.5">
@@ -993,109 +993,9 @@ export default function AuditSidebar({ embedded = false }: AuditSidebarProps) {
                     </div>
                 )}
 
-                {/* COMPETITIVE OVERVIEW */}
-                {activeAuditTab === 'comp_overview' && (
-                    <div className="space-y-6 animate-in fade-in duration-200">
-                        <div className="p-4 rounded-xl border border-[#F5364E]/20 bg-[#F5364E]/5">
-                            <h4 className="text-[11px] font-black text-[#F5364E] uppercase tracking-widest mb-3">Health Benchmarking</h4>
-                            <div className="space-y-4">
-                                {['SEO Health', 'Load Speed', 'Content Quality'].map(metric => (
-                                    <div key={metric} className="space-y-2">
-                                        <div className="flex justify-between text-[10px] text-[#555] uppercase font-bold">
-                                            <span>{metric}</span>
-                                            <span>AVG {Math.round(75 + Math.random() * 15)}%</span>
-                                        </div>
-                                        <div className="h-1 bg-[#1a1a1a] rounded-full overflow-hidden flex gap-1">
-                                            <div className="h-full bg-[#F5364E]" style={{ width: '40%' }} />
-                                            <div className="h-full bg-white/10" style={{ width: '60%' }} />
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-
-                        <div className="space-y-3">
-                            <h4 className="text-[11px] font-bold text-[#444] uppercase tracking-widest border-b border-[#222] pb-1">Quick Stats</h4>
-                            <div className="grid grid-cols-2 gap-2">
-                                <div className="p-3 bg-[#141414] rounded-lg border border-[#222]">
-                                    <div className="text-[9px] text-[#555] uppercase mb-1">Total Competitors</div>
-                                    <div className="text-[18px] font-black text-white">{competitorProfiles.length}</div>
-                                </div>
-                                <div className="p-3 bg-[#141414] rounded-lg border border-[#222]">
-                                    <div className="text-[9px] text-[#555] uppercase mb-1">Avg. Page Count</div>
-                                    <div className="text-[18px] font-black text-white">
-                                        {competitorProfiles.length > 0 
-                                            ? Math.round(competitorProfiles.reduce((acc, c) => acc + (c._meta?.pagesCrawled || 0), 0) / competitorProfiles.length)
-                                            : 0
-                                        }
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {/* CONTENT GAPS */}
-                {activeAuditTab === 'comp_gaps' && (
-                    <div className="space-y-6 animate-in fade-in duration-200">
-                        <div className="space-y-4">
-                            <h4 className="text-[11px] font-bold text-[#444] uppercase tracking-widest border-b border-[#222] pb-1">Value Prop Gaps</h4>
-                            {competitorProfiles.map(comp => (
-                                <div key={comp.domain} className="p-3 rounded-lg bg-[#141414] border border-[#222] hover:border-[#333] transition-colors">
-                                    <div className="text-[10px] font-bold text-[#F5364E] mb-1">{comp.businessName || comp.domain}</div>
-                                    <p className="text-[12px] text-[#888] italic leading-snug">"{comp.valueProposition || 'No value proposition detected.'}"</p>
-                                </div>
-                            ))}
-                            {competitorProfiles.length === 0 && (
-                                <div className="text-[11px] text-[#555] py-4 text-center">Add competitors to analyze content gaps.</div>
-                            )}
-                        </div>
-
-                        <div className="p-4 rounded-xl border border-blue-500/20 bg-blue-500/5">
-                            <div className="flex items-center gap-2 text-blue-400 mb-2">
-                                <Bot size={14} />
-                                <span className="text-[11px] font-bold uppercase tracking-widest">AI Opportunity</span>
-                            </div>
-                            <p className="text-[12px] text-blue-200/70 leading-relaxed">
-                                Analysis shows your site has unique strengths in <strong>technical accuracy</strong>, but competitors lead in <strong>engagement-first</strong> copy.
-                            </p>
-                        </div>
-                    </div>
-                )}
-
-                {/* AI BRIEF */}
-                {activeAuditTab === 'comp_brief' && (
-                    <div className="space-y-6 animate-in fade-in duration-200">
-                         <div className="relative p-5 bg-gradient-to-br from-[#1a1a1a] to-[#0d0d0d] rounded-2xl border border-[#222] overflow-hidden">
-                            <div className="absolute top-0 right-0 p-4 opacity-10">
-                                <Sparkles size={60} />
-                            </div>
-                            <h3 className="text-[14px] font-black text-white mb-4 flex items-center gap-2">
-                                <Sparkles size={16} className="text-[#F5364E]" />
-                                Market Intelligence Brief
-                            </h3>
-                            <div className="space-y-4 text-[13px] text-[#aaa] leading-relaxed">
-                                <p>
-                                    Your site currently maintains a <strong>{ownProfile?.contentQualityAssessment || 'Good'}</strong> content quality relative to the field. 
-                                    {competitorProfiles.length > 0 && (
-                                        <>
-                                            However, competitors like <strong>{competitorProfiles[0]?.businessName || 'Market Leaders'}</strong> are utilizing more aggressive email opt-in strategies.
-                                        </>
-                                    )}
-                                </p>
-                                <ul className="space-y-2 list-disc list-inside text-[#888] marker:text-[#F5364E]">
-                                    <li>Adopt specific value proposition messaging from top competitors.</li>
-                                    <li>Increase informational content frequency.</li>
-                                    <li>Optimize for AI discoverability via /llms.txt.</li>
-                                </ul>
-                            </div>
-                         </div>
-
-                         <div className="flex items-center gap-2 p-3 bg-[#111] rounded-lg border border-[#222] text-[10px] text-[#555]">
-                             <Bot size={12} />
-                             AI Brief generated based on {competitorProfiles.length} competitor profiles.
-                         </div>
-                    </div>
+                {/* COMPETITIVE SIDEBAR TABS */}
+                {(activeAuditTab.startsWith('comp_') || (activeAuditTab === 'tasks' && activeViewType === 'competitor_matrix')) && (
+                    <CompSidebarRouter />
                 )}
 
                 {/* ROBOTS.TXT TAB */}
