@@ -21,8 +21,10 @@ export default function CrawlerSubHeader() {
         setAutoFixItems, setShowAutoFixModal,
         setShowExportDialog,
         activeViewType,
-        setShowAddCompetitorInput, refreshAllCompetitors, crawlingCompetitorDomain
+        setShowAddCompetitorInput, refreshAllCompetitors, crawlingCompetitorDomain,
+        competitiveState, setActiveCompetitors, competitiveViewMode, setCompetitiveViewMode
     } = useSeoCrawler();
+    const { competitorProfiles, activeCompetitorDomains } = competitiveState;
 
     const detectedCms = React.useMemo(() => {
         const firstWithCms = pages.find(p => p.cmsType);
@@ -42,6 +44,11 @@ export default function CrawlerSubHeader() {
     }, [showColumnPicker, setShowColumnPicker]);
 
     const isGridView = activeViewType === 'grid';
+    const isCompetitiveMode = activeViewType === 'competitor_matrix';
+    const activeCompetitors = React.useMemo(
+        () => activeCompetitorDomains.map((domain) => competitorProfiles.get(domain)).filter(Boolean),
+        [activeCompetitorDomains, competitorProfiles]
+    );
 
     return (
         <div className="h-[44px] border-b border-[#222] bg-[#111] flex items-center justify-between px-4 shrink-0 transition-colors w-full z-[30]">
@@ -89,7 +96,7 @@ export default function CrawlerSubHeader() {
                     </div>
                 )}
 
-                {activeViewType !== 'competitor_matrix' && (
+                {!isCompetitiveMode && (
                     <>
                         <button onClick={() => setActiveMacro('all')} className={`px-2.5 py-1 rounded text-[12px] font-bold transition-colors shrink-0 ${activeMacro === 'all' ? 'bg-[#F5364E]/10 text-[#F5364E]' : 'bg-transparent text-[#888] hover:bg-[#1a1a1a] hover:text-[#ccc]'}`}>
                             All Pages ({Math.max(pages.length, crawlRuntime.crawled || 0)})
@@ -122,16 +129,38 @@ export default function CrawlerSubHeader() {
                     </>
                 )}
 
-                {activeViewType === 'competitor_matrix' && (
+                {isCompetitiveMode && (
                     <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1.5 overflow-x-auto custom-scrollbar-hidden max-w-[430px]">
+                            {activeCompetitors.map((comp: any) => {
+                                const active = activeCompetitorDomains.includes(comp.domain);
+                                return (
+                                    <button
+                                        key={comp.domain}
+                                        onClick={() => {
+                                            const next = active
+                                                ? activeCompetitorDomains.filter((domain) => domain !== comp.domain)
+                                                : [...activeCompetitorDomains, comp.domain];
+                                            setActiveCompetitors(next);
+                                        }}
+                                        className={`shrink-0 rounded-full border px-2.5 py-0.5 text-[10px] font-bold transition-colors ${
+                                            active
+                                                ? 'border-[#F5364E]/30 bg-[#F5364E]/10 text-[#F5364E]'
+                                                : 'border-[#222] bg-[#0a0a0a] text-[#888] hover:text-[#ccc]'
+                                        }`}
+                                    >
+                                        {comp.domain}
+                                    </button>
+                                );
+                            })}
+                        </div>
+
                         <button 
                           onClick={() => setShowAddCompetitorInput(true)}
                           className="flex items-center gap-1.5 px-3 py-1 bg-[#F5364E]/10 text-[#F5364E] text-[11px] font-bold rounded-lg border border-[#F5364E]/20 hover:bg-[#F5364E]/20 transition-colors"
                         >
                           <Plus size={12} /> Add Competitor
                         </button>
-                        
-                        <div className="w-px h-4 bg-[#222]" />
                         
                         <button
                           onClick={refreshAllCompetitors}
@@ -215,6 +244,35 @@ export default function CrawlerSubHeader() {
                             className={`px-3 py-1 text-[11px] font-medium rounded-sm flex items-center gap-1.5 transition-colors ${viewMode === 'charts' ? 'bg-[#222] text-white' : 'text-[#888] hover:text-[#ccc]'}`}
                         >
                             <BarChart3 size={12} /> Charts
+                        </button>
+                    </div>
+                )}
+
+                {isCompetitiveMode && (
+                    <div className="flex bg-[#0a0a0a] rounded border border-[#222] p-0.5">
+                        <button
+                            onClick={() => setCompetitiveViewMode('matrix')}
+                            className={`px-3 py-1 text-[11px] font-medium rounded-sm flex items-center gap-1.5 transition-colors ${
+                                competitiveViewMode === 'matrix' ? 'bg-[#222] text-white' : 'text-[#888] hover:text-[#ccc]'
+                            }`}
+                        >
+                            <List size={12} /> Grid
+                        </button>
+                        <button
+                            onClick={() => setCompetitiveViewMode('charts')}
+                            className={`px-3 py-1 text-[11px] font-medium rounded-sm flex items-center gap-1.5 transition-colors ${
+                                competitiveViewMode === 'charts' ? 'bg-[#222] text-white' : 'text-[#888] hover:text-[#ccc]'
+                            }`}
+                        >
+                            <BarChart3 size={12} /> Charts
+                        </button>
+                        <button
+                            onClick={() => setCompetitiveViewMode('map')}
+                            className={`px-3 py-1 text-[11px] font-medium rounded-sm flex items-center gap-1.5 transition-colors ${
+                                competitiveViewMode === 'map' ? 'bg-[#222] text-white' : 'text-[#888] hover:text-[#ccc]'
+                            }`}
+                        >
+                            <MapIcon size={12} /> Map
                         </button>
                     </div>
                 )}

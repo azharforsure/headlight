@@ -1,17 +1,29 @@
-import React, { useMemo } from 'react';
-import { AlertTriangle, TrendingDown, TrendingUp } from 'lucide-react';
+import React, { useMemo, useEffect, useState } from 'react';
+import { AlertTriangle, ShieldAlert, TrendingDown, TrendingUp, Zap } from 'lucide-react';
 import { useSeoCrawler } from '../../../contexts/SeoCrawlerContext';
+import { useOptionalProject } from '../../../services/ProjectContext';
 import type { CompetitorProfile } from '../../../services/CompetitorMatrixConfig';
+import { getCompetitorAlerts, getRankShiftAlerts } from '../../../services/CrawlerBridgeService';
 import ThreatMeter from './shared/ThreatMeter';
 
 export default function CompThreatsTab() {
     const { competitiveState } = useSeoCrawler();
+    const projectContext = useOptionalProject();
+    const activeProject = projectContext?.activeProject || null;
     const { ownProfile, competitorProfiles, activeCompetitorDomains } = competitiveState;
+    const [compAlerts, setCompAlerts] = useState<any[]>([]);
+    const [rankAlerts, setRankAlerts] = useState<any[]>([]);
 
     const activeComps = useMemo(
         () => activeCompetitorDomains.map((d) => competitorProfiles.get(d)).filter(Boolean) as CompetitorProfile[],
         [activeCompetitorDomains, competitorProfiles]
     );
+
+    useEffect(() => {
+        if (!activeProject?.id) return;
+        getCompetitorAlerts(activeProject.id).then(setCompAlerts).catch(() => setCompAlerts([]));
+        getRankShiftAlerts(activeProject.id).then(setRankAlerts).catch(() => setRankAlerts([]));
+    }, [activeProject?.id]);
 
     const heatmapData = useMemo(
         () =>
@@ -140,6 +152,58 @@ export default function CompThreatsTab() {
                     )}
                 </div>
             ))}
+
+            <div className="rounded-xl border border-[#222] bg-[#0d0d0f] p-3">
+                <div className="mb-3 flex items-center gap-2">
+                    <ShieldAlert size={12} className="text-orange-400" />
+                    <span className="text-[11px] font-bold text-white">Competitive Intelligence</span>
+                </div>
+                <div className="space-y-2">
+                    {compAlerts.length === 0 ? (
+                        <div className="rounded border border-dashed border-[#222] py-6 text-center text-[11px] text-[#444]">
+                            No recent competitor moves detected.
+                        </div>
+                    ) : (
+                        compAlerts.slice(0, 5).map((alert) => (
+                            <div key={alert.id} className="rounded border border-[#1a1a1e] bg-[#0a0a0a] p-2.5">
+                                <div className="mb-1 flex items-start justify-between gap-2">
+                                    <span className="text-[11px] font-bold text-white">{alert.competitor}</span>
+                                    <span className={`rounded px-1.5 py-0.5 text-[8px] font-bold uppercase ${
+                                        alert.priority === 'Critical' ? 'bg-red-500/10 text-red-500' : 'bg-orange-500/10 text-orange-500'
+                                    }`}>
+                                        {alert.priority}
+                                    </span>
+                                </div>
+                                <p className="text-[11px] text-[#888]">{alert.description}</p>
+                            </div>
+                        ))
+                    )}
+                </div>
+            </div>
+
+            <div className="rounded-xl border border-[#222] bg-[#0d0d0f] p-3">
+                <div className="mb-3 flex items-center gap-2">
+                    <Zap size={12} className="text-blue-400" />
+                    <span className="text-[11px] font-bold text-white">Rank Guard Alerts</span>
+                </div>
+                <div className="space-y-2">
+                    {rankAlerts.length === 0 ? (
+                        <div className="rounded border border-dashed border-[#222] py-6 text-center text-[11px] text-[#444]">
+                            Rankings are currently stable.
+                        </div>
+                    ) : (
+                        rankAlerts.slice(0, 5).map((alert) => (
+                            <div key={alert.id} className="rounded border border-[#1a1a1e] bg-[#0a0a0a] p-2.5">
+                                <div className="mb-1 flex items-center gap-1.5">
+                                    <Zap size={10} className="text-blue-400" />
+                                    <span className="text-[11px] font-bold text-white">{alert.title}</span>
+                                </div>
+                                <p className="text-[11px] text-[#888]">{alert.description}</p>
+                            </div>
+                        ))
+                    )}
+                </div>
+            </div>
         </div>
     );
 }

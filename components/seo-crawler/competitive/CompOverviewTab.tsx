@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { COMPARISON_ROWS, type CompetitorProfile } from '../../../services/CompetitorMatrixConfig';
 import { useSeoCrawler } from '../../../contexts/SeoCrawlerContext';
 import CompScoreCard from './shared/CompScoreCard';
@@ -74,11 +74,17 @@ function qualityToScore(value: CompetitorProfile['contentQualityAssessment']): n
 export default function CompOverviewTab() {
     const { competitiveState } = useSeoCrawler();
     const { ownProfile, competitorProfiles, activeCompetitorDomains } = competitiveState;
+    const [selectedDomain, setSelectedDomain] = useState<string>('');
 
     const activeComps = useMemo(
         () => activeCompetitorDomains.map((d) => competitorProfiles.get(d)).filter(Boolean) as CompetitorProfile[],
         [activeCompetitorDomains, competitorProfiles]
     );
+
+    const selectedComp = useMemo(() => {
+        if (activeComps.length === 0) return null;
+        return activeComps.find((comp) => comp.domain === selectedDomain) || activeComps[0];
+    }, [activeComps, selectedDomain]);
 
     const overallThreat = useMemo<'Critical' | 'High' | 'Moderate' | 'Low'>(() => {
         const levels = activeComps.map((c) => c.threatLevel).filter(Boolean);
@@ -218,6 +224,52 @@ export default function CompOverviewTab() {
                             <span className="font-mono font-bold text-red-400">{v.delta}</span>
                         </div>
                     ))}
+                </div>
+            )}
+
+            {ownProfile && selectedComp && (
+                <div className="rounded-xl border border-[#222] bg-[#0d0d0f] p-3">
+                    <div className="mb-2 flex items-center justify-between">
+                        <div className="text-[10px] font-bold uppercase tracking-wider text-[#666]">Current Delta Snapshot</div>
+                        <select
+                            value={selectedComp.domain}
+                            onChange={(e) => setSelectedDomain(e.target.value)}
+                            className="h-[24px] rounded border border-[#222] bg-[#111] px-2 text-[10px] text-[#ccc] focus:outline-none"
+                        >
+                            {activeComps.map((comp) => (
+                                <option key={comp.domain} value={comp.domain}>
+                                    {comp.domain}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                    <div className="space-y-1">
+                        {[
+                            { label: 'Organic Traffic', own: ownProfile.estimatedOrganicTraffic, comp: selectedComp.estimatedOrganicTraffic },
+                            { label: 'Referring Domains', own: ownProfile.referringDomains, comp: selectedComp.referringDomains },
+                            { label: 'Indexable Pages', own: ownProfile.totalIndexablePages, comp: selectedComp.totalIndexablePages },
+                            { label: 'Tech Health', own: ownProfile.techHealthScore, comp: selectedComp.techHealthScore },
+                            { label: 'CWV Pass Rate', own: ownProfile.cwvPassRate, comp: selectedComp.cwvPassRate },
+                        ].map((metric) => {
+                            const ownVal = Number(metric.own || 0);
+                            const compVal = Number(metric.comp || 0);
+                            const delta = ownVal - compVal;
+                            return (
+                                <div key={metric.label} className="flex items-center justify-between text-[10px]">
+                                    <span className="text-[#888]">{metric.label}</span>
+                                    <div className="flex items-center gap-2 font-mono">
+                                        <span className="text-white">{ownVal.toLocaleString()}</span>
+                                        <span className="text-[#444]">vs</span>
+                                        <span className="text-[#aaa]">{compVal.toLocaleString()}</span>
+                                        <span className={delta >= 0 ? 'text-green-400' : 'text-red-400'}>
+                                            {delta >= 0 ? '+' : ''}
+                                            {delta.toLocaleString()}
+                                        </span>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
                 </div>
             )}
         </div>

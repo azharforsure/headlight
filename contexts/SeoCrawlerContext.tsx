@@ -4194,14 +4194,37 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
     const buildOwnProfile = useCallback(() => {
       if (!pages || pages.length === 0) return;
       let ownDomain = '';
-      try {
-        ownDomain = new URL(pages[0]?.url || '').hostname.replace(/^www\./, '');
-      } catch { /* ignore */ }
+
+      // Find the first valid crawled URL instead of assuming pages[0] is valid.
+      for (const page of pages) {
+        const rawUrl = page?.finalUrl || page?.url;
+        if (!rawUrl) continue;
+        try {
+          ownDomain = new URL(String(rawUrl)).hostname.replace(/^www\./, '').toLowerCase();
+          if (ownDomain) break;
+        } catch {
+          // Skip malformed URLs and keep scanning.
+        }
+      }
+
+      // Fallback to active project metadata if crawl rows are malformed/incomplete.
+      if (!ownDomain) {
+        try {
+          if (activeProject?.domain) {
+            ownDomain = String(activeProject.domain).replace(/^www\./, '').toLowerCase();
+          } else if (activeProject?.url) {
+            ownDomain = new URL(String(activeProject.url)).hostname.replace(/^www\./, '').toLowerCase();
+          }
+        } catch {
+          // Leave empty and bail below.
+        }
+      }
+
       if (!ownDomain) return;
 
       const profile = CompetitorProfileBuilder.fromCrawlPages(ownDomain, pages);
       setCompetitiveState(prev => ({ ...prev, ownProfile: profile }));
-    }, [pages]);
+    }, [pages, activeProject?.domain, activeProject?.url]);
 
     const addCompetitorAndCrawl = useCallback(async (competitorUrl: string) => {
       let domain: string;

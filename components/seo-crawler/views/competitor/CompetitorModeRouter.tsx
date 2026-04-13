@@ -1,14 +1,12 @@
 import { useSeoCrawler } from '../../../../contexts/SeoCrawlerContext';
-import CompetitorToolbar from './CompetitorToolbar';
 import CompetitorMatrixGrid from './CompetitorMatrixGrid';
 import CompetitorChartsView from './CompetitorChartsView';
-import CompetitorBattlefieldView from './CompetitorBattlefieldView';
-import CompetitorTimelineView from './CompetitorTimelineView';
-import CompetitorBriefView from './CompetitorBriefView';
+import CompetitorMapView from './CompetitorMapView';
 import CompetitorEmptyState from './CompetitorEmptyState';
+import AddCompetitorModal from './AddCompetitorModal';
 
 export default function CompetitorModeRouter() {
-  const { competitiveViewMode, competitiveState, pages } = useSeoCrawler();
+  const { competitiveViewMode, competitiveState, pages, showAddCompetitorInput, setShowAddCompetitorInput } = useSeoCrawler();
   const { ownProfile, competitorProfiles } = competitiveState;
 
   // If no profiles at all and no crawl data, show empty state
@@ -30,21 +28,22 @@ export default function CompetitorModeRouter() {
 
   const renderView = () => {
     switch (competitiveViewMode) {
-      case 'matrix':      return <CompetitorMatrixGrid />;
-      case 'charts':      return <CompetitorChartsView />;
-      case 'battlefield': return <CompetitorBattlefieldView />;
-      case 'timeline':    return <CompetitorTimelineView />;
-      case 'brief':       return <CompetitorBriefView />;
-      default:            return <CompetitorMatrixGrid />;
+      case 'matrix': return <CompetitorMatrixGrid />;
+      case 'charts': return <CompetitorChartsView />;
+      case 'map': return <CompetitorMapView />;
+      default: return <CompetitorMatrixGrid />;
     }
   };
 
   return (
     <div className="flex-1 flex flex-col bg-[#0a0a0a] overflow-hidden">
-      <CompetitorToolbar />
       <div className="flex-1 overflow-hidden">
         {renderView()}
       </div>
+      <AddCompetitorModal
+        isOpen={showAddCompetitorInput}
+        onClose={() => setShowAddCompetitorInput(false)}
+      />
     </div>
   );
 }

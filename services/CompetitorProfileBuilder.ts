@@ -151,6 +151,16 @@ export class CompetitorProfileBuilder {
        if (rootPage.socialLinks.instagram) profile.instagramUrl = `https://instagram.com/${domain}`;
        if (rootPage.socialLinks.youtube) profile.youtubeUrl = `https://youtube.com/${domain}`;
     }
+    profile.socialTotalFollowers =
+      (profile.facebookFans || 0) +
+      (profile.twitterFollowers || 0) +
+      (profile.youtubeSubscribers || 0) +
+      (profile.instagramFollowers || 0);
+    const socialActivity =
+      (profile.facebookUpdatesPerMonth || 0) +
+      (profile.twitterUpdatesPerMonth || 0) +
+      (profile.youtubeUpdatesPerMonth || 0);
+    profile.socialGrowthRate = socialActivity > 0 ? Math.min(100, socialActivity * 2) : null;
 
     profile._meta = {
       crawledAt: Date.now(),
@@ -193,6 +203,14 @@ export class CompetitorProfileBuilder {
     if (profile.keywordsInTop10 && pages.length > 0) {
       profile.shareOfVoice = Math.min(100, Math.round((profile.keywordsInTop10 / pages.length) * 100));
     }
+    profile.keywordOverlapPct = profile.totalRankingKeywords
+      ? Math.round(((profile.keywordsInTop10 || 0) / Math.max(1, profile.totalRankingKeywords)) * 100)
+      : null;
+    profile.topGrowingKeywords = pagesWithPosition
+      .sort((a, b) => (b.sessionsDelta || 0) - (a.sessionsDelta || 0))
+      .map((p) => p.mainKeyword)
+      .filter(Boolean)
+      .slice(0, 3) as string[];
 
     // ── Content Depth & Quality ──
     const indexablePages = pages.filter(p => p.indexable !== false && p.statusCode === 200 && p.isHtmlPage);
@@ -251,6 +269,30 @@ export class CompetitorProfileBuilder {
       p.schemaTypes?.includes('HowTo') ||
       p.hasQuestionFormat
     ).length || null;
+    profile.recentNewPages = indexablePages.filter((p) => {
+      const ts = Date.parse(p.visibleDate || '');
+      return Number.isFinite(ts) && ts >= (Date.now() - 30 * 24 * 60 * 60 * 1000);
+    }).length || null;
+    const pageAges = indexablePages
+      .map((p) => Date.parse(p.visibleDate || p.lastModified || ''))
+      .filter((ts) => Number.isFinite(ts))
+      .map((ts) => (Date.now() - ts) / (30 * 24 * 60 * 60 * 1000));
+    profile.averagePageAge = pageAges.length > 0
+      ? Math.round(pageAges.reduce((sum, age) => sum + age, 0) / pageAges.length)
+      : null;
+    if (indexablePages.length > 0) {
+      const recent90 = indexablePages.filter((p) => {
+        const ts = Date.parse(p.visibleDate || p.lastModified || '');
+        return Number.isFinite(ts) && ts >= (Date.now() - 90 * 24 * 60 * 60 * 1000);
+      }).length;
+      const older90 = indexablePages.filter((p) => {
+        const ts = Date.parse(p.visibleDate || p.lastModified || '');
+        return Number.isFinite(ts) && ts < (Date.now() - 90 * 24 * 60 * 60 * 1000);
+      }).length;
+      if (older90 > 0) {
+        profile.contentVelocityTrend = Math.round(((recent90 - older90) / older90) * 100);
+      }
+    }
 
     // ── Technical Health ──
     const techScores = indexablePages.map(p => p.techHealthScore).filter((s): s is number => s !== null && s !== undefined);
@@ -591,4 +633,3 @@ Return a JSON object with this exact structure:
     }
   }
 }
-

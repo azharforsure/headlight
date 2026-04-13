@@ -40,6 +40,7 @@ export default function AddCompetitorModal({ isOpen, onClose }: Props) {
     if (!domain) return;
     setUrlInput('');
     await addCompetitorAndCrawl(domain);
+    onClose();
   };
 
   const handleAddBulk = async () => {
@@ -52,6 +53,7 @@ export default function AddCompetitorModal({ isOpen, onClose }: Props) {
     }
     setBulkUrls('');
     setBulkMode(false);
+    onClose();
   };
 
   const handleAutoDiscover = async () => {
@@ -73,6 +75,7 @@ export default function AddCompetitorModal({ isOpen, onClose }: Props) {
     }
     setSelectedDiscovered(new Set());
     setDiscovered([]);
+    onClose();
   };
 
   const toggleDiscoveredSelection = (domain: string) => {

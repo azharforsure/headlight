@@ -90,6 +90,8 @@ export interface CompetitorProfile {
   youtubeSubscribers: number | null;
   youtubeVideosOver100Views: number | null;
   youtubeUpdatesPerMonth: number | null;
+  socialTotalFollowers: number | null;
+  socialGrowthRate: number | null;
 
   // ─── Social: Instagram ───
   instagramUrl: string | null;
@@ -111,7 +113,9 @@ export interface CompetitorProfile {
   avgOrganicPosition: number | null;
   brandedTrafficPct: number | null;          // 0-100
   shareOfVoice: number | null;              // 0-100 (% of shared keywords you win)
+  keywordOverlapPct: number | null;          // 0-100 (% of their ranking keywords you also rank for)
   serpFeatureCount: number | null;
+  topGrowingKeywords: string[] | null;
 
   // ─── Content Depth & Quality (consolidated) ───
   totalIndexablePages: number | null;
@@ -123,6 +127,9 @@ export interface CompetitorProfile {
   thinContentPct: number | null;            // 0-100 (pages < 300 words)
   schemaCoveragePct: number | null;          // 0-100
   faqHowToCount: number | null;
+  recentNewPages: number | null;
+  averagePageAge: number | null;             // months
+  contentVelocityTrend: number | null;       // +/- % publishing speed delta
 
   // ─── Technical Health (consolidated) ───
   techHealthScore: number | null;            // 0-100
@@ -182,36 +189,28 @@ export interface ComparisonRowDef {
 }
 
 export const COMPARISON_CATEGORIES = [
-  'Business Intelligence',
+  'Business Profile',
   'Search Visibility',
-  'Content Depth & Quality',
+  'Content',
   'Technical Health',
+  'Authority & Links',
   'AI Discoverability',
   'User Experience & Conversion',
-  'Content Strategy',
-  'Top Content Pages',
-  'On-Page SEO',
-  'Authority & Links',
-  'E-commerce',
-  'Lead Generation',
+  'Social Media',
+  'Paid & Advertising',
+  'E-commerce & Pricing',
   'Local SEO',
-  'Paid / Advertising',
-  'Facebook',
-  'Twitter / X',
-  'YouTube',
-  'Instagram',
-  'Tech Stack',
   'Threat & Opportunity'
 ] as const;
 
 
 export const COMPARISON_ROWS: ComparisonRowDef[] = [
   // Business Intelligence
-  { id: 'bi-domain', category: 'Business Intelligence', label: 'Domain URL', profileKey: 'domain', format: 'url', source: 'crawl' },
-  { id: 'bi-name', category: 'Business Intelligence', label: 'Business Name', profileKey: 'businessName', format: 'text', source: 'ai' },
-  { id: 'bi-age', category: 'Business Intelligence', label: 'Domain Age (years)', profileKey: 'domainAge', format: 'number', source: 'manual', tooltip: 'WHOIS data — enter manually or import' },
-  { id: 'bi-value-prop', category: 'Business Intelligence', label: 'Value Proposition', profileKey: 'valueProposition', format: 'manual_text', source: 'ai', isManualEntry: true },
-  { id: 'bi-employees', category: 'Business Intelligence', label: 'Employee Count Estimate', profileKey: 'employeeCountEstimate', format: 'text', source: 'ai' },
+  { id: 'bi-domain', category: 'Business Profile', label: 'Domain URL', profileKey: 'domain', format: 'url', source: 'crawl' },
+  { id: 'bi-name', category: 'Business Profile', label: 'Business Name', profileKey: 'businessName', format: 'text', source: 'ai' },
+  { id: 'bi-age', category: 'Business Profile', label: 'Domain Age (years)', profileKey: 'domainAge', format: 'number', source: 'manual', tooltip: 'WHOIS data — enter manually or import' },
+  { id: 'bi-value-prop', category: 'Business Profile', label: 'Value Proposition', profileKey: 'valueProposition', format: 'manual_text', source: 'ai', isManualEntry: true },
+  { id: 'bi-employees', category: 'Business Profile', label: 'Employee Count Estimate', profileKey: 'employeeCountEstimate', format: 'text', source: 'ai' },
 
   // ─── Search Visibility ───
   { id: 'sv-organic-traffic', category: 'Search Visibility', label: 'Estimated Organic Traffic', profileKey: 'estimatedOrganicTraffic', format: 'number', source: 'gsc' },
@@ -223,18 +222,23 @@ export const COMPARISON_ROWS: ComparisonRowDef[] = [
   { id: 'sv-avg-pos', category: 'Search Visibility', label: 'Avg. Organic Position', profileKey: 'avgOrganicPosition', format: 'number', source: 'gsc' },
   { id: 'sv-branded-pct', category: 'Search Visibility', label: 'Branded Traffic %', profileKey: 'brandedTrafficPct', format: 'number', source: 'gsc', tooltip: 'Percentage of clicks from branded queries' },
   { id: 'sv-sov', category: 'Search Visibility', label: 'Share of Voice (overlap KWs)', profileKey: 'shareOfVoice', format: 'score_100', source: 'gsc', tooltip: '% of shared keywords where you outrank this competitor' },
+  { id: 'sv-keyword-overlap', category: 'Search Visibility', label: 'Keyword Overlap %', profileKey: 'keywordOverlapPct', format: 'number', source: 'gsc' },
   { id: 'sv-serp-features', category: 'Search Visibility', label: 'SERP Features Owned', profileKey: 'serpFeatureCount', format: 'number', source: 'gsc' },
+  { id: 'sv-top-growing-kws', category: 'Search Visibility', label: 'Top Growing Keywords', profileKey: 'topGrowingKeywords', format: 'list', source: 'gsc' },
 
   // ─── Content Depth & Quality ───
-  { id: 'cd-total-pages', category: 'Content Depth & Quality', label: 'Total Indexable Pages', profileKey: 'totalIndexablePages', format: 'number', source: 'crawl' },
-  { id: 'cd-avg-length', category: 'Content Depth & Quality', label: 'Avg. Content Length (words)', profileKey: 'avgContentLength', format: 'number', source: 'crawl' },
-  { id: 'cd-freshness', category: 'Content Depth & Quality', label: 'Content Freshness Score', profileKey: 'contentFreshnessScore', format: 'score_100', source: 'crawl', tooltip: '% of pages updated in last 6 months' },
-  { id: 'cd-topics', category: 'Content Depth & Quality', label: 'Topic Coverage Breadth', profileKey: 'topicCoverageBreadth', format: 'number', source: 'ai', tooltip: 'Number of unique topic clusters' },
-  { id: 'cd-efficiency', category: 'Content Depth & Quality', label: 'Content Efficiency', profileKey: 'contentEfficiency', format: 'number', source: 'gsc', tooltip: 'Organic traffic ÷ indexable pages' },
-  { id: 'cd-duplicate-pct', category: 'Content Depth & Quality', label: 'Duplicate Content %', profileKey: 'duplicateContentPct', format: 'number', source: 'crawl' },
-  { id: 'cd-thin-pct', category: 'Content Depth & Quality', label: 'Thin Content %', profileKey: 'thinContentPct', format: 'number', source: 'crawl', tooltip: 'Pages with < 300 words' },
-  { id: 'cd-schema-pct', category: 'Content Depth & Quality', label: 'Schema Markup Coverage %', profileKey: 'schemaCoveragePct', format: 'number', source: 'crawl' },
-  { id: 'cd-faq-count', category: 'Content Depth & Quality', label: 'FAQ / How-To Content Count', profileKey: 'faqHowToCount', format: 'number', source: 'crawl' },
+  { id: 'cd-total-pages', category: 'Content', label: 'Total Indexable Pages', profileKey: 'totalIndexablePages', format: 'number', source: 'crawl' },
+  { id: 'cd-avg-length', category: 'Content', label: 'Avg. Content Length (words)', profileKey: 'avgContentLength', format: 'number', source: 'crawl' },
+  { id: 'cd-freshness', category: 'Content', label: 'Content Freshness Score', profileKey: 'contentFreshnessScore', format: 'score_100', source: 'crawl', tooltip: '% of pages updated in last 6 months' },
+  { id: 'cd-topics', category: 'Content', label: 'Topic Coverage Breadth', profileKey: 'topicCoverageBreadth', format: 'number', source: 'ai', tooltip: 'Number of unique topic clusters' },
+  { id: 'cd-efficiency', category: 'Content', label: 'Content Efficiency', profileKey: 'contentEfficiency', format: 'number', source: 'gsc', tooltip: 'Organic traffic ÷ indexable pages' },
+  { id: 'cd-duplicate-pct', category: 'Content', label: 'Duplicate Content %', profileKey: 'duplicateContentPct', format: 'number', source: 'crawl' },
+  { id: 'cd-thin-pct', category: 'Content', label: 'Thin Content %', profileKey: 'thinContentPct', format: 'number', source: 'crawl', tooltip: 'Pages with < 300 words' },
+  { id: 'cd-schema-pct', category: 'Content', label: 'Schema Markup Coverage %', profileKey: 'schemaCoveragePct', format: 'number', source: 'crawl' },
+  { id: 'cd-faq-count', category: 'Content', label: 'FAQ / How-To Content Count', profileKey: 'faqHowToCount', format: 'number', source: 'crawl' },
+  { id: 'cd-recent-new-pages', category: 'Content', label: 'Recent New Pages (30d)', profileKey: 'recentNewPages', format: 'number', source: 'crawl' },
+  { id: 'cd-average-page-age', category: 'Content', label: 'Average Page Age (months)', profileKey: 'averagePageAge', format: 'number', source: 'crawl' },
+  { id: 'cd-content-velocity-trend', category: 'Content', label: 'Content Velocity Trend %', profileKey: 'contentVelocityTrend', format: 'number', source: 'crawl' },
 
   // ─── Technical Health ───
   { id: 'th-score', category: 'Technical Health', label: 'Technical Health Score', profileKey: 'techHealthScore', format: 'score_100', source: 'crawl' },
@@ -262,41 +266,41 @@ export const COMPARISON_ROWS: ComparisonRowDef[] = [
   { id: 'ux-trust', category: 'User Experience & Conversion', label: 'Trust Signal Score', profileKey: 'trustSignalScore', format: 'score_100', source: 'crawl' },
 
   // Content Strategy
-  { id: 'cs-blog-url', category: 'Content Strategy', label: 'Blog URL', profileKey: 'blogUrl', format: 'url', source: 'crawl' },
-  { id: 'cs-blog-active', category: 'Content Strategy', label: 'Actively Creating Blog Content?', profileKey: 'isActivelyBlogging', format: 'boolean', source: 'crawl' },
-  { id: 'cs-quality', category: 'Content Strategy', label: 'Overall Content Quality', profileKey: 'contentQualityAssessment', format: 'text', source: 'ai' },
-  { id: 'cs-posts-month', category: 'Content Strategy', label: 'Blog Posts Per Month (Past Year)', profileKey: 'blogPostsPerMonth', format: 'number', source: 'crawl' },
-  { id: 'cs-avg-images', category: 'Content Strategy', label: 'Avg Images Per Article', profileKey: 'avgImagesPerArticle', format: 'number', source: 'crawl' },
-  { id: 'cs-embed-video', category: 'Content Strategy', label: 'Embedding Video in Articles?', profileKey: 'embedsVideoInArticles', format: 'boolean', source: 'crawl' },
-  { id: 'cs-avg-words', category: 'Content Strategy', label: 'Avg Words Per Article', profileKey: 'avgWordsPerArticle', format: 'number', source: 'crawl' },
-  { id: 'cs-top-type', category: 'Content Strategy', label: 'Top Content Type by Shares', profileKey: 'topContentTypeByShares', format: 'text', source: 'manual' },
-  { id: 'cs-avg-backlinks', category: 'Content Strategy', label: 'Avg Referring Domains to Content Pages', profileKey: 'avgRefDomainsToContentPages', format: 'number', source: 'backlinks' },
+  { id: 'cs-blog-url', category: 'Content', label: 'Blog URL', profileKey: 'blogUrl', format: 'url', source: 'crawl' },
+  { id: 'cs-blog-active', category: 'Content', label: 'Actively Creating Blog Content?', profileKey: 'isActivelyBlogging', format: 'boolean', source: 'crawl' },
+  { id: 'cs-quality', category: 'Content', label: 'Overall Content Quality', profileKey: 'contentQualityAssessment', format: 'text', source: 'ai' },
+  { id: 'cs-posts-month', category: 'Content', label: 'Blog Posts Per Month (Past Year)', profileKey: 'blogPostsPerMonth', format: 'number', source: 'crawl' },
+  { id: 'cs-avg-images', category: 'Content', label: 'Avg Images Per Article', profileKey: 'avgImagesPerArticle', format: 'number', source: 'crawl' },
+  { id: 'cs-embed-video', category: 'Content', label: 'Embedding Video in Articles?', profileKey: 'embedsVideoInArticles', format: 'boolean', source: 'crawl' },
+  { id: 'cs-avg-words', category: 'Content', label: 'Avg Words Per Article', profileKey: 'avgWordsPerArticle', format: 'number', source: 'crawl' },
+  { id: 'cs-top-type', category: 'Content', label: 'Top Content Type by Shares', profileKey: 'topContentTypeByShares', format: 'text', source: 'manual' },
+  { id: 'cs-avg-backlinks', category: 'Content', label: 'Avg Referring Domains to Content Pages', profileKey: 'avgRefDomainsToContentPages', format: 'number', source: 'backlinks' },
 
   // Top Content Pages
-  { id: 'tp-blog-1', category: 'Top Content Pages', label: 'Top Blog Page #1', profileKey: 'topBlogPages.0.url', format: 'url', source: 'crawl' },
-  { id: 'tp-blog-2', category: 'Top Content Pages', label: 'Top Blog Page #2', profileKey: 'topBlogPages.1.url', format: 'url', source: 'crawl' },
-  { id: 'tp-blog-3', category: 'Top Content Pages', label: 'Top Blog Page #3', profileKey: 'topBlogPages.2.url', format: 'url', source: 'crawl' },
-  { id: 'tp-ecom-1', category: 'Top Content Pages', label: 'Top Ecom Page #1 (excl. homepage)', profileKey: 'topEcomPages.0.url', format: 'url', source: 'crawl' },
-  { id: 'tp-ecom-2', category: 'Top Content Pages', label: 'Top Ecom Page #2 (excl. homepage)', profileKey: 'topEcomPages.1.url', format: 'url', source: 'crawl' },
-  { id: 'tp-ecom-3', category: 'Top Content Pages', label: 'Top Ecom Page #3 (excl. homepage)', profileKey: 'topEcomPages.2.url', format: 'url', source: 'crawl' },
-  { id: 'tp-shares-1', category: 'Top Content Pages', label: 'Shares Top Content #1', profileKey: 'topContentShareCounts.0.shares', format: 'number', source: 'manual' },
-  { id: 'tp-shares-2', category: 'Top Content Pages', label: 'Shares Top Content #2', profileKey: 'topContentShareCounts.1.shares', format: 'number', source: 'manual' },
-  { id: 'tp-shares-3', category: 'Top Content Pages', label: 'Shares Top Content #3', profileKey: 'topContentShareCounts.2.shares', format: 'number', source: 'manual' },
+  { id: 'tp-blog-1', category: 'Authority & Links', label: 'Top Blog Page #1', profileKey: 'topBlogPages.0.url', format: 'url', source: 'crawl' },
+  { id: 'tp-blog-2', category: 'Authority & Links', label: 'Top Blog Page #2', profileKey: 'topBlogPages.1.url', format: 'url', source: 'crawl' },
+  { id: 'tp-blog-3', category: 'Authority & Links', label: 'Top Blog Page #3', profileKey: 'topBlogPages.2.url', format: 'url', source: 'crawl' },
+  { id: 'tp-ecom-1', category: 'Authority & Links', label: 'Top Ecom Page #1 (excl. homepage)', profileKey: 'topEcomPages.0.url', format: 'url', source: 'crawl' },
+  { id: 'tp-ecom-2', category: 'Authority & Links', label: 'Top Ecom Page #2 (excl. homepage)', profileKey: 'topEcomPages.1.url', format: 'url', source: 'crawl' },
+  { id: 'tp-ecom-3', category: 'Authority & Links', label: 'Top Ecom Page #3 (excl. homepage)', profileKey: 'topEcomPages.2.url', format: 'url', source: 'crawl' },
+  { id: 'tp-shares-1', category: 'Authority & Links', label: 'Shares Top Content #1', profileKey: 'topContentShareCounts.0.shares', format: 'number', source: 'manual' },
+  { id: 'tp-shares-2', category: 'Authority & Links', label: 'Shares Top Content #2', profileKey: 'topContentShareCounts.1.shares', format: 'number', source: 'manual' },
+  { id: 'tp-shares-3', category: 'Authority & Links', label: 'Shares Top Content #3', profileKey: 'topContentShareCounts.2.shares', format: 'number', source: 'manual' },
 
   // On-Page SEO
-  { id: 'seo-avg-words', category: 'On-Page SEO', label: 'Product Page Avg Word Count', profileKey: 'productPageAvgWordCount', format: 'number', source: 'crawl' },
-  { id: 'seo-quality', category: 'On-Page SEO', label: 'On-Page SEO Quality (H-tags, links, images)', profileKey: 'onPageSeoQuality', format: 'text', source: 'crawl' },
-  { id: 'seo-schema', category: 'On-Page SEO', label: 'Schema on Product Pages?', profileKey: 'hasSchemaOnProducts', format: 'boolean', source: 'crawl' },
-  { id: 'seo-lp', category: 'On-Page SEO', label: 'Targeted Landing Pages for Keywords?', profileKey: 'hasTargetedLandingPages', format: 'boolean', source: 'crawl' },
+  { id: 'seo-avg-words', category: 'Technical Health', label: 'Product Page Avg Word Count', profileKey: 'productPageAvgWordCount', format: 'number', source: 'crawl' },
+  { id: 'seo-quality', category: 'Technical Health', label: 'On-Page SEO Quality (H-tags, links, images)', profileKey: 'onPageSeoQuality', format: 'text', source: 'crawl' },
+  { id: 'seo-schema', category: 'Technical Health', label: 'Schema on Product Pages?', profileKey: 'hasSchemaOnProducts', format: 'boolean', source: 'crawl' },
+  { id: 'seo-lp', category: 'Technical Health', label: 'Targeted Landing Pages for Keywords?', profileKey: 'hasTargetedLandingPages', format: 'boolean', source: 'crawl' },
 
   // E-commerce
-  { id: 'ec-same-products', category: 'E-commerce', label: 'Same Products/Services?', profileKey: 'offersSameProducts', format: 'manual_boolean', source: 'manual', isManualEntry: true },
-  { id: 'ec-pricing', category: 'E-commerce', label: 'Pricing Comparison', profileKey: 'pricingComparison', format: 'manual_text', source: 'manual', isManualEntry: true },
-  { id: 'ec-shipping', category: 'E-commerce', label: 'Shipping Offers', profileKey: 'shippingOffers', format: 'manual_text', source: 'manual', isManualEntry: true },
+  { id: 'ec-same-products', category: 'E-commerce & Pricing', label: 'Same Products/Services?', profileKey: 'offersSameProducts', format: 'manual_boolean', source: 'manual', isManualEntry: true },
+  { id: 'ec-pricing', category: 'E-commerce & Pricing', label: 'Pricing Comparison', profileKey: 'pricingComparison', format: 'manual_text', source: 'manual', isManualEntry: true },
+  { id: 'ec-shipping', category: 'E-commerce & Pricing', label: 'Shipping Offers', profileKey: 'shippingOffers', format: 'manual_text', source: 'manual', isManualEntry: true },
 
   // Lead Generation
-  { id: 'lg-optin', category: 'Lead Generation', label: 'Email Opt-In on Site?', profileKey: 'hasEmailOptIn', format: 'boolean', source: 'crawl' },
-  { id: 'lg-offer', category: 'Lead Generation', label: 'Opt-In Offer', profileKey: 'optInOffer', format: 'text', source: 'ai' },
+  { id: 'lg-optin', category: 'User Experience & Conversion', label: 'Email Opt-In on Site?', profileKey: 'hasEmailOptIn', format: 'boolean', source: 'crawl' },
+  { id: 'lg-offer', category: 'User Experience & Conversion', label: 'Opt-In Offer', profileKey: 'optInOffer', format: 'text', source: 'ai' },
 
   // Local SEO
   { id: 'loc-rank', category: 'Local SEO', label: 'Local Keyword Ranking', profileKey: 'localKeywordRanking', format: 'number', source: 'manual' },
@@ -307,9 +311,9 @@ export const COMPARISON_ROWS: ComparisonRowDef[] = [
   { id: 'loc-pages', category: 'Local SEO', label: 'Optimized Local Landing Pages?', profileKey: 'hasOptimizedLocalPages', format: 'boolean', source: 'crawl' },
 
   // Paid / Advertising
-  { id: 'paid-traffic', category: 'Paid / Advertising', label: 'Ads Traffic', profileKey: 'adsTraffic', format: 'number', source: 'manual' },
-  { id: 'paid-cost', category: 'Paid / Advertising', label: 'Ads Traffic Cost', profileKey: 'adsTrafficCost', format: 'currency', source: 'manual' },
-  { id: 'paid-ads', category: 'Paid / Advertising', label: 'Display Ads Count', profileKey: 'displayAdsCount', format: 'number', source: 'manual' },
+  { id: 'paid-traffic', category: 'Paid & Advertising', label: 'Ads Traffic', profileKey: 'adsTraffic', format: 'number', source: 'manual' },
+  { id: 'paid-cost', category: 'Paid & Advertising', label: 'Ads Traffic Cost', profileKey: 'adsTrafficCost', format: 'currency', source: 'manual' },
+  { id: 'paid-ads', category: 'Paid & Advertising', label: 'Display Ads Count', profileKey: 'displayAdsCount', format: 'number', source: 'manual' },
 
   // Authority & Links
   { id: 'auth-da', category: 'Authority & Links', label: 'Domain Authority', profileKey: 'domainAuthority', format: 'score_100', source: 'backlinks' },
@@ -327,34 +331,36 @@ export const COMPARISON_ROWS: ComparisonRowDef[] = [
   { id: 'auth-branded', category: 'Authority & Links', label: 'Branded Search Volume', profileKey: 'brandedSearchVolume', format: 'number', source: 'manual' },
 
   // Facebook
-  { id: 'fb-url', category: 'Facebook', label: 'Facebook URL', profileKey: 'facebookUrl', format: 'url', source: 'social_api' },
-  { id: 'fb-fans', category: 'Facebook', label: 'Facebook Fans', profileKey: 'facebookFans', format: 'number', source: 'social_api' },
-  { id: 'fb-posts', category: 'Facebook', label: 'Facebook Updates Per Month', profileKey: 'facebookUpdatesPerMonth', format: 'number', source: 'social_api' },
-  { id: 'fb-engagement', category: 'Facebook', label: 'Facebook Engagement Level', profileKey: 'facebookEngagementLevel', format: 'text', source: 'social_api' },
-  { id: 'fb-video', category: 'Facebook', label: 'Facebook Creates Video?', profileKey: 'facebookCreatesVideo', format: 'boolean', source: 'social_api' },
-  { id: 'fb-views', category: 'Facebook', label: 'Facebook Avg Video Views', profileKey: 'facebookAvgVideoViews', format: 'number', source: 'social_api' },
+  { id: 'fb-url', category: 'Social Media', label: 'Facebook URL', profileKey: 'facebookUrl', format: 'url', source: 'social_api' },
+  { id: 'fb-fans', category: 'Social Media', label: 'Facebook Fans', profileKey: 'facebookFans', format: 'number', source: 'social_api' },
+  { id: 'fb-posts', category: 'Social Media', label: 'Facebook Updates Per Month', profileKey: 'facebookUpdatesPerMonth', format: 'number', source: 'social_api' },
+  { id: 'fb-engagement', category: 'Social Media', label: 'Facebook Engagement Level', profileKey: 'facebookEngagementLevel', format: 'text', source: 'social_api' },
+  { id: 'fb-video', category: 'Social Media', label: 'Facebook Creates Video?', profileKey: 'facebookCreatesVideo', format: 'boolean', source: 'social_api' },
+  { id: 'fb-views', category: 'Social Media', label: 'Facebook Avg Video Views', profileKey: 'facebookAvgVideoViews', format: 'number', source: 'social_api' },
 
   // Twitter / X
-  { id: 'tw-url', category: 'Twitter / X', label: 'Twitter URL', profileKey: 'twitterUrl', format: 'url', source: 'social_api' },
-  { id: 'tw-followers', category: 'Twitter / X', label: 'Twitter Followers', profileKey: 'twitterFollowers', format: 'number', source: 'social_api' },
-  { id: 'tw-posts', category: 'Twitter / X', label: 'Twitter Updates Per Month', profileKey: 'twitterUpdatesPerMonth', format: 'number', source: 'social_api' },
+  { id: 'tw-url', category: 'Social Media', label: 'Twitter URL', profileKey: 'twitterUrl', format: 'url', source: 'social_api' },
+  { id: 'tw-followers', category: 'Social Media', label: 'Twitter Followers', profileKey: 'twitterFollowers', format: 'number', source: 'social_api' },
+  { id: 'tw-posts', category: 'Social Media', label: 'Twitter Updates Per Month', profileKey: 'twitterUpdatesPerMonth', format: 'number', source: 'social_api' },
 
   // YouTube
-  { id: 'yt-url', category: 'YouTube', label: 'YouTube URL', profileKey: 'youtubeUrl', format: 'url', source: 'social_api' },
-  { id: 'yt-videos', category: 'YouTube', label: 'YouTube Video Count', profileKey: 'youtubeVideoCount', format: 'number', source: 'social_api' },
-  { id: 'yt-subs', category: 'YouTube', label: 'YouTube Subscribers', profileKey: 'youtubeSubscribers', format: 'number', source: 'social_api' },
-  { id: 'yt-views-100', category: 'YouTube', label: 'YouTube Videos Over 100 Views', profileKey: 'youtubeVideosOver100Views', format: 'number', source: 'social_api' },
-  { id: 'yt-posts', category: 'YouTube', label: 'YouTube Updates Per Month', profileKey: 'youtubeUpdatesPerMonth', format: 'number', source: 'social_api' },
+  { id: 'yt-url', category: 'Social Media', label: 'YouTube URL', profileKey: 'youtubeUrl', format: 'url', source: 'social_api' },
+  { id: 'yt-videos', category: 'Social Media', label: 'YouTube Video Count', profileKey: 'youtubeVideoCount', format: 'number', source: 'social_api' },
+  { id: 'yt-subs', category: 'Social Media', label: 'YouTube Subscribers', profileKey: 'youtubeSubscribers', format: 'number', source: 'social_api' },
+  { id: 'yt-views-100', category: 'Social Media', label: 'YouTube Videos Over 100 Views', profileKey: 'youtubeVideosOver100Views', format: 'number', source: 'social_api' },
+  { id: 'yt-posts', category: 'Social Media', label: 'YouTube Updates Per Month', profileKey: 'youtubeUpdatesPerMonth', format: 'number', source: 'social_api' },
 
   // Instagram
-  { id: 'ig-url', category: 'Instagram', label: 'Instagram URL', profileKey: 'instagramUrl', format: 'url', source: 'social_api' },
-  { id: 'ig-followers', category: 'Instagram', label: 'Instagram Followers', profileKey: 'instagramFollowers', format: 'number', source: 'social_api' },
-  { id: 'ig-likes', category: 'Instagram', label: 'Instagram Avg Image Likes', profileKey: 'instagramAvgImageLikes', format: 'number', source: 'social_api' },
-  { id: 'ig-views', category: 'Instagram', label: 'Instagram Avg Video Views', profileKey: 'instagramAvgVideoViews', format: 'number', source: 'social_api' },
+  { id: 'ig-url', category: 'Social Media', label: 'Instagram URL', profileKey: 'instagramUrl', format: 'url', source: 'social_api' },
+  { id: 'ig-followers', category: 'Social Media', label: 'Instagram Followers', profileKey: 'instagramFollowers', format: 'number', source: 'social_api' },
+  { id: 'ig-likes', category: 'Social Media', label: 'Instagram Avg Image Likes', profileKey: 'instagramAvgImageLikes', format: 'number', source: 'social_api' },
+  { id: 'ig-views', category: 'Social Media', label: 'Instagram Avg Video Views', profileKey: 'instagramAvgVideoViews', format: 'number', source: 'social_api' },
+  { id: 'social-total-followers', category: 'Social Media', label: 'Total Followers (All Platforms)', profileKey: 'socialTotalFollowers', format: 'number', source: 'social_api' },
+  { id: 'social-growth-rate', category: 'Social Media', label: 'Social Growth Rate %', profileKey: 'socialGrowthRate', format: 'number', source: 'social_api' },
 
   // Tech Stack
-  { id: 'tech-cms', category: 'Tech Stack', label: 'CMS Platform', profileKey: 'cmsType', format: 'text', source: 'crawl' },
-  { id: 'tech-stack', category: 'Tech Stack', label: 'Tech Stack Signals', profileKey: 'techStackSignals', format: 'list', source: 'crawl' },
+  { id: 'tech-cms', category: 'Business Profile', label: 'CMS Platform', profileKey: 'cmsType', format: 'text', source: 'crawl' },
+  { id: 'tech-stack', category: 'Business Profile', label: 'Tech Stack Signals', profileKey: 'techStackSignals', format: 'list', source: 'crawl' },
 
   // ─── Threat & Opportunity ───
   { id: 'to-threat-level', category: 'Threat & Opportunity', label: 'Overall Threat Level', profileKey: 'threatLevel', format: 'text', source: 'ai' },
@@ -444,6 +450,8 @@ export function createEmptyProfile(domain: string): CompetitorProfile {
     youtubeSubscribers: null,
     youtubeVideosOver100Views: null,
     youtubeUpdatesPerMonth: null,
+    socialTotalFollowers: null,
+    socialGrowthRate: null,
     instagramUrl: null,
     instagramFollowers: null,
     instagramAvgImageLikes: null,
@@ -461,7 +469,9 @@ export function createEmptyProfile(domain: string): CompetitorProfile {
     avgOrganicPosition: null,
     brandedTrafficPct: null,
     shareOfVoice: null,
+    keywordOverlapPct: null,
     serpFeatureCount: null,
+    topGrowingKeywords: null,
 
     // Content Depth & Quality
     totalIndexablePages: null,
@@ -473,6 +483,9 @@ export function createEmptyProfile(domain: string): CompetitorProfile {
     thinContentPct: null,
     schemaCoveragePct: null,
     faqHowToCount: null,
+    recentNewPages: null,
+    averagePageAge: null,
+    contentVelocityTrend: null,
 
     // Technical Health
     techHealthScore: null,
