@@ -1,12 +1,23 @@
 import { useMemo, useState, Fragment } from 'react';
 import { useSeoCrawler } from '../../../../contexts/SeoCrawlerContext';
-import { COMPARISON_ROWS, type CompetitorProfile, type ComparisonRowDef } from '../../../../services/CompetitorMatrixConfig';
-import { ChevronDown, ChevronRight, ExternalLink } from 'lucide-react';
+import {
+  COMPARISON_ROWS,
+  type CompetitorProfile,
+  type ComparisonRowDef,
+} from '../../../../services/CompetitorMatrixConfig';
+import {
+  ChevronDown,
+  ChevronRight,
+  ExternalLink,
+  ChevronsUpDown,
+} from 'lucide-react';
 
-// ─── Helpers ─────────────────────────────────────────
-function getProfileValue(profile: CompetitorProfile | null, profileKey: string): any {
+// ─── Helpers ────────────────────────────────────
+function getProfileValue(
+  profile: CompetitorProfile | null,
+  profileKey: string
+): any {
   if (!profile) return null;
-  // Handle nested keys like "topBlogPages.0.url"
   const parts = profileKey.split('.');
   let val: any = profile;
   for (const part of parts) {
@@ -19,28 +30,51 @@ function getProfileValue(profile: CompetitorProfile | null, profileKey: string):
 function formatCell(value: any, format: string): string {
   if (value == null || value === '') return '—';
   switch (format) {
-    case 'number': return typeof value === 'number' ? value.toLocaleString() : String(value);
-    case 'score_100': return `${value}/100`;
-    case 'percentage': return `${(Number(value) * 100).toFixed(1)}%`;
-    case 'boolean': return value ? '✅' : '❌';
+    case 'number':
+      return typeof value === 'number' ? value.toLocaleString() : String(value);
+    case 'score_100':
+      return `${value}/100`;
+    case 'percentage':
+      return `${(Number(value) * 100).toFixed(1)}%`;
+    case 'currency':
+      return typeof value === 'number'
+        ? `$${value.toLocaleString()}`
+        : `$${String(value)}`;
+    case 'boolean':
+      return value ? '✅' : '❌';
     case 'url': {
       try {
-        return new URL(String(value)).pathname === '/' ? String(value) : new URL(String(value)).pathname;
-      } catch { return String(value); }
+        const u = new URL(String(value));
+        return u.pathname === '/' ? u.hostname : u.pathname;
+      } catch {
+        return String(value);
+      }
     }
+    case 'list':
+      return Array.isArray(value) ? value.join(', ') : String(value);
     case 'manual_text':
+    case 'manual_boolean':
     case 'text':
     default:
+      if (format === 'manual_boolean') return value ? '✅' : '❌';
       return String(value);
   }
 }
 
 type CellComparison = 'winning' | 'losing' | 'tie' | 'neutral';
 
-function compareCells(ownVal: any, compVal: any, format: string): CellComparison {
+function compareCells(
+  ownVal: any,
+  compVal: any,
+  format: string
+): CellComparison {
   if (ownVal == null || compVal == null) return 'neutral';
-  if (format === 'boolean') return ownVal === compVal ? 'tie' : ownVal ? 'winning' : 'losing';
-  if (format === 'text' || format === 'manual_text' || format === 'url') return 'neutral';
+  if (format === 'boolean' || format === 'manual_boolean') {
+    return ownVal === compVal ? 'tie' : ownVal ? 'winning' : 'losing';
+  }
+  if (['text', 'manual_text', 'url', 'list'].includes(format)) {
+    return 'neutral';
+  }
   const ownNum = Number(ownVal);
   const compNum = Number(compVal);
   if (isNaN(ownNum) || isNaN(compNum)) return 'neutral';
@@ -49,32 +83,48 @@ function compareCells(ownVal: any, compVal: any, format: string): CellComparison
   return 'tie';
 }
 
-const COMPARISON_COLORS: Record<CellComparison, string> = {
+const CELL_TEXT: Record<CellComparison, string> = {
   winning: 'text-green-400',
   losing: 'text-red-400',
   tie: 'text-[#888]',
   neutral: 'text-[#ccc]',
 };
 
-const COMPARISON_BG: Record<CellComparison, string> = {
+const CELL_BG: Record<CellComparison, string> = {
   winning: 'bg-green-500/5',
   losing: 'bg-red-500/5',
   tie: '',
   neutral: '',
 };
 
+// ─── Trend indicator ───
+function TrendArrow({ comparison }: { comparison: CellComparison }) {
+  if (comparison === 'winning') {
+    return <span className="ml-1 text-[9px] text-green-500">▲</span>;
+  }
+  if (comparison === 'losing') {
+    return <span className="ml-1 text-[9px] text-red-500">▼</span>;
+  }
+  return null;
+}
+
+// ─── Component ──────────────────────────────────
 export default function CompetitorMatrixGrid() {
   const { competitiveState } = useSeoCrawler();
-  const { ownProfile, competitorProfiles, activeCompetitorDomains } = competitiveState;
+  const { ownProfile, competitorProfiles, activeCompetitorDomains } =
+    competitiveState;
 
   const activeComps = useMemo(
-    () => activeCompetitorDomains
-      .map(d => competitorProfiles.get(d))
-      .filter(Boolean) as CompetitorProfile[],
+    () =>
+      activeCompetitorDomains
+        .map((d) => competitorProfiles.get(d))
+        .filter(Boolean) as CompetitorProfile[],
     [activeCompetitorDomains, competitorProfiles]
   );
 
-  const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
+  const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(
+    new Set()
+  );
 
   // Group rows by category
   const groupedRows = useMemo(() => {
@@ -99,7 +149,7 @@ export default function CompetitorMatrixGrid() {
   }, []);
 
   const toggleCategory = (cat: string) => {
-    setCollapsedCategories(prev => {
+    setCollapsedCategories((prev) => {
       const next = new Set(prev);
       if (next.has(cat)) next.delete(cat);
       else next.add(cat);
@@ -107,13 +157,26 @@ export default function CompetitorMatrixGrid() {
     });
   };
 
+  const toggleAll = () => {
+    const allCategories = groupedRows.map((g) => g.category);
+    if (collapsedCategories.size === allCategories.length) {
+      // All collapsed → expand all
+      setCollapsedCategories(new Set());
+    } else {
+      // Collapse all
+      setCollapsedCategories(new Set(allCategories));
+    }
+  };
+
   // Win/loss counters per competitor
   const winLossCounts = useMemo(() => {
-    return activeComps.map(comp => {
-      let wins = 0, losses = 0, ties = 0;
+    return activeComps.map((comp) => {
+      let wins = 0;
+      let losses = 0;
+      let ties = 0;
       for (const row of COMPARISON_ROWS) {
-        const ownVal = getProfileValue(ownProfile, row.profileKey);
-        const compVal = getProfileValue(comp, row.profileKey);
+        const ownVal = getProfileValue(ownProfile, String(row.profileKey));
+        const compVal = getProfileValue(comp, String(row.profileKey));
         const result = compareCells(ownVal, compVal, row.format);
         if (result === 'winning') wins++;
         else if (result === 'losing') losses++;
@@ -123,43 +186,66 @@ export default function CompetitorMatrixGrid() {
     });
   }, [ownProfile, activeComps]);
 
-  const allProfiles = [ownProfile, ...activeComps].filter(Boolean) as CompetitorProfile[];
+  const allProfiles = [ownProfile, ...activeComps].filter(
+    Boolean
+  ) as CompetitorProfile[];
   const compCount = allProfiles.length;
 
   if (compCount === 0) return null;
 
+  const allCollapsed = collapsedCategories.size === groupedRows.length;
+
   return (
-    <div className="h-full overflow-auto custom-scrollbar">
+    <div className="h-full overflow-auto custom-scrollbar bg-[#0a0a0a]">
       <table className="w-full border-collapse text-[11px]">
-        {/* Header */}
-        <thead className="sticky top-0 z-10">
+        {/* ─── Sticky Header ─── */}
+        <thead className="sticky top-0 z-20">
           <tr className="bg-[#0d0d0f] border-b border-[#222]">
-            <th className="text-left px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#666] w-[280px] min-w-[280px] bg-[#0d0d0f] sticky left-0 z-20">
-              Metric
+            <th className="text-left py-2.5 px-3 text-[10px] font-bold uppercase tracking-widest text-[#555] min-w-[200px] bg-[#0d0d0f]">
+              <div className="flex items-center gap-2">
+                <span>Metric</span>
+                <button
+                  onClick={toggleAll}
+                  className="p-0.5 rounded hover:bg-[#222] text-[#555] hover:text-[#aaa] transition-colors"
+                  title={allCollapsed ? 'Expand all' : 'Collapse all'}
+                >
+                  <ChevronsUpDown size={12} />
+                </button>
+              </div>
             </th>
             {allProfiles.map((profile, i) => (
-              <th key={profile.domain} className="text-center px-3 py-3 min-w-[160px] bg-[#0d0d0f]">
-                <div className="flex flex-col items-center gap-1">
-                  <span className={`text-[11px] font-bold ${i === 0 ? 'text-[#F5364E]' : 'text-white'}`}>
-                    {profile.domain}
-                  </span>
-                  {i === 0 && (
-                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#F5364E]/10 text-[#F5364E]">YOU</span>
-                  )}
-                  {i > 0 && winLossCounts[i - 1] && (
-                    <span className="text-[9px] text-[#666]">
-                      <span className="text-green-400">{winLossCounts[i - 1].wins}W</span>
-                      {' / '}
-                      <span className="text-red-400">{winLossCounts[i - 1].losses}L</span>
-                    </span>
-                  )}
+              <th
+                key={profile.domain}
+                className={`py-2.5 px-3 text-center min-w-[140px] ${
+                  i === 0 ? 'bg-[#F5364E]/[0.03]' : 'bg-[#0d0d0f]'
+                }`}
+              >
+                <div className="text-[11px] font-bold text-white truncate max-w-[130px] mx-auto">
+                  {profile.domain}
                 </div>
+                {i === 0 && (
+                  <span className="text-[8px] font-black uppercase tracking-widest text-[#F5364E]">
+                    YOU
+                  </span>
+                )}
+                {i > 0 && winLossCounts[i - 1] && (
+                  <div className="text-[9px] mt-0.5">
+                    <span className="text-green-400 font-bold">
+                      {winLossCounts[i - 1].wins}W
+                    </span>
+                    <span className="text-[#333] mx-0.5">/</span>
+                    <span className="text-red-400 font-bold">
+                      {winLossCounts[i - 1].losses}L
+                    </span>
+                  </div>
+                )}
               </th>
             ))}
           </tr>
         </thead>
+
         <tbody>
-          {groupedRows.map(group => {
+          {groupedRows.map((group) => {
             const isCollapsed = collapsedCategories.has(group.category);
             return (
               <Fragment key={group.category}>
@@ -168,51 +254,90 @@ export default function CompetitorMatrixGrid() {
                   onClick={() => toggleCategory(group.category)}
                   className="cursor-pointer bg-[#111] border-y border-[#1a1a1e] hover:bg-[#151518] transition-colors"
                 >
-                  <td
-                    colSpan={compCount + 1}
-                    className="px-4 py-2.5 text-[10px] font-bold uppercase tracking-[0.15em] text-[#999] sticky left-0 bg-[#111]"
-                  >
-                    <span className="flex items-center gap-2">
-                      {isCollapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
+                  <td colSpan={compCount + 1} className="py-2 px-3">
+                    <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-[#666]">
+                      {isCollapsed ? (
+                        <ChevronRight size={12} />
+                      ) : (
+                        <ChevronDown size={12} />
+                      )}
                       {group.category}
-                      <span className="text-[#555] font-normal">({group.rows.length})</span>
-                    </span>
+                      <span className="text-[9px] font-normal text-[#444] ml-1">
+                        ({group.rows.length})
+                      </span>
+                    </div>
                   </td>
                 </tr>
+
                 {/* Data rows */}
-                {!isCollapsed && group.rows.map(row => {
-                  const ownVal = getProfileValue(ownProfile, row.profileKey);
-                  return (
-                    <tr key={row.id} className="border-b border-[#111] hover:bg-[#0e0e10] transition-colors">
-                      <td className="px-4 py-2 text-[#aaa] sticky left-0 bg-[#0a0a0a] z-10" title={row.tooltip}>
-                        {row.label}
-                      </td>
-                      {allProfiles.map((profile, i) => {
-                        const val = getProfileValue(profile, row.profileKey);
-                        const comparison: CellComparison = i === 0
-                          ? 'neutral'
-                          : compareCells(ownVal, val, row.format);
-                        const formatted = formatCell(val, row.format);
-                        const isUrl = row.format === 'url' && val;
-                        return (
-                          <td
-                            key={profile.domain}
-                            className={`px-3 py-2 text-center font-mono text-[11px] ${COMPARISON_COLORS[comparison]} ${COMPARISON_BG[comparison]}`}
-                          >
-                            {isUrl ? (
-                              <a href={String(val)} target="_blank" rel="noopener noreferrer"
-                                className="text-blue-400 hover:underline inline-flex items-center gap-1">
-                                {formatted} <ExternalLink size={9} />
-                              </a>
-                            ) : (
-                              formatted
+                {!isCollapsed &&
+                  group.rows.map((row) => {
+                    const ownVal = getProfileValue(
+                      ownProfile,
+                      String(row.profileKey)
+                    );
+                    return (
+                      <tr
+                        key={row.id}
+                        className="border-b border-[#111] hover:bg-[#0e0e12] transition-colors"
+                      >
+                        <td className="py-1.5 px-3 text-[11px] text-[#888]">
+                          <div className="flex items-center gap-1">
+                            {row.label}
+                            {row.tooltip && (
+                              <span
+                                title={row.tooltip}
+                                className="text-[#333] cursor-help"
+                              >
+                                ⓘ
+                              </span>
                             )}
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  );
-                })}
+                          </div>
+                        </td>
+                        {allProfiles.map((profile, i) => {
+                          const val = getProfileValue(
+                            profile,
+                            String(row.profileKey)
+                          );
+                          const comparison: CellComparison =
+                            i === 0
+                              ? 'neutral'
+                              : compareCells(ownVal, val, row.format);
+                          const formatted = formatCell(val, row.format);
+                          const isUrl = row.format === 'url' && val;
+                          return (
+                            <td
+                              key={`${row.id}-${profile.domain}`}
+                              className={`py-1.5 px-3 text-center font-mono text-[11px] ${
+                                i === 0
+                                  ? 'text-white bg-[#F5364E]/[0.03]'
+                                  : `${CELL_TEXT[comparison]} ${CELL_BG[comparison]}`
+                              }`}
+                            >
+                              {isUrl ? (
+                                <a
+                                  href={String(val)}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="inline-flex items-center gap-1 text-blue-400 hover:text-blue-300 hover:underline"
+                                >
+                                  {formatted}
+                                  <ExternalLink size={9} />
+                                </a>
+                              ) : (
+                                <span>
+                                  {formatted}
+                                  {i > 0 && (
+                                    <TrendArrow comparison={comparison} />
+                                  )}
+                                </span>
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })}
               </Fragment>
             );
           })}
