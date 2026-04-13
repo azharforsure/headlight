@@ -11,27 +11,102 @@ import {
   XAxis,
   YAxis,
   Tooltip,
-  Legend,
   ResponsiveContainer,
   Cell,
+  PieChart,
+  Pie,
+  ScatterChart,
+  Scatter,
+  ZAxis,
+  CartesianGrid,
 } from 'recharts';
 import type { CompetitorProfile } from '../../../../services/CompetitorMatrixConfig';
 
-const ChartCard = ({ title, children, fullWidth = false }: { title: string; children: React.ReactNode; fullWidth?: boolean }) => (
-  <div className={`rounded-xl border border-[#1a1a1e] bg-[#0d0d0f] p-4 ${fullWidth ? 'col-span-2' : ''}`}>
-    <h3 className="text-[11px] font-bold uppercase tracking-wider text-[#666] mb-3">{title}</h3>
-    {children}
-  </div>
-);
-
-const COLORS = ['#F5364E', '#3B82F6', '#8B5CF6', '#F59E0B', '#10B981'];
+const COLORS = ['#F5364E', '#6366f1', '#06b6d4', '#f59e0b', '#10b981', '#ec4899'];
 const getColor = (i: number) => COLORS[i % COLORS.length];
 
 const normalize = (val: unknown, max = 100): number => {
   const n = Number(val);
-  if (Number.isNaN(n)) return 0;
-  return Math.min(100, Math.max(0, (n / max) * 100));
+  if (Number.isNaN(n) || max === 0) return 0;
+  return Math.min(100, Math.max(0, Math.round((n / max) * 100)));
 };
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-3">
+      <h3 className="text-[11px] font-bold uppercase tracking-widest text-[#444]">{title}</h3>
+      {children}
+    </div>
+  );
+}
+
+function ChartCard({
+  title,
+  subtitle,
+  children,
+  className = '',
+}: {
+  title: string;
+  subtitle?: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={`rounded-xl border border-[#1a1a1e] bg-[#0d0d0f] p-4 ${className}`}>
+      <div className="mb-3">
+        <div className="text-[11px] font-bold text-[#ccc]">{title}</div>
+        {subtitle && <div className="mt-0.5 text-[9px] text-[#555]">{subtitle}</div>}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function GaugeMeter({ value, label }: { value: number; label: string; maxLabel?: string }) {
+  const clampedValue = Math.min(100, Math.max(0, value));
+  const color = clampedValue >= 70 ? '#22c55e' : clampedValue >= 40 ? '#eab308' : '#ef4444';
+  return (
+    <div className="text-center">
+      <div className="relative mx-auto h-16 w-16">
+        <svg viewBox="0 0 100 100" className="h-full w-full -rotate-90">
+          <circle cx="50" cy="50" r="42" fill="none" stroke="#1a1a1e" strokeWidth="8" />
+          <circle
+            cx="50"
+            cy="50"
+            r="42"
+            fill="none"
+            stroke={color}
+            strokeWidth="8"
+            strokeDasharray={`${clampedValue * 2.64} 264`}
+            strokeLinecap="round"
+          />
+        </svg>
+        <div className="absolute inset-0 flex items-center justify-center">
+          <span className="font-mono text-[14px] font-black text-white">{clampedValue}</span>
+        </div>
+      </div>
+      <div className="mt-1 max-w-[80px] truncate text-[9px] text-[#666]">{label}</div>
+    </div>
+  );
+}
+
+function ChartTooltip({ active, payload, label }: any) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="rounded-lg border border-[#333] bg-[#111] px-3 py-2 shadow-xl">
+      {label && <div className="mb-1 text-[10px] font-bold text-white">{label}</div>}
+      {payload.map((p: any, i: number) => (
+        <div key={i} className="flex items-center gap-2 text-[10px]">
+          <span className="h-2 w-2 rounded-full" style={{ backgroundColor: p.color || p.fill }} />
+          <span className="text-[#888]">{p.name || p.dataKey}</span>
+          <span className="ml-auto font-mono text-white">
+            {typeof p.value === 'number' ? p.value.toLocaleString() : p.value}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export default function CompetitorChartsView() {
   const { competitiveState } = useSeoCrawler();
@@ -49,34 +124,60 @@ export default function CompetitorChartsView() {
 
   const radarData = useMemo(() => {
     const dimensions = [
-      { key: 'Search Visibility', fn: (p: CompetitorProfile) => normalize(p.overallSeoScore) },
-      { key: 'Content Depth', fn: (p: CompetitorProfile) => normalize(p.avgWordsPerArticle, 2000) },
+      { key: 'Search', fn: (p: CompetitorProfile) => normalize(p.overallSeoScore) },
+      { key: 'Content', fn: (p: CompetitorProfile) => normalize(p.totalIndexablePages, 2000) },
       { key: 'Authority', fn: (p: CompetitorProfile) => normalize(p.urlRating) },
-      { key: 'Technical Health', fn: (p: CompetitorProfile) => normalize(p.techHealthScore) },
+      { key: 'Tech', fn: (p: CompetitorProfile) => normalize(p.techHealthScore) },
+      { key: 'UX', fn: (p: CompetitorProfile) => normalize(p.trustSignalScore) },
       {
-        key: 'Social Presence',
+        key: 'Social',
         fn: (p: CompetitorProfile) => {
-          const totalFollowers =
+          const total =
             (Number(p.facebookFans) || 0) +
             (Number(p.twitterFollowers) || 0) +
             (Number(p.instagramFollowers) || 0) +
             (Number(p.youtubeSubscribers) || 0);
-          return normalize(totalFollowers, 100000);
+          return normalize(total, 100000);
         },
       },
-      { key: 'AI Discoverability', fn: (p: CompetitorProfile) => normalize(p.avgGeoScore) },
+      { key: 'AI Ready', fn: (p: CompetitorProfile) => normalize(p.avgGeoScore) },
+      { key: 'Freshness', fn: (p: CompetitorProfile) => normalize(p.contentFreshnessScore) },
     ];
-
     return dimensions.map((dim) => {
-      const row: Record<string, any> = { subject: dim.key };
+      const row: Record<string, string | number> = { subject: dim.key };
       allProfiles.forEach((profile) => {
-        row[profile.domain] = Math.round(dim.fn(profile));
+        row[profile.domain] = dim.fn(profile);
       });
       return row;
     });
   }, [allProfiles]);
 
-  const trafficBars = useMemo(
+  const scoreRanking = useMemo(
+    () =>
+      allProfiles
+        .map((p, i) => ({
+          domain: p.domain,
+          score: Number(p.overallSeoScore || 0),
+          fill: getColor(i),
+          isOwn: i === 0 && !!ownProfile,
+        }))
+        .sort((a, b) => b.score - a.score),
+    [allProfiles, ownProfile]
+  );
+
+  const keywordDistData = useMemo(
+    () =>
+      allProfiles.map((p) => {
+        const top3 = Number(p.keywordsInTop3 || 0);
+        const top10 = Math.max(0, Number(p.keywordsInTop10 || 0) - top3);
+        const top20 = Math.max(0, Number(p.keywordsInTop20 || 0) - top3 - top10);
+        const rest = Math.max(0, Number(p.totalRankingKeywords || 0) - top3 - top10 - top20);
+        return { domain: p.domain, 'Top 3': top3, 'Top 10': top10, 'Top 20': top20, Rest: rest };
+      }),
+    [allProfiles]
+  );
+
+  const trafficData = useMemo(
     () =>
       allProfiles
         .map((p, i) => ({
@@ -88,274 +189,452 @@ export default function CompetitorChartsView() {
     [allProfiles]
   );
 
-  const authorityBars = useMemo(
+  const sovData = useMemo(() => {
+    const total = allProfiles.reduce((sum, p) => sum + Number(p.totalRankingKeywords || 0), 0);
+    if (total === 0) return [];
+    return allProfiles.map((p, i) => ({
+      name: p.domain,
+      value: Number(p.totalRankingKeywords || 0),
+      fill: getColor(i),
+    }));
+  }, [allProfiles]);
+
+  const authorityScatter = useMemo(
     () =>
-      allProfiles
-        .map((p, i) => ({
-          domain: p.domain,
-          referringDomains: Number(p.referringDomains || 0),
-          fill: getColor(i),
-        }))
-        .sort((a, b) => b.referringDomains - a.referringDomains),
+      allProfiles.map((p, i) => ({
+        domain: p.domain,
+        referringDomains: Number(p.referringDomains || 0),
+        traffic: Number(p.estimatedOrganicTraffic || p.seTraffic || 0),
+        authority: Number(p.domainAuthority || p.urlRating || 0),
+        fill: getColor(i),
+      })),
     [allProfiles]
   );
 
-  const scoreComparisonData = useMemo(() => {
-    const metrics: Array<{ key: keyof CompetitorProfile; label: string }> = [
-      { key: 'techHealthScore', label: 'Health' },
-      { key: 'siteSpeedScore', label: 'Speed' },
-      { key: 'crawlabilityScore', label: 'Crawlability' },
-      { key: 'avgGeoScore', label: 'GEO' },
-      { key: 'trustSignalScore', label: 'Trust' },
-      { key: 'ctaDensityScore', label: 'CTA Density' },
-    ];
+  const contentBubble = useMemo(
+    () =>
+      allProfiles.map((p, i) => ({
+        domain: p.domain,
+        pages: Number(p.totalIndexablePages || 0),
+        freshness: Number(p.contentFreshnessScore || 0),
+        traffic: Number(p.estimatedOrganicTraffic || 0),
+        fill: getColor(i),
+      })),
+    [allProfiles]
+  );
 
-    return metrics.map((metric) => {
-      const row: Record<string, any> = { metric: metric.label };
-      allProfiles.forEach((profile) => {
-        row[profile.domain] = Number(profile[metric.key] || 0);
+  const aiData = useMemo(() => {
+    const metrics = [
+      { key: 'avgGeoScore', label: 'GEO Score' },
+      { key: 'avgCitationWorthiness', label: 'Citation' },
+      { key: 'passageReadyPct', label: 'Passage Ready' },
+      { key: 'featuredSnippetReadyPct', label: 'Snippet Ready' },
+    ] as const;
+    return metrics.map((m) => {
+      const row: Record<string, string | number> = { metric: m.label };
+      allProfiles.forEach((p) => {
+        row[p.domain] = Number((p as any)[m.key] || 0);
       });
       return row;
     });
   }, [allProfiles]);
 
-  const keywordDistributionData = useMemo(
-    () =>
-      allProfiles.map((profile) => {
-        const top3 = Number(profile.keywordsInTop3 || 0);
-        const top10Total = Number(profile.keywordsInTop10 || 0);
-        const top20Total = Number(profile.keywordsInTop20 || 0);
-        const total = Number(profile.totalRankingKeywords || 0);
-        return {
-          domain: profile.domain,
-          top3,
-          top10: Math.max(0, top10Total - top3),
-          top20: Math.max(0, top20Total - top10Total),
-          rest: Math.max(0, total - top20Total),
-        };
-      }),
-    [allProfiles]
-  );
-
-  const socialFootprintData = useMemo(() => {
+  const socialData = useMemo(() => {
     const platforms = [
       { key: 'facebookFans', label: 'Facebook' },
       { key: 'twitterFollowers', label: 'X/Twitter' },
       { key: 'instagramFollowers', label: 'Instagram' },
       { key: 'youtubeSubscribers', label: 'YouTube' },
     ] as const;
-
-    return platforms.map((platform) => {
-      const row: Record<string, any> = { platform: platform.label };
-      allProfiles.forEach((profile) => {
-        row[profile.domain] = Number(profile[platform.key] || 0);
+    return platforms.map((pl) => {
+      const row: Record<string, string | number> = { platform: pl.label };
+      allProfiles.forEach((p) => {
+        row[p.domain] = Number((p as any)[pl.key] || 0);
       });
       return row;
     });
   }, [allProfiles]);
 
-  const threatRadarData = useMemo(
-    () => [
-      {
-        subject: 'Content Threat',
-        ...Object.fromEntries(allProfiles.map((profile) => [profile.domain, Number(profile.contentThreatScore || 0)])),
-      },
-      {
-        subject: 'Authority Threat',
-        ...Object.fromEntries(allProfiles.map((profile) => [profile.domain, Number(profile.authorityThreatScore || 0)])),
-      },
-      {
-        subject: 'Innovation Threat',
-        ...Object.fromEntries(allProfiles.map((profile) => [profile.domain, Number(profile.innovationThreatScore || 0)])),
-      },
-    ],
-    [allProfiles]
-  );
-
   const techStackData = useMemo(() => {
     const allTech = new Set<string>();
-    allProfiles.forEach((profile) => {
-      (profile.techStackSignals || []).forEach((tech) => allTech.add(tech));
-      if (profile.cmsType) allTech.add(profile.cmsType);
+    allProfiles.forEach((p) => {
+      (p.techStackSignals || []).forEach((t) => allTech.add(t));
+      if (p.cmsType) allTech.add(p.cmsType);
     });
-
     return Array.from(allTech).map((tech) => {
       const row: Record<string, any> = { tech };
-      allProfiles.forEach((profile) => {
-        row[profile.domain] = (profile.techStackSignals || []).includes(tech) || profile.cmsType === tech;
+      allProfiles.forEach((p) => {
+        row[p.domain] = (p.techStackSignals || []).includes(tech) || p.cmsType === tech;
       });
       return row;
     });
   }, [allProfiles]);
 
   if (allProfiles.length === 0) {
-    return <div className="flex-1 flex items-center justify-center text-[#666] text-sm">No competitor data yet.</div>;
+    return (
+      <div className="flex h-full items-center justify-center text-[12px] text-[#555]">
+        No competitor data yet. Add competitors and run a crawl.
+      </div>
+    );
   }
 
+  const profileLegend = allProfiles.map((p, i) => ({
+    domain: p.domain,
+    color: getColor(i),
+    isOwn: i === 0 && !!ownProfile,
+  }));
+
   return (
-    <div className="h-full overflow-y-auto custom-scrollbar p-6 bg-[#0a0a0a]">
-      <div className="mb-4">
-        <ChartCard title="Multi-Dimensional Comparison" fullWidth>
-          <ResponsiveContainer width="100%" height={360}>
-            <RadarChart data={radarData}>
-              <PolarGrid stroke="#222" />
-              <PolarAngleAxis dataKey="subject" tick={{ fill: '#888', fontSize: 11 }} />
-              <PolarRadiusAxis angle={30} domain={[0, 100]} tick={{ fill: '#555', fontSize: 9 }} />
-              {allProfiles.map((profile, i) => (
-                <Radar
-                  key={profile.domain}
-                  name={profile.domain}
-                  dataKey={profile.domain}
-                  stroke={getColor(i)}
-                  fill={getColor(i)}
-                  fillOpacity={i === 0 ? 0.2 : 0.06}
-                  strokeWidth={i === 0 ? 2.5 : 1.5}
-                />
-              ))}
-              <Legend wrapperStyle={{ fontSize: 11 }} />
-              <Tooltip contentStyle={{ background: '#111', border: '1px solid #222', borderRadius: 8, fontSize: 11 }} />
-            </RadarChart>
-          </ResponsiveContainer>
-        </ChartCard>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
-        <ChartCard title="Estimated Organic Traffic">
-          <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={trafficBars} layout="vertical" margin={{ left: 10, right: 20 }}>
-              <XAxis type="number" tick={{ fill: '#666', fontSize: 10 }} axisLine={false} tickLine={false} />
-              <YAxis type="category" dataKey="domain" tick={{ fill: '#aaa', fontSize: 10 }} axisLine={false} tickLine={false} width={110} />
-              <Tooltip contentStyle={{ background: '#111', border: '1px solid #222', borderRadius: 8, fontSize: 11 }} formatter={(v: number) => [v.toLocaleString(), 'Traffic']} />
-              <Bar dataKey="traffic" radius={[0, 4, 4, 0]}>
-                {trafficBars.map((entry) => (
-                  <Cell key={entry.domain} fill={entry.fill} fillOpacity={0.8} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </ChartCard>
-
-        <ChartCard title="Referring Domains">
-          <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={authorityBars} layout="vertical" margin={{ left: 10, right: 20 }}>
-              <XAxis type="number" tick={{ fill: '#666', fontSize: 10 }} axisLine={false} tickLine={false} />
-              <YAxis type="category" dataKey="domain" tick={{ fill: '#aaa', fontSize: 10 }} axisLine={false} tickLine={false} width={110} />
-              <Tooltip contentStyle={{ background: '#111', border: '1px solid #222', borderRadius: 8, fontSize: 11 }} formatter={(v: number) => [v.toLocaleString(), 'Referring Domains']} />
-              <Bar dataKey="referringDomains" radius={[0, 4, 4, 0]}>
-                {authorityBars.map((entry) => (
-                  <Cell key={entry.domain} fill={entry.fill} fillOpacity={0.8} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </ChartCard>
-      </div>
-
-      <div className="mb-4">
-        <ChartCard title="Score Comparison" fullWidth>
-          <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={scoreComparisonData} margin={{ left: 10, right: 20 }}>
-              <XAxis dataKey="metric" tick={{ fill: '#888', fontSize: 10 }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fill: '#666', fontSize: 10 }} axisLine={false} tickLine={false} />
-              <Tooltip contentStyle={{ background: '#111', border: '1px solid #222', borderRadius: 8, fontSize: 11 }} />
-              <Legend wrapperStyle={{ fontSize: 11 }} />
-              {allProfiles.map((profile, i) => (
-                <Bar key={profile.domain} dataKey={profile.domain} fill={getColor(i)} fillOpacity={0.75} radius={[4, 4, 0, 0]} />
-              ))}
-            </BarChart>
-          </ResponsiveContainer>
-        </ChartCard>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
-        <ChartCard title="Keyword Distribution">
-          <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={keywordDistributionData}>
-              <XAxis dataKey="domain" tick={{ fill: '#888', fontSize: 10 }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fill: '#666', fontSize: 10 }} axisLine={false} tickLine={false} />
-              <Tooltip contentStyle={{ background: '#111', border: '1px solid #222', borderRadius: 8, fontSize: 11 }} />
-              <Legend wrapperStyle={{ fontSize: 11 }} />
-              <Bar dataKey="top3" stackId="a" fill="#10B981" />
-              <Bar dataKey="top10" stackId="a" fill="#3B82F6" />
-              <Bar dataKey="top20" stackId="a" fill="#F59E0B" />
-              <Bar dataKey="rest" stackId="a" fill="#8B5CF6" />
-            </BarChart>
-          </ResponsiveContainer>
-        </ChartCard>
-
-        <ChartCard title="Social Footprint">
-          <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={socialFootprintData} margin={{ left: 10, right: 20 }}>
-              <XAxis dataKey="platform" tick={{ fill: '#888', fontSize: 10 }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fill: '#666', fontSize: 10 }} axisLine={false} tickLine={false} />
-              <Tooltip contentStyle={{ background: '#111', border: '1px solid #222', borderRadius: 8, fontSize: 11 }} />
-              <Legend wrapperStyle={{ fontSize: 11 }} />
-              {allProfiles.map((profile, i) => (
-                <Bar key={profile.domain} dataKey={profile.domain} fill={getColor(i)} fillOpacity={0.75} radius={[4, 4, 0, 0]} />
-              ))}
-            </BarChart>
-          </ResponsiveContainer>
-        </ChartCard>
-      </div>
-
-      <div className="mb-4">
-        <ChartCard title="Threat Radar" fullWidth>
-          <ResponsiveContainer width="100%" height={320}>
-            <RadarChart data={threatRadarData}>
-              <PolarGrid stroke="#222" />
-              <PolarAngleAxis dataKey="subject" tick={{ fill: '#888', fontSize: 11 }} />
-              <PolarRadiusAxis angle={30} domain={[0, 100]} tick={{ fill: '#555', fontSize: 9 }} />
-              {allProfiles.map((profile, i) => (
-                <Radar
-                  key={profile.domain}
-                  name={profile.domain}
-                  dataKey={profile.domain}
-                  stroke={getColor(i)}
-                  fill={getColor(i)}
-                  fillOpacity={0.08}
-                  strokeWidth={1.75}
-                />
-              ))}
-              <Legend wrapperStyle={{ fontSize: 11 }} />
-              <Tooltip contentStyle={{ background: '#111', border: '1px solid #222', borderRadius: 8, fontSize: 11 }} />
-            </RadarChart>
-          </ResponsiveContainer>
-        </ChartCard>
-      </div>
-
-      <div className="mb-4">
-        <ChartCard title="Technology Stack Comparison" fullWidth>
-          <div className="overflow-x-auto">
-            <table className="w-full text-[11px]">
-              <thead>
-                <tr className="border-b border-[#1a1a1e]">
-                  <th className="text-left px-3 py-2 text-[10px] font-bold uppercase text-[#666]">Technology</th>
-                  {allProfiles.map((profile, i) => (
-                    <th key={profile.domain} className="text-center px-3 py-2 text-[10px] font-bold uppercase" style={{ color: getColor(i) }}>
-                      {profile.domain}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {techStackData.map((row) => (
-                  <tr key={row.tech} className="border-b border-[#111]">
-                    <td className="px-3 py-1.5 text-[#aaa]">{row.tech}</td>
-                    {allProfiles.map((profile, i) => (
-                      <td key={profile.domain} className="text-center px-3 py-1.5">
-                        {row[profile.domain] ? (
-                          <span className="inline-block w-3 h-3 rounded-full" style={{ background: getColor(i) }} />
-                        ) : (
-                          <span className="inline-block w-3 h-3 rounded-full bg-[#1a1a1e]" />
-                        )}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+    <div className="custom-scrollbar h-full overflow-y-auto bg-[#0a0a0a] px-5 py-5">
+      <div className="mb-5 flex flex-wrap items-center gap-4">
+        {profileLegend.map((p) => (
+          <div key={p.domain} className="flex items-center gap-1.5">
+            <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: p.color }} />
+            <span className={`text-[10px] font-bold ${p.isOwn ? 'text-white' : 'text-[#888]'}`}>
+              {p.domain} {p.isOwn && <span className="text-[8px] text-[#F5364E]">YOU</span>}
+            </span>
           </div>
-        </ChartCard>
+        ))}
+      </div>
+
+      <div className="space-y-6">
+        <Section title="Big Picture">
+          <div className="grid grid-cols-2 gap-3">
+            <ChartCard title="Competitive Radar" subtitle="8-dimension comparison across all competitors">
+              <ResponsiveContainer width="100%" height={300}>
+                <RadarChart data={radarData} cx="50%" cy="50%" outerRadius="75%">
+                  <PolarGrid stroke="#1a1a1e" />
+                  <PolarAngleAxis dataKey="subject" tick={{ fontSize: 9, fill: '#666' }} />
+                  <PolarRadiusAxis tick={false} axisLine={false} domain={[0, 100]} />
+                  {allProfiles.map((p, i) => (
+                    <Radar
+                      key={p.domain}
+                      name={p.domain}
+                      dataKey={p.domain}
+                      stroke={getColor(i)}
+                      fill={getColor(i)}
+                      fillOpacity={i === 0 ? 0.15 : 0.05}
+                      strokeWidth={i === 0 ? 2 : 1.5}
+                    />
+                  ))}
+                </RadarChart>
+              </ResponsiveContainer>
+            </ChartCard>
+
+            <ChartCard title="Overall SEO Score" subtitle="All competitors ranked by composite score">
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={scoreRanking} layout="vertical" margin={{ left: 4, right: 24 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1a1a1e" horizontal={false} />
+                  <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 10, fill: '#555' }} axisLine={{ stroke: '#222' }} />
+                  <YAxis
+                    dataKey="domain"
+                    type="category"
+                    width={110}
+                    tick={{ fontSize: 10, fill: '#888' }}
+                    axisLine={false}
+                    tickLine={false}
+                  />
+                  <Tooltip content={<ChartTooltip />} cursor={{ fill: '#ffffff06' }} />
+                  <Bar dataKey="score" radius={[0, 4, 4, 0]} barSize={20}>
+                    {scoreRanking.map((entry, i) => (
+                      <Cell key={`sc-${i}`} fill={entry.fill} fillOpacity={entry.isOwn ? 1 : 0.7} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </ChartCard>
+          </div>
+        </Section>
+
+        <Section title="Search Visibility">
+          <div className="grid grid-cols-3 gap-3">
+            <ChartCard title="Keyword Distribution" subtitle="Keywords by ranking position">
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={keywordDistData} margin={{ left: 0, right: 8 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1a1a1e" />
+                  <XAxis
+                    dataKey="domain"
+                    tick={{ fontSize: 8, fill: '#666' }}
+                    axisLine={{ stroke: '#222' }}
+                    interval={0}
+                    angle={-20}
+                    textAnchor="end"
+                    height={40}
+                  />
+                  <YAxis tick={{ fontSize: 9, fill: '#555' }} axisLine={{ stroke: '#222' }} />
+                  <Tooltip content={<ChartTooltip />} cursor={{ fill: '#ffffff06' }} />
+                  <Bar dataKey="Top 3" stackId="a" fill="#22c55e" radius={[0, 0, 0, 0]} />
+                  <Bar dataKey="Top 10" stackId="a" fill="#3b82f6" />
+                  <Bar dataKey="Top 20" stackId="a" fill="#a855f7" />
+                  <Bar dataKey="Rest" stackId="a" fill="#374151" radius={[3, 3, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </ChartCard>
+
+            <ChartCard title="Organic Traffic" subtitle="Estimated monthly organic visits">
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={trafficData} margin={{ left: 0, right: 8 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1a1a1e" />
+                  <XAxis
+                    dataKey="domain"
+                    tick={{ fontSize: 8, fill: '#666' }}
+                    axisLine={{ stroke: '#222' }}
+                    interval={0}
+                    angle={-20}
+                    textAnchor="end"
+                    height={40}
+                  />
+                  <YAxis
+                    tick={{ fontSize: 9, fill: '#555' }}
+                    axisLine={{ stroke: '#222' }}
+                    tickFormatter={(v: number) => (v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v))}
+                  />
+                  <Tooltip content={<ChartTooltip />} cursor={{ fill: '#ffffff06' }} />
+                  <Bar dataKey="traffic" radius={[4, 4, 0, 0]} barSize={28}>
+                    {trafficData.map((e, i) => (
+                      <Cell key={`tr-${i}`} fill={e.fill} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </ChartCard>
+
+            <ChartCard title="Share of Voice" subtitle="Keyword universe split by site">
+              {sovData.length === 0 ? (
+                <div className="flex h-[220px] items-center justify-center text-[11px] text-[#555]">No keyword data</div>
+              ) : (
+                <ResponsiveContainer width="100%" height={220}>
+                  <PieChart>
+                    <Pie
+                      data={sovData}
+                      dataKey="value"
+                      nameKey="name"
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={50}
+                      outerRadius={80}
+                      paddingAngle={2}
+                      strokeWidth={0}
+                    >
+                      {sovData.map((e, i) => (
+                        <Cell key={`sv-${i}`} fill={e.fill} />
+                      ))}
+                    </Pie>
+                    <Tooltip content={<ChartTooltip />} />
+                  </PieChart>
+                </ResponsiveContainer>
+              )}
+            </ChartCard>
+          </div>
+        </Section>
+
+        <Section title="Content & Authority">
+          <div className="grid grid-cols-2 gap-3">
+            <ChartCard title="Content Volume vs Freshness" subtitle="X = pages, Y = freshness %, bubble size = traffic">
+              <ResponsiveContainer width="100%" height={260}>
+                <ScatterChart margin={{ bottom: 8, right: 16 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1a1a1e" />
+                  <XAxis
+                    type="number"
+                    dataKey="pages"
+                    tick={{ fontSize: 9, fill: '#555' }}
+                    axisLine={{ stroke: '#222' }}
+                    label={{ value: 'Pages', position: 'insideBottomRight', offset: -4, fontSize: 9, fill: '#444' }}
+                  />
+                  <YAxis
+                    type="number"
+                    dataKey="freshness"
+                    domain={[0, 100]}
+                    tick={{ fontSize: 9, fill: '#555' }}
+                    axisLine={{ stroke: '#222' }}
+                    label={{
+                      value: 'Freshness %',
+                      angle: -90,
+                      position: 'insideLeft',
+                      offset: 4,
+                      fontSize: 9,
+                      fill: '#444',
+                    }}
+                  />
+                  <ZAxis type="number" dataKey="traffic" range={[60, 600]} />
+                  <Tooltip
+                    content={({ active, payload }: any) => {
+                      if (!active || !payload?.[0]?.payload) return null;
+                      const d = payload[0].payload;
+                      return (
+                        <div className="rounded-lg border border-[#333] bg-[#111] px-3 py-2 shadow-xl">
+                          <div className="text-[10px] font-bold text-white">{d.domain}</div>
+                          <div className="mt-1 space-y-0.5 text-[9px] text-[#999]">
+                            <div>
+                              Pages: <span className="font-mono text-white">{d.pages.toLocaleString()}</span>
+                            </div>
+                            <div>
+                              Freshness: <span className="font-mono text-white">{d.freshness}%</span>
+                            </div>
+                            <div>
+                              Traffic: <span className="font-mono text-white">{d.traffic.toLocaleString()}</span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }}
+                  />
+                  <Scatter data={contentBubble} isAnimationActive={false}>
+                    {contentBubble.map((e, i) => (
+                      <Cell key={`cb-${i}`} fill={e.fill} fillOpacity={0.75} />
+                    ))}
+                  </Scatter>
+                </ScatterChart>
+              </ResponsiveContainer>
+            </ChartCard>
+
+            <ChartCard title="Authority Landscape" subtitle="X = referring domains, Y = traffic, bubble size = authority">
+              <ResponsiveContainer width="100%" height={260}>
+                <ScatterChart margin={{ bottom: 8, right: 16 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1a1a1e" />
+                  <XAxis
+                    type="number"
+                    dataKey="referringDomains"
+                    tick={{ fontSize: 9, fill: '#555' }}
+                    axisLine={{ stroke: '#222' }}
+                    tickFormatter={(v: number) => (v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v))}
+                    label={{
+                      value: 'Referring Domains',
+                      position: 'insideBottomRight',
+                      offset: -4,
+                      fontSize: 9,
+                      fill: '#444',
+                    }}
+                  />
+                  <YAxis
+                    type="number"
+                    dataKey="traffic"
+                    tick={{ fontSize: 9, fill: '#555' }}
+                    axisLine={{ stroke: '#222' }}
+                    tickFormatter={(v: number) => (v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v))}
+                    label={{ value: 'Traffic', angle: -90, position: 'insideLeft', offset: 4, fontSize: 9, fill: '#444' }}
+                  />
+                  <ZAxis type="number" dataKey="authority" range={[60, 600]} />
+                  <Tooltip
+                    content={({ active, payload }: any) => {
+                      if (!active || !payload?.[0]?.payload) return null;
+                      const d = payload[0].payload;
+                      return (
+                        <div className="rounded-lg border border-[#333] bg-[#111] px-3 py-2 shadow-xl">
+                          <div className="text-[10px] font-bold text-white">{d.domain}</div>
+                          <div className="mt-1 space-y-0.5 text-[9px] text-[#999]">
+                            <div>
+                              Referring Domains:{' '}
+                              <span className="font-mono text-white">{d.referringDomains.toLocaleString()}</span>
+                            </div>
+                            <div>
+                              Traffic: <span className="font-mono text-white">{d.traffic.toLocaleString()}</span>
+                            </div>
+                            <div>
+                              Authority: <span className="font-mono text-white">{d.authority}/100</span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }}
+                  />
+                  <Scatter data={authorityScatter} isAnimationActive={false}>
+                    {authorityScatter.map((e, i) => (
+                      <Cell key={`as-${i}`} fill={e.fill} fillOpacity={0.75} />
+                    ))}
+                  </Scatter>
+                </ScatterChart>
+              </ResponsiveContainer>
+            </ChartCard>
+          </div>
+        </Section>
+
+        <Section title="Technical & AI Readiness">
+          <div className="grid grid-cols-2 gap-3">
+            <ChartCard title="Technical Health" subtitle="Composite health score per site">
+              <div className="flex flex-wrap items-center justify-center gap-6 py-4">
+                {allProfiles.map((p) => (
+                  <GaugeMeter key={p.domain} value={Number(p.techHealthScore || 0)} label={p.domain} />
+                ))}
+              </div>
+            </ChartCard>
+
+            <ChartCard title="AI Readiness" subtitle="GEO score, citation, passage & snippet readiness">
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={aiData} layout="vertical" margin={{ left: 4, right: 16 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1a1a1e" horizontal={false} />
+                  <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 9, fill: '#555' }} axisLine={{ stroke: '#222' }} />
+                  <YAxis dataKey="metric" type="category" width={85} tick={{ fontSize: 9, fill: '#888' }} axisLine={false} tickLine={false} />
+                  <Tooltip content={<ChartTooltip />} cursor={{ fill: '#ffffff06' }} />
+                  {allProfiles.map((p, i) => (
+                    <Bar key={p.domain} dataKey={p.domain} fill={getColor(i)} barSize={8} radius={[0, 3, 3, 0]} />
+                  ))}
+                </BarChart>
+              </ResponsiveContainer>
+            </ChartCard>
+          </div>
+        </Section>
+
+        <Section title="Social Presence">
+          <ChartCard title="Social Following by Platform" subtitle="Follower counts across major platforms">
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={socialData} margin={{ left: 0, right: 16 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1a1a1e" />
+                <XAxis dataKey="platform" tick={{ fontSize: 10, fill: '#666' }} axisLine={{ stroke: '#222' }} />
+                <YAxis
+                  tick={{ fontSize: 9, fill: '#555' }}
+                  axisLine={{ stroke: '#222' }}
+                  tickFormatter={(v: number) => (v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v))}
+                />
+                <Tooltip content={<ChartTooltip />} cursor={{ fill: '#ffffff06' }} />
+                {allProfiles.map((p, i) => (
+                  <Bar key={p.domain} dataKey={p.domain} fill={getColor(i)} barSize={14} radius={[3, 3, 0, 0]} />
+                ))}
+              </BarChart>
+            </ResponsiveContainer>
+          </ChartCard>
+        </Section>
+
+        {techStackData.length > 0 && (
+          <Section title="Tech Stack">
+            <ChartCard title="Technologies Detected" subtitle="Frameworks, CMS, libraries, and tools per competitor">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-[#1a1a1e]">
+                      <th className="px-3 py-2 text-left text-[9px] font-bold uppercase tracking-widest text-[#555]">Technology</th>
+                      {allProfiles.map((p, i) => (
+                        <th
+                          key={p.domain}
+                          className="px-3 py-2 text-center text-[9px] font-bold uppercase tracking-widest"
+                          style={{ color: getColor(i) }}
+                        >
+                          {p.domain}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {techStackData.map((row) => (
+                      <tr key={row.tech} className="border-b border-[#111] transition-colors hover:bg-white/[0.01]">
+                        <td className="px-3 py-1.5 text-[10px] text-[#ccc]">{row.tech}</td>
+                        {allProfiles.map((p) => (
+                          <td key={p.domain} className="px-3 py-1.5 text-center">
+                            {row[p.domain] ? (
+                              <span className="text-[11px] text-green-400">✓</span>
+                            ) : (
+                              <span className="text-[11px] text-[#333]">—</span>
+                            )}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </ChartCard>
+          </Section>
+        )}
       </div>
     </div>
   );

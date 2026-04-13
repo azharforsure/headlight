@@ -1,12 +1,12 @@
 /**
  * services/CompetitorModeTypes.ts
- * 
+ *
  * Types for the competitive mode state.
  */
 
 import type { CompetitorProfile } from './CompetitorMatrixConfig';
 
-export type CompetitiveViewMode = 'matrix' | 'charts' | 'map';
+export type CompetitiveViewMode = 'matrix' | 'charts' | 'landscape';
 
 export interface CompetitiveBrief {
   executiveSummary: string;

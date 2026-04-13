@@ -267,12 +267,12 @@ export default function CrawlerSubHeader() {
                             <BarChart3 size={12} /> Charts
                         </button>
                         <button
-                            onClick={() => setCompetitiveViewMode('map')}
+                            onClick={() => setCompetitiveViewMode('landscape')}
                             className={`px-3 py-1 text-[11px] font-medium rounded-sm flex items-center gap-1.5 transition-colors ${
-                                competitiveViewMode === 'map' ? 'bg-[#222] text-white' : 'text-[#888] hover:text-[#ccc]'
+                                competitiveViewMode === 'landscape' ? 'bg-[#222] text-white' : 'text-[#888] hover:text-[#ccc]'
                             }`}
                         >
-                            <MapIcon size={12} /> Map
+                            <MapIcon size={12} /> Keywords
                         </button>
                     </div>
                 )}
