@@ -125,9 +125,11 @@ export interface CompetitorProfile {
   shareOfVoice: number | null;              // 0-100 (% of shared keywords you win)
   keywordOverlapPct: number | null;          // 0-100 (% of their ranking keywords you also rank for)
   serpFeatureCount: number | null;
+  keywordIntentDistribution: Record<string, number> | null;
   topGrowingKeywords: string[] | null;
   featuredSnippetCount: number | null;
   hasKnowledgePanel: boolean | null;
+  monthlyGrowthRate: number | null;          // month-over-month % change
 
   // ─── Content Depth & Quality (consolidated) ───
   totalIndexablePages: number | null;
@@ -143,6 +145,7 @@ export interface CompetitorProfile {
   averagePageAge: number | null;             // months
   contentVelocityTrend: number | null;       // +/- % publishing speed delta
   contentTypeBreakdown: string | null;       // e.g. "Blog 45%, Product 30%, Landing 25%"
+  contentTypeDistribution: Record<string, number> | null;
   avgInternalLinksPerPage: number | null;
   topNavItemCount: number | null;            // number of top-level nav items
 
@@ -256,8 +259,10 @@ export const COMPARISON_ROWS: ComparisonRowDef[] = [
   { id: 'sv-sov', category: 'Search Visibility', label: 'Share of Voice', profileKey: 'shareOfVoice', format: 'score_100', source: 'gsc', tooltip: '% of shared keywords where you outrank this competitor' },
   { id: 'sv-keyword-overlap', category: 'Search Visibility', label: 'Keyword Overlap %', profileKey: 'keywordOverlapPct', format: 'number', source: 'gsc' },
   { id: 'sv-serp-features', category: 'Search Visibility', label: 'SERP Features Owned', profileKey: 'serpFeatureCount', format: 'number', source: 'gsc' },
+  { id: 'sv-intent-dist', category: 'Search Visibility', label: 'Keyword Intent Distribution', profileKey: 'keywordIntentDistribution', format: 'text', source: 'gsc' },
   { id: 'sv-snippets', category: 'Search Visibility', label: 'Featured Snippets', profileKey: 'featuredSnippetCount', format: 'number', source: 'gsc' },
   { id: 'sv-knowledge-panel', category: 'Search Visibility', label: 'Has Knowledge Panel?', profileKey: 'hasKnowledgePanel', format: 'boolean', source: 'manual' },
+  { id: 'sv-mom-growth', category: 'Search Visibility', label: 'Monthly Growth Rate %', profileKey: 'monthlyGrowthRate', format: 'number', source: 'gsc' },
 
   // ═══════════════════════════════════════════
   //  CONTENT (18 rows — merged & cleaned)
@@ -328,6 +333,7 @@ export const COMPARISON_ROWS: ComparisonRowDef[] = [
   { id: 'ux-optin-offer', category: 'User Experience & Conversion', label: 'Opt-In Offer', profileKey: 'optInOffer', format: 'text', source: 'ai' },
   { id: 'ux-live-chat', category: 'User Experience & Conversion', label: 'Live Chat / Chatbot?', profileKey: 'hasLiveChat', format: 'boolean', source: 'crawl' },
   { id: 'ux-free-trial', category: 'User Experience & Conversion', label: 'Free Trial / Freemium?', profileKey: 'hasFreeTrial', format: 'boolean', source: 'crawl' },
+  { id: 'ux-pricing-model', category: 'User Experience & Conversion', label: 'Pricing Model', profileKey: 'pricingModel', format: 'text', source: 'ai' },
   { id: 'ux-seo-quality', category: 'User Experience & Conversion', label: 'On-Page SEO Quality', profileKey: 'onPageSeoQuality', format: 'text', source: 'crawl' },
 
   // ═══════════════════════════════════════════
@@ -523,9 +529,11 @@ export function createEmptyProfile(domain: string): CompetitorProfile {
     shareOfVoice: null,
     keywordOverlapPct: null,
     serpFeatureCount: null,
+    keywordIntentDistribution: null,
     topGrowingKeywords: null,
     featuredSnippetCount: null,
     hasKnowledgePanel: null,
+    monthlyGrowthRate: null,
 
     // Content Depth & Quality
     totalIndexablePages: null,
@@ -541,6 +549,7 @@ export function createEmptyProfile(domain: string): CompetitorProfile {
     averagePageAge: null,
     contentVelocityTrend: null,
     contentTypeBreakdown: null,
+    contentTypeDistribution: null,
     avgInternalLinksPerPage: null,
     topNavItemCount: null,
 

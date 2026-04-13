@@ -5,7 +5,7 @@ import type { CompetitorProfile } from '../../../services/CompetitorMatrixConfig
 import { analyzeCompetitorOverlap } from '../../../services/CompetitorDiscoveryService';
 import { findKeywordGaps } from '../../../services/KeywordDiscoveryService';
 import GapList, { type GapItem } from './shared/GapList';
-import { SUBTAB_ACTIVE, SUBTAB_BASE, SUBTAB_INACTIVE } from './shared/styles';
+import { CARD, SECTION_HEADER_WITH_MARGIN, SUBTAB_ACTIVE, SUBTAB_BASE, SUBTAB_INACTIVE } from './shared/styles';
 
 type SubTab = 'keywords' | 'content' | 'links';
 
@@ -17,7 +17,7 @@ function profilePages(profile: CompetitorProfile): Array<{ url: string; title: s
 
 export default function CompGapsTab() {
     const [subTab, setSubTab] = useState<SubTab>('keywords');
-    const { competitiveState, pages } = useSeoCrawler();
+    const { competitiveState, pages, setCompetitiveViewMode } = useSeoCrawler();
     const { ownProfile, competitorProfiles, activeCompetitorDomains } = competitiveState;
 
     const activeComps = useMemo(
@@ -96,8 +96,8 @@ export default function CompGapsTab() {
             <div className="custom-scrollbar flex-1 space-y-4 overflow-y-auto p-4">
                 {subTab === 'keywords' && (
                     <>
-                        <div className="rounded-xl border border-[#1a1a1e] bg-[#0d0d0f] p-4">
-                            <div className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-[#555]">Keyword Universe</div>
+                        <div className={CARD}>
+                            <div className={SECTION_HEADER_WITH_MARGIN}>Keyword Universe</div>
                             <div className="mt-2 grid grid-cols-3 gap-2">
                                 <div className="text-center">
                                     <div className="font-mono text-[18px] font-black text-white">{contentGaps.commonKeywords.length}</div>
@@ -116,24 +116,58 @@ export default function CompGapsTab() {
                             </div>
                         </div>
 
-                        <div className="rounded-xl border border-[#1a1a1e] bg-[#0d0d0f] p-4">
-                            <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[#555]">
+                        <div className={CARD}>
+                            <div className={SECTION_HEADER_WITH_MARGIN}>
                                 Keyword Gaps ({keywordGapItems.length})
                             </div>
-                            <GapList items={keywordGapItems.slice(0, 10)} emptyMessage="No keyword gaps detected. Great coverage!" />
-                            {keywordGapItems.length > 10 && (
-                                <div className="mt-2 text-center text-[10px] text-[#555]">
-                                    +{keywordGapItems.length - 10} more - see full list in Keywords view
-                                </div>
+                            <GapList items={keywordGapItems.slice(0, 15)} emptyMessage="No keyword gaps detected. Great coverage!" />
+                            {keywordGapItems.length > 15 && (
+                                <button
+                                    onClick={() => setCompetitiveViewMode('landscape')}
+                                    className="w-full py-2 text-center text-[10px] font-bold text-[#F5364E] transition-colors hover:text-white"
+                                >
+                                    View all {keywordGapItems.length} gaps in Keywords view →
+                                </button>
                             )}
+                        </div>
+
+                        <div className={CARD}>
+                            <div className={SECTION_HEADER_WITH_MARGIN}>Intent Breakdown</div>
+                            <div className="space-y-3">
+                                <div>
+                                    <div className="mb-1.5 text-[10px] text-[#666]">Their keyword intent mix</div>
+                                    {(() => {
+                                        const intentCounts: Record<string, number> = {};
+                                        keywordGaps.forEach((g) => {
+                                            const intent = g.intent || 'informational';
+                                            intentCounts[intent] = (intentCounts[intent] || 0) + 1;
+                                        });
+                                        const total = Math.max(1, keywordGaps.length);
+                                        return Object.entries(intentCounts)
+                                            .sort(([, a], [, b]) => b - a)
+                                            .map(([intent, count]) => {
+                                                const pct = Math.round((count / total) * 100);
+                                                return (
+                                                    <div key={intent} className="mb-1 flex items-center gap-2">
+                                                        <span className="w-[80px] text-[10px] capitalize text-[#888]">{intent}</span>
+                                                        <div className="h-[6px] flex-1 overflow-hidden rounded-full bg-[#111]">
+                                                            <div className="h-full rounded-full bg-[#6366f1]" style={{ width: `${pct}%` }} />
+                                                        </div>
+                                                        <span className="w-[30px] text-right font-mono text-[10px] text-[#666]">{pct}%</span>
+                                                    </div>
+                                                );
+                                            });
+                                    })()}
+                                </div>
+                            </div>
                         </div>
                     </>
                 )}
 
                 {subTab === 'content' && (
                     <>
-                        <div className="rounded-xl border border-[#1a1a1e] bg-[#0d0d0f] p-4">
-                            <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[#555]">Content Type Comparison</div>
+                        <div className={CARD}>
+                            <div className={SECTION_HEADER_WITH_MARGIN}>Content Type Comparison</div>
                             {activeComps.length === 0 && <div className="py-2 text-[11px] text-[#555]">No competitors selected.</div>}
                             {activeComps.map((comp) => (
                                 <div key={comp.domain} className="mb-3">
@@ -155,6 +189,26 @@ export default function CompGapsTab() {
                                                 yours: ownProfile?.avgWordsPerArticle,
                                                 theirs: comp.avgWordsPerArticle,
                                             },
+                                            {
+                                                label: 'Topic Breadth',
+                                                yours: ownProfile?.topicCoverageBreadth,
+                                                theirs: comp.topicCoverageBreadth,
+                                            },
+                                            {
+                                                label: 'Content Freshness',
+                                                yours: ownProfile?.contentFreshnessScore,
+                                                theirs: comp.contentFreshnessScore,
+                                            },
+                                            {
+                                                label: 'Schema Coverage',
+                                                yours: ownProfile?.schemaCoveragePct,
+                                                theirs: comp.schemaCoveragePct,
+                                            },
+                                            {
+                                                label: 'FAQ/How-To Pages',
+                                                yours: ownProfile?.faqHowToCount,
+                                                theirs: comp.faqHowToCount,
+                                            },
                                         ].map((row) => (
                                             <div key={row.label} className="flex items-center text-[10px]">
                                                 <span className="w-[110px] text-[#666]">{row.label}</span>
@@ -174,8 +228,8 @@ export default function CompGapsTab() {
                             ))}
                         </div>
 
-                        <div className="rounded-xl border border-[#1a1a1e] bg-[#0d0d0f] p-4">
-                            <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[#555]">
+                        <div className={CARD}>
+                            <div className={SECTION_HEADER_WITH_MARGIN}>
                                 Topic Gaps ({contentGaps.uniqueKeywords.length})
                             </div>
                             <GapList
@@ -196,8 +250,8 @@ export default function CompGapsTab() {
                         {!linkGaps && <div className="py-8 text-center text-[11px] text-[#555]">No link data available yet.</div>}
                         {linkGaps && (
                             <>
-                                <div className="rounded-xl border border-[#1a1a1e] bg-[#0d0d0f] p-4">
-                                    <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[#555]">Backlink Gap</div>
+                                <div className={CARD}>
+                                    <div className={SECTION_HEADER_WITH_MARGIN}>Backlink Gap</div>
                                     <div className="space-y-2">
                                         <div className="flex items-center justify-between">
                                             <span className="text-[11px] text-[#888]">Your Referring Domains</span>
@@ -222,8 +276,28 @@ export default function CompGapsTab() {
                                     </div>
                                 </div>
 
-                                <div className="rounded-xl border border-[#1a1a1e] bg-[#0d0d0f] p-4">
-                                    <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[#555]">URL Rating Comparison</div>
+                                <div className={CARD}>
+                                    <div className={SECTION_HEADER_WITH_MARGIN}>Link Velocity (60 days)</div>
+                                    <div className="mb-2 flex items-center justify-between">
+                                        <span className="text-[11px] text-[#888]">Your new RD</span>
+                                        <span className="font-mono text-[14px] font-bold text-white">
+                                            +{Number(ownProfile?.linkVelocity60d || 0)}
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-[11px] text-[#888]">Competitor Avg new RD</span>
+                                        <span className="font-mono text-[14px] font-bold text-white">
+                                            +
+                                            {Math.round(
+                                                activeComps.reduce((sum, c) => sum + Number(c.linkVelocity60d || 0), 0) /
+                                                    Math.max(1, activeComps.length)
+                                            )}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <div className={CARD}>
+                                    <div className={SECTION_HEADER_WITH_MARGIN}>URL Rating Comparison</div>
                                     <div className="flex items-center gap-3">
                                         <div className="flex-1 text-center">
                                             <div className="font-mono text-[20px] font-black text-white">{linkGaps.yourUR}</div>
@@ -243,8 +317,8 @@ export default function CompGapsTab() {
                                     </div>
                                 </div>
 
-                                <div className="rounded-xl border border-[#1a1a1e] bg-[#0d0d0f] p-4">
-                                    <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[#555]">Per Competitor</div>
+                                <div className={CARD}>
+                                    <div className={SECTION_HEADER_WITH_MARGIN}>Per Competitor</div>
                                     {activeComps.map((comp) => {
                                         const rd = Number(comp.referringDomains || 0);
                                         return (

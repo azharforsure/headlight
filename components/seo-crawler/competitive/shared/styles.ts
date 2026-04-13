@@ -6,6 +6,11 @@ export const CARD_HIGHLIGHT = 'rounded-xl border border-[#F5364E]/20 bg-[#F5364E
 // Section headers
 export const SECTION_HEADER = 'text-[11px] font-semibold uppercase tracking-wider text-[#555]';
 export const SECTION_HEADER_WITH_MARGIN = `${SECTION_HEADER} mb-3`;
+export const KEY_NUMBER = 'text-[20px] font-black font-mono text-white';
+export const KEY_NUMBER_SM = 'text-[16px] font-bold font-mono text-white';
+export const LABEL = 'text-[11px] text-[#888]';
+export const SUB_LABEL = 'text-[10px] text-[#555]';
+export const DIVIDER = 'h-px bg-[#1a1a1e]';
 
 // Data values
 export const VALUE_BIG = 'font-mono text-[18px] font-black text-white';
@@ -18,6 +23,9 @@ export const VALUE_LABEL_INLINE = 'text-[11px] text-[#666]';
 export const DELTA_POSITIVE = 'text-green-400';
 export const DELTA_NEGATIVE = 'text-red-400';
 export const DELTA_NEUTRAL = 'text-[#555]';
+export const WIN_COLOR = DELTA_POSITIVE;
+export const LOSE_COLOR = DELTA_NEGATIVE;
+export const NEUTRAL_COLOR = 'text-[#888]';
 
 // Sub-tab buttons
 export const SUBTAB_ACTIVE = 'bg-[#F5364E]/10 text-[#F5364E]';

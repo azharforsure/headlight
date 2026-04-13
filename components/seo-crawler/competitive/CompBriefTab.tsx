@@ -1,8 +1,9 @@
 import React from 'react';
-import { RefreshCw } from 'lucide-react';
+import { Copy, FileText, RefreshCw } from 'lucide-react';
 import { useSeoCrawler } from '../../../contexts/SeoCrawlerContext';
 import EmptyState from './shared/EmptyState';
-import { SIDEBAR_SCROLL } from './shared/styles';
+import { CARD, CARD_HIGHLIGHT, SECTION_HEADER_WITH_MARGIN, SIDEBAR_SCROLL } from './shared/styles';
+import { useCompetitiveMetrics } from './hooks/useCompetitiveMetrics';
 
 const PRIORITY_STYLES: Record<string, string> = {
     P0: 'text-red-400 bg-red-400/10',
@@ -13,6 +14,7 @@ const PRIORITY_STYLES: Record<string, string> = {
 export default function CompBriefTab() {
     const { competitiveState, generateCompetitiveBrief } = useSeoCrawler();
     const { brief, isGeneratingBrief, competitorProfiles } = competitiveState;
+    const { activeComps, advantages, vulnerabilities } = useCompetitiveMetrics();
 
     const hasBrief = Boolean(brief && brief.executiveSummary && !brief.executiveSummary.includes('Unable to generate'));
 
@@ -49,6 +51,7 @@ export default function CompBriefTab() {
                             }}
                             className="flex items-center gap-1 rounded-lg bg-[#222] px-2 py-1 text-[10px] font-bold text-[#888] transition-all hover:bg-[#333] hover:text-white"
                         >
+                            <Copy size={10} />
                             Copy
                         </button>
                     )}
@@ -72,16 +75,19 @@ export default function CompBriefTab() {
 
             {!isGeneratingBrief && hasBrief && brief && (
                 <>
-                    <div className="rounded-xl border border-[#F5364E]/20 bg-[#F5364E]/5 p-4">
-                        <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-[#F5364E]">Executive Summary</div>
+                    <div className={CARD_HIGHLIGHT}>
+                        <div className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-[#F5364E]">
+                            <FileText size={10} />
+                            Executive Summary
+                        </div>
                         <p className="text-[12px] leading-relaxed text-[#ccc]">{brief.executiveSummary}</p>
                     </div>
 
                     {brief.perCompetitor?.length > 0 && (
                         <div className="space-y-2">
-                            <div className="text-[11px] font-semibold uppercase tracking-wider text-[#555]">Per-Competitor</div>
+                            <div className={SECTION_HEADER_WITH_MARGIN}>Per-Competitor</div>
                             {brief.perCompetitor.map((comp, i) => (
-                                <div key={`${comp.domain}-${i}`} className="rounded-xl border border-[#1a1a1e] bg-[#0d0d0f] p-4">
+                                <div key={`${comp.domain}-${i}`} className={CARD}>
                                     <div className="mb-2 text-[11px] font-bold text-white">{comp.domain}</div>
                                     <div className="space-y-1.5 text-[11px]">
                                         <div>
@@ -103,8 +109,8 @@ export default function CompBriefTab() {
                     )}
 
                     {brief.recommendedActions?.length > 0 && (
-                        <div className="rounded-xl border border-[#1a1a1e] bg-[#0d0d0f] p-4">
-                            <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[#555]">Recommended Actions</div>
+                        <div className={CARD}>
+                            <div className={SECTION_HEADER_WITH_MARGIN}>Recommended Actions</div>
                             <div className="space-y-2">
                                 {brief.recommendedActions.map((action, i) => (
                                     <div key={`${action.action}-${i}`} className="flex items-start gap-2 border-b border-[#111] py-1.5 last:border-0">
@@ -121,6 +127,60 @@ export default function CompBriefTab() {
                                         </div>
                                     </div>
                                 ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {hasBrief && brief && (
+                        <div className={CARD}>
+                            <div className={SECTION_HEADER_WITH_MARGIN}>SWOT Summary</div>
+                            <div className="grid grid-cols-2 gap-2">
+                                <div className="rounded-lg border border-green-500/10 bg-green-500/5 p-3">
+                                    <div className="mb-1.5 text-[9px] font-bold uppercase text-green-400">Strengths</div>
+                                    <div className="space-y-1">
+                                        {advantages.slice(0, 3).map((a, i) => (
+                                            <div key={`${a.label}-${i}`} className="text-[10px] text-[#ccc]">
+                                                • {a.label}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div className="rounded-lg border border-red-500/10 bg-red-500/5 p-3">
+                                    <div className="mb-1.5 text-[9px] font-bold uppercase text-red-400">Weaknesses</div>
+                                    <div className="space-y-1">
+                                        {vulnerabilities.slice(0, 3).map((v, i) => (
+                                            <div key={`${v.label}-${i}`} className="text-[10px] text-[#ccc]">
+                                                • {v.label}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div className="rounded-lg border border-blue-500/10 bg-blue-500/5 p-3">
+                                    <div className="mb-1.5 text-[9px] font-bold uppercase text-blue-400">Opportunities</div>
+                                    <div className="space-y-1 text-[10px] text-[#ccc]">
+                                        {activeComps.filter((c) => Number(c.techHealthScore || 0) < 60).length > 0 && (
+                                            <div>• Competitors have weak tech health</div>
+                                        )}
+                                        {activeComps.filter((c) => !c.hasLlmsTxt).length > 0 && (
+                                            <div>• No competitor has llms.txt</div>
+                                        )}
+                                        {activeComps.filter((c) => Number(c.avgGeoScore || 0) < 50).length > 0 && (
+                                            <div>• Competitors lag on AI readiness</div>
+                                        )}
+                                    </div>
+                                </div>
+                                <div className="rounded-lg border border-orange-500/10 bg-orange-500/5 p-3">
+                                    <div className="mb-1.5 text-[9px] font-bold uppercase text-orange-400">Threats</div>
+                                    <div className="space-y-1 text-[10px] text-[#ccc]">
+                                        {activeComps
+                                            .filter((c) => c.threatLevel === 'Critical' || c.threatLevel === 'High')
+                                            .map((c, i) => (
+                                                <div key={`${c.domain}-${i}`}>
+                                                    • {c.domain} ({c.threatLevel})
+                                                </div>
+                                            ))}
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     )}
