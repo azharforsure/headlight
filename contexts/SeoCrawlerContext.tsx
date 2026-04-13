@@ -68,6 +68,9 @@ import { refreshWithLock } from '../services/TokenRefreshLock';
 import { getAIEngine } from '../services/ai';
 import { startScheduler } from '../services/CrawlScheduler';
 import { dispatchAlert, AlertPayload } from '../services/AlertDispatcher';
+import type { CompetitorProfile } from '../services/CompetitorMatrixConfig';
+import { loadCompetitorProfiles, saveCompetitorProfile } from '../services/CrawlDatabase';
+import { CompetitorProfileBuilder } from '../services/CompetitorProfileBuilder';
 // getPageIssues now imported from UnifiedIssueTaxonomy above
 
 import type { PageAIResult } from '../services/ai/AIAnalysisEngine';
@@ -369,6 +372,9 @@ export interface CrawlerContextType {
     bulkAIAnalyzeCategory: (category: { group: string; sub: string; condition?: (p: any) => boolean }) => Promise<void>;
     tier4Results: Map<string, any[]>;
     runTier4Checks: (pages: any[]) => Map<string, any[]>;
+    competitorProfiles: CompetitorProfile[];
+    setCompetitorProfiles: React.Dispatch<React.SetStateAction<CompetitorProfile[]>>;
+    ownProfile: CompetitorProfile | null;
 }
 
 export const SeoCrawlerContext = createContext<CrawlerContextType | undefined>(undefined);
@@ -727,6 +733,26 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
     const [detectedGscSite, setDetectedGscSite] = useState<string | null>(null);
     const [detectedGa4Property, setDetectedGa4Property] = useState<string | null>(null);
     const [tier4Results, setTier4Results] = useState<Map<string, any[]>>(new Map());
+    const [competitorProfiles, setCompetitorProfiles] = useState<CompetitorProfile[]>([]);
+    const [ownProfile, setOwnProfile] = useState<CompetitorProfile | null>(null);
+
+    const activeViewType = useMemo(() => {
+        // Handle explicit sidebar tab overrides first
+        if (activeAuditTab === 'dashboard') return 'issue_dashboard';
+        if (activeAuditTab === 'geo') return 'geo_view';
+        if (activeAuditTab === 'visual') return 'visual_heat_map';
+        if (activeAuditTab === 'opportunities') return 'opportunity_view';
+        if (activeAuditTab === 'ai') return 'ai_view';
+
+        // Otherwise, use the first active mode to determine the view type
+        const primaryMode = auditFilter.modes[0] || 'full';
+        return AUDIT_MODES[primaryMode]?.viewType || 'grid';
+    }, [auditFilter.modes, activeAuditTab]);
+
+    const activeSidebarSections = useMemo(() => {
+        const primaryMode = auditFilter.modes[0] || 'full';
+        return AUDIT_MODES[primaryMode]?.sidebarSections || ['overview', 'issues', 'details'];
+    }, [auditFilter.modes]);
 
     // Live query for pages from IndexedDB (moved after currentSessionId)
     const pages = useLiveQuery(
@@ -801,9 +827,31 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
     useEffect(() => {
         const timer = setTimeout(() => {
             localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(config));
-        }, 500);
+        }, 1000);
         return () => clearTimeout(timer);
     }, [config]);
+
+    // Competitor Matrix: Build own profile when pages change
+    useEffect(() => {
+        if (activeViewType !== 'competitor_matrix' || pages.length === 0) return;
+        
+        try {
+            const firstUrl = pages[0]?.url || urlInput;
+            const domain = new URL(firstUrl.startsWith('http') ? firstUrl : `https://${firstUrl}`).hostname.replace(/^www\./i, '').toLowerCase();
+            
+            if (!domain) return;
+            const profile = CompetitorProfileBuilder.fromCrawlPages(domain, pages);
+            setOwnProfile(profile);
+        } catch (e) {
+            console.error('Failed to extract domain for own profile', e);
+        }
+    }, [pages, activeViewType, urlInput]);
+
+    // Competitor Matrix: Load profiles from Dexie
+    useEffect(() => {
+        if (!activeProject?.id) return;
+        loadCompetitorProfiles(activeProject.id).then(setCompetitorProfiles);
+    }, [activeProject?.id]);
 
     // Sync from active project (especially during setup)
     const lastActiveProjectId = useRef<string | null>(null);
@@ -2457,23 +2505,6 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         return getIssuesForMode(auditFilter.modes, auditFilter.industry);
     }, [auditFilter.modes, auditFilter.industry]);
 
-    const activeViewType = useMemo(() => {
-        // Handle explicit sidebar tab overrides first
-        if (activeAuditTab === 'dashboard') return 'issue_dashboard';
-        if (activeAuditTab === 'geo') return 'geo_view';
-        if (activeAuditTab === 'visual') return 'visual_heat_map';
-        if (activeAuditTab === 'opportunities') return 'opportunity_view';
-        if (activeAuditTab === 'ai') return 'ai_view';
-
-        // Otherwise, use the first active mode to determine the view type
-        const primaryMode = auditFilter.modes[0] || 'full';
-        return AUDIT_MODES[primaryMode]?.viewType || 'grid';
-    }, [auditFilter.modes, activeAuditTab]);
-
-    const activeSidebarSections = useMemo(() => {
-        const primaryMode = auditFilter.modes[0] || 'full';
-        return AUDIT_MODES[primaryMode]?.sidebarSections || ['overview', 'issues', 'details'];
-    }, [auditFilter.modes]);
 
 
 
@@ -4157,7 +4188,8 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         tasks, setTasks, teamMembers, showCollabOverlay, setShowCollabOverlay,
         collabOverlayTarget, setCollabOverlayTarget, activeCommentTarget, setActiveCommentTarget,
         exportSubset, createTaskForCategory, bulkAIAnalyzeCategory,
-        tier4Results, runTier4Checks
+        tier4Results, runTier4Checks,
+        competitorProfiles, setCompetitorProfiles, ownProfile
     }), [
         // Reactive state values only (setters are stable React identity)
         crawlingMode, urlInput, listUrls, showListModal,
@@ -4204,7 +4236,8 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         saveCrawlSession, loadSession, resumeCrawlSession, compareSessions, deleteCrawlSession, loadCrawlHistory,
         runFullEnrichment, runIncrementalEnrichment, runSelectedEnrichment,
         saveIntegrationConnection, removeIntegrationConnection, signOut,
-        runAIAnalysis, exportSubset, createTaskForCategory, bulkAIAnalyzeCategory
+        runAIAnalysis, exportSubset, createTaskForCategory, bulkAIAnalyzeCategory,
+        competitorProfiles, ownProfile
     ]);
 
     return (

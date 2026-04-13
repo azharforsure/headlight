@@ -1,5 +1,5 @@
 import Dexie, { type Table } from 'dexie';
-import type { 
+import { 
   ProjectMember, 
   CrawlComment, 
   CrawlTask, 
@@ -8,6 +8,7 @@ import type {
   AssignmentRule, 
   NotificationRecord as Notification 
 } from './app-types';
+import { CompetitorProfile } from './CompetitorMatrixConfig';
 
 export interface CrawledPage {
   url: string;             // primary key
@@ -359,6 +360,7 @@ class CrawlDB extends Dexie {
   activity!: Table<ActivityLog, string>;
   rules!: Table<AssignmentRule, string>;
   notifications!: Table<Notification, string>;
+  competitorProfiles!: Table<CompetitorProfile & { _key: string }, string>;
 
   constructor() {
     super('HeadlightCrawlDB');
@@ -581,6 +583,12 @@ class CrawlDB extends Dexie {
             page.sitemapValidationTruncated = page.sitemapValidationTruncated ?? false;
         });
     });
+
+    this.version(14).stores({
+        pages: 'url, crawlId, isHtmlPage, statusCode, [crawlId+statusCode]',
+        sessions: 'id, projectId, startedAt',
+        competitorProfiles: '_key, domain, [domain+_meta.crawledAt]'
+    });
   }
 }
 
@@ -666,4 +674,23 @@ export async function importCrawl(file: File): Promise<string> {
   await crawlDb.pages.bulkPut(pages);
   await crawlDb.queries.bulkAdd(queries);
   return session.id;
+}
+
+// ─── Competitor Profile Helpers ─────────────────────────────────
+
+export async function saveCompetitorProfile(projectId: string, profile: CompetitorProfile): Promise<void> {
+  const key = `${projectId}::${profile.domain}`;
+  await crawlDb.competitorProfiles.put({ ...profile, _key: key });
+}
+
+export async function loadCompetitorProfiles(projectId: string): Promise<CompetitorProfile[]> {
+  const all = await crawlDb.competitorProfiles.toArray();
+  const prefix = `${projectId}::`;
+  return all
+    .filter(p => p._key.startsWith(prefix))
+    .map(({ _key, ...profile }) => profile as CompetitorProfile);
+}
+
+export async function deleteCompetitorProfile(projectId: string, domain: string): Promise<void> {
+  await crawlDb.competitorProfiles.delete(`${projectId}::${domain}`);
 }

@@ -4,7 +4,7 @@ import { CheckEvaluator } from '../types';
 
 const rootOnly = (page: any) => Number(page?.crawlDepth || 0) === 0;
 
-const normalizeHost = (url?: string) => {
+export const normalizeHost = (url?: string) => {
   try {
     return new URL(String(url || '')).hostname.replace(/^www\./i, '').toLowerCase();
   } catch {
@@ -12,13 +12,13 @@ const normalizeHost = (url?: string) => {
   }
 };
 
-const getRootPage = (pages: any[] = []) =>
+export const getRootPage = (pages: any[] = []) =>
   pages.find((page) => Number(page?.crawlDepth || 0) === 0) || pages[0] || null;
 
-const countSocialProfiles = (page: any) =>
+export const countSocialProfiles = (page: any) =>
   Object.values(page?.socialLinks || {}).filter(Boolean).length;
 
-const extractRecentContentCount = (pages: any[] = [], days = 90) => {
+export const extractRecentContentCount = (pages: any[] = [], days = 90) => {
   const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
   return pages.filter((page) => {
     const timestamp = Date.parse(String(page?.visibleDate || ''));
