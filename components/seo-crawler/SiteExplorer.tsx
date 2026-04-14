@@ -3,6 +3,8 @@ import { Search, ChevronDown, ChevronRight, Wand2 } from 'lucide-react';
 import { useSeoCrawler } from '../../contexts/SeoCrawlerContext';
 import { AI_INSIGHTS_CATEGORY, CATEGORIES, matchesCategoryFilter } from './constants';
 import CategoryTreeContextMenu from './CategoryTreeContextMenu';
+import WQACategoryTree from './wqa/WQACategoryTree';
+import { getEffectiveIndustry } from '../../services/WebsiteQualityModeTypes';
 
 type CategoryMenuState = {
     x: number;
@@ -28,6 +30,7 @@ export default function SiteExplorer({ embedded = false }: SiteExplorerProps) {
         activeCheckCategories,
         prioritizedCategories, prioritizeByIssues, setPrioritizeByIssues,
         auditFilter,
+        wqaState, wqaCategoryFilter, setWqaCategoryFilter, setWqaPageFilter,
         exportSubset, createTaskForCategory, bulkAIAnalyzeCategory
     } = useSeoCrawler();
 
@@ -102,6 +105,35 @@ export default function SiteExplorer({ embedded = false }: SiteExplorerProps) {
 
         setActiveCategories([{ group, sub }]);
     }, [setActiveMacro, setActiveCategories]);
+
+    if (wqaState.isActive) {
+        return (
+            <aside
+                style={embedded ? undefined : { width: leftSidebarWidth }}
+                className={`bg-[#111] flex flex-col min-h-0 relative ${embedded ? 'w-full h-full overflow-hidden rounded-2xl border border-[#222]' : 'border-r border-[#222] shrink-0'}`}
+            >
+                {!embedded && (
+                    <div
+                        onMouseDown={() => setIsDraggingLeftSidebar(true)}
+                        className="absolute top-0 bottom-0 right-0 w-1.5 cursor-ew-resize z-50 transition-colors hover:bg-[#F5364E]"
+                    ></div>
+                )}
+                <WQACategoryTree
+                    pages={pages}
+                    industry={getEffectiveIndustry(wqaState)}
+                    activeFilter={wqaCategoryFilter}
+                    onFilterChange={(groupId, nodeId, filter) => {
+                        setWqaCategoryFilter({ groupId, nodeId });
+                        setWqaPageFilter(() => filter);
+                    }}
+                    onClearFilter={() => {
+                        setWqaCategoryFilter(null);
+                        setWqaPageFilter(null);
+                    }}
+                />
+            </aside>
+        );
+    }
 
     return (
         <aside

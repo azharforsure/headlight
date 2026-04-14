@@ -83,6 +83,11 @@ export default function AuditSidebar({ embedded = false }: AuditSidebarProps) {
 
     const allTabs = useMemo(() => [
         { id: 'overview', label: 'Overview' },
+        { id: 'wqa_quality', label: 'Quality' },
+        { id: 'wqa_actions', label: 'Actions', count: strategicOpportunities.length },
+        { id: 'wqa_search', label: 'Search', count: totalIssueCount },
+        { id: 'wqa_content', label: 'Content' },
+        { id: 'wqa_history', label: 'History', count: crawlHistory?.length || 0 },
         { id: 'issues', label: 'Issues', count: totalIssueCount },
         { id: 'opportunities', label: 'Opportunities', count: strategicOpportunities.length },
         { id: 'geo', label: 'GEO', count: 0 },
@@ -254,7 +259,7 @@ export default function AuditSidebar({ embedded = false }: AuditSidebarProps) {
                 ) : (
                     <>
                         {/* OVERVIEW TAB */}
-                        {activeAuditTab === 'overview' && (
+                        {(activeAuditTab === 'overview' || activeAuditTab === 'wqa_quality') && (
                     <OverviewTab
                         pages={pages}
                         isCrawling={isCrawling}
@@ -268,7 +273,7 @@ export default function AuditSidebar({ embedded = false }: AuditSidebarProps) {
                 )}
 
                 {/* ISSUES TAB */}
-                {activeAuditTab === 'issues' && (
+                {(activeAuditTab === 'issues' || activeAuditTab === 'wqa_search') && (
                     <div className="space-y-6 animate-in fade-in duration-200">
                         <div className="flex items-center justify-between text-[11px] text-[#888] bg-[#1a1a1a] p-2 rounded border border-[#222]">
                             <span>All Issues</span>
@@ -414,7 +419,7 @@ export default function AuditSidebar({ embedded = false }: AuditSidebarProps) {
                 )}
 
 
-                {activeAuditTab === 'opportunities' && (
+                {(activeAuditTab === 'opportunities' || activeAuditTab === 'wqa_actions') && (
                     <div className="space-y-4 animate-in fade-in duration-200">
                         {strategicOpportunities.length === 0 ? (
                             <div className="text-[11px] text-[#666] text-center py-8">Run a crawl with enriched data to surface prioritized opportunities.</div>
@@ -551,7 +556,7 @@ export default function AuditSidebar({ embedded = false }: AuditSidebarProps) {
                     </div>
                 )}
 
-                {activeAuditTab === 'ai' && (
+                {(activeAuditTab === 'ai' || activeAuditTab === 'wqa_content') && (
                     <div className="space-y-6 animate-in fade-in duration-200">
                         {/* Executive Summary Narrative */}
                         <div className="bg-gradient-to-br from-indigo-900/20 to-purple-900/10 border border-indigo-500/30 rounded-lg p-4 relative overflow-hidden">
@@ -762,7 +767,7 @@ export default function AuditSidebar({ embedded = false }: AuditSidebarProps) {
 
 
                 {/* HISTORY TAB — NEW */}
-                {activeAuditTab === 'history' && (
+                {(activeAuditTab === 'history' || activeAuditTab === 'wqa_history') && (
                     <div className="space-y-4 animate-in fade-in duration-200">
                         <div className="flex items-center justify-between">
                             <p className="text-[12px] text-[#888]">Your past crawl sessions stored on this device.</p>

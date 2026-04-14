@@ -9,7 +9,7 @@ import {
     formatBytes
 } from '../components/seo-crawler/constants';
 import { UNIFIED_ISSUE_TAXONOMY, getIssuesForMode, getPageIssues, ISSUE_TO_CHECK_MAP } from '../services/UnifiedIssueTaxonomy';
-import { AUDIT_MODES } from '../services/AuditModeConfig';
+import { AUDIT_MODES, getWqaColumns } from '../services/AuditModeConfig';
 import {
     DEFAULT_FILTER_STATE,
     type AuditFilterState,
@@ -86,6 +86,7 @@ import {
 } from '../services/CompetitorModeTypes';
 import { computeShareOfVoice, computeThreatScores } from '../services/CompetitorDiscoveryService';
 import type { SiteTypeResult } from '../services/SiteTypeDetector';
+import { DEFAULT_WQA_STATE, getEffectiveIndustry, type WebsiteQualityState } from '../services/WebsiteQualityModeTypes';
 // getPageIssues now imported from UnifiedIssueTaxonomy above
 
 import type { PageAIResult } from '../services/ai/AIAnalysisEngine';
@@ -151,7 +152,26 @@ export interface AnalysisRuntime {
     label: string;
 }
 
-export type AuditTab = 'dashboard' | 'overview' | 'issues' | 'opportunities' | 'geo' | 'tasks' | 'ai' | 'monitor' | 'migration' | 'history' | 'logs' | 'robots' | 'sitemap' | 'visual';
+export type AuditTab =
+    | 'dashboard'
+    | 'overview'
+    | 'issues'
+    | 'opportunities'
+    | 'geo'
+    | 'tasks'
+    | 'ai'
+    | 'monitor'
+    | 'migration'
+    | 'history'
+    | 'logs'
+    | 'robots'
+    | 'sitemap'
+    | 'visual'
+    | 'wqa_quality'
+    | 'wqa_actions'
+    | 'wqa_search'
+    | 'wqa_content'
+    | 'wqa_history';
 
 type RobotsTxtState = {
     raw: string;
@@ -189,6 +209,9 @@ export interface CrawlerContextType {
     setActiveCategories: React.Dispatch<React.SetStateAction<Array<{ group: string; sub: string }>>>;
     activeCategory: { group: string; sub: string };
     setActiveCategory: (c: { group: string; sub: string }) => void;
+    wqaCategoryFilter: { groupId: string; nodeId: string } | null;
+    setWqaCategoryFilter: React.Dispatch<React.SetStateAction<{ groupId: string; nodeId: string } | null>>;
+    setWqaPageFilter: React.Dispatch<React.SetStateAction<((page: any) => boolean) | null>>;
     auditFilter: AuditFilterState;
     activeCheckIds: Set<string>;
     activeCheckCategories: Set<string>;
@@ -212,7 +235,30 @@ export interface CrawlerContextType {
     setInspectorCollapsed: (c: boolean) => void;
     showAuditSidebar: boolean;
     setShowAuditSidebar: (s: boolean) => void;
-    activeAuditTab: 'overview' | 'issues' | 'opportunities' | 'geo' | 'tasks' | 'ai' | 'monitor' | 'migration' | 'history' | 'logs' | 'robots' | 'sitemap' | 'visual' | 'comp_overview' | 'comp_gaps' | 'comp_threats' | 'comp_brief' | 'comp_trends';
+    activeAuditTab:
+        | 'overview'
+        | 'issues'
+        | 'opportunities'
+        | 'geo'
+        | 'tasks'
+        | 'ai'
+        | 'monitor'
+        | 'migration'
+        | 'history'
+        | 'logs'
+        | 'robots'
+        | 'sitemap'
+        | 'visual'
+        | 'wqa_quality'
+        | 'wqa_actions'
+        | 'wqa_search'
+        | 'wqa_content'
+        | 'wqa_history'
+        | 'comp_overview'
+        | 'comp_gaps'
+        | 'comp_threats'
+        | 'comp_brief'
+        | 'comp_trends';
     setActiveAuditTab: (t: any) => void;
     showSettings: boolean;
     setShowSettings: (s: boolean) => void;
@@ -345,6 +391,8 @@ export interface CrawlerContextType {
     robotsTxt: RobotsTxtState;
     sitemapData: { totalUrls: number; sources: string[]; coverageParsed?: boolean } | null;
     siteType: SiteTypeResult | null;
+    wqaState: WebsiteQualityState;
+    setWqaState: React.Dispatch<React.SetStateAction<WebsiteQualityState>>;
     columns: any[];
     config: any;
     setConfig: (c: any) => void;
@@ -696,6 +744,8 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         { group: 'internal', sub: 'All' }
     ]);
     const activeCategory = activeCategories[0] || { group: 'internal', sub: 'All' };
+    const [wqaCategoryFilter, setWqaCategoryFilter] = useState<{ groupId: string; nodeId: string } | null>(null);
+    const [wqaPageFilter, setWqaPageFilter] = useState<((page: any) => boolean) | null>(null);
     const setActiveCategory = useCallback((category: { group: string; sub: string }) => {
         setActiveCategories([category]);
     }, []);
@@ -789,6 +839,19 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         return AUDIT_MODES[primaryMode]?.sidebarSections || ['overview', 'issues', 'details'];
     }, [auditFilter.modes]);
 
+    const isWqaMode = useMemo(() => {
+        const primaryMode = auditFilter.modes[0] || 'full';
+        return AUDIT_MODES[primaryMode]?.isWqaMode === true;
+    }, [auditFilter.modes]);
+
+    useEffect(() => {
+        setWqaState((prev) => ({ ...prev, isActive: isWqaMode }));
+        if (!isWqaMode) {
+            setWqaCategoryFilter(null);
+            setWqaPageFilter(null);
+        }
+    }, [isWqaMode]);
+
     // Live query for pages from IndexedDB (moved after currentSessionId)
     const pages = useLiveQuery(
         () => currentSessionId
@@ -827,6 +890,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
     const [robotsTxt, setRobotsTxt] = useState<RobotsTxtState>(null);
     const [sitemapData, setSitemapData] = useState<{ totalUrls: number; sources: string[]; coverageParsed?: boolean } | null>(null);
     const [siteType, setSiteType] = useState<SiteTypeResult | null>(null);
+    const [wqaState, setWqaState] = useState<WebsiteQualityState>(DEFAULT_WQA_STATE);
 
     // --- Column Width Overrides (Already declared above) ---
 
@@ -1055,6 +1119,19 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
     useEffect(() => {
         currentSessionIdRef.current = currentSessionId;
     }, [currentSessionId]);
+
+    useEffect(() => {
+        if (!siteType) return;
+        setWqaState((prev) => ({
+            ...prev,
+            detectedIndustry: siteType.industry,
+            industryConfidence: siteType.confidence,
+            detectedLanguage: siteType.detectedLanguage,
+            detectedLanguages: siteType.detectedLanguages,
+            detectedCms: siteType.detectedCms,
+            isMultiLanguage: siteType.isMultiLanguage,
+        }));
+    }, [siteType]);
 
     useEffect(() => {
         if (typeof window === 'undefined') return;
@@ -1644,6 +1721,9 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         setSelectedPage(null);
         setSelectedRows(new Set());
         setSiteType(null);
+        setWqaCategoryFilter(null);
+        setWqaPageFilter(null);
+        setWqaState(DEFAULT_WQA_STATE);
         setCurrentSessionId(null);
         currentSessionIdRef.current = null;
         setCompareSessionId(null);
@@ -2572,11 +2652,14 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         if (!modeConfig || modeConfig.defaultColumns.length === 0) return;
 
         const validColumns = new Set(ALL_COLUMNS.map((column) => column.key));
-        const nextColumns = modeConfig.defaultColumns.filter((column) => validColumns.has(column));
+        const sourceColumns = modeConfig.isWqaMode
+            ? getWqaColumns(getEffectiveIndustry(wqaState))
+            : modeConfig.defaultColumns;
+        const nextColumns = sourceColumns.filter((column) => validColumns.has(column));
         if (nextColumns.length > 0) {
             setVisibleColumns(nextColumns);
         }
-    }, [auditFilter.modes]);
+    }, [auditFilter.modes, wqaState]);
 
     useEffect(() => {
         if (!activeMacro || activeMacro === 'all') return;
@@ -2796,12 +2879,16 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
             (selection) => !(selection.group === 'internal' && selection.sub === 'All')
         );
 
-        if (hasEffectiveSelection) {
+        if (!isWqaMode && hasEffectiveSelection) {
             list = list.filter((page) =>
                 sanitizedSelections.some((selection) =>
                     matchesCategoryFilter(selection.group, selection.sub, page, { rootHostname })
                 )
             );
+        }
+
+        if (isWqaMode && wqaPageFilter) {
+            list = list.filter(wqaPageFilter);
         }
 
         if (sortConfig) {
@@ -2815,13 +2902,15 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         }
 
         return list;
-    }, [pagesWithDerivedSignals, activeCategories, deferredSearchQuery, activeMacro, sortConfig, MACRO_FILTERS, ignoredUrls, rootHostname, filteredIssuePages]);
+    }, [pagesWithDerivedSignals, activeCategories, deferredSearchQuery, activeMacro, sortConfig, MACRO_FILTERS, ignoredUrls, rootHostname, filteredIssuePages, isWqaMode, wqaPageFilter]);
 
     const hasOnlyDefaultCategory = activeCategories.length === 0 || activeCategories.every((entry) => entry.group === 'internal' && entry.sub === 'All');
     const canUseWorkerFiltering = pagesWithDerivedSignals.length > 5000
         && hasOnlyDefaultCategory
         && activeMacro === 'all'
-        && ignoredUrls.size === 0;
+        && ignoredUrls.size === 0
+        && !isWqaMode
+        && !wqaPageFilter;
 
     useEffect(() => {
         if (!statsWorkerRef.current || !canUseWorkerFiltering) {
@@ -3682,6 +3771,9 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         setRobotsTxt(null);
         setSitemapData(null);
         setSiteType(null);
+        setWqaCategoryFilter(null);
+        setWqaPageFilter(null);
+        setWqaState(DEFAULT_WQA_STATE);
         setCrawlStartTime(null);
         setCrawlRuntime((prev) => ({
             ...prev,
@@ -4504,6 +4596,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         crawlDb,
         activeCategories, setActiveCategories,
         activeCategory, setActiveCategory,
+        wqaCategoryFilter, setWqaCategoryFilter, setWqaPageFilter,
         auditFilter, activeCheckIds, activeCheckCategories, filteredIssuePages,
         activeViewType, activeSidebarSections,
 
@@ -4536,7 +4629,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         sidebarCollapsed, setSidebarCollapsed,
         showScheduleModal, setShowScheduleModal,
         ignoredUrls, setIgnoredUrls, urlTags, setUrlTags,
-        robotsTxt, sitemapData, siteType,
+        robotsTxt, sitemapData, siteType, wqaState, setWqaState,
         columnWidths, setColumnWidths,
         aiResults, aiProgress, aiNarrative, isAnalyzingAI, runAIAnalysis,
         // Collaboration & Tasks (P5)
@@ -4567,6 +4660,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         crawlingMode, urlInput, listUrls, showListModal,
         isCrawling, pagesWithDerivedSignals, analysisPages, logs, crawlStartTime,
         activeCategories, activeCategory,
+        wqaCategoryFilter,
         auditFilter, activeCheckIds, activeCheckCategories, filteredIssuePages,
         activeViewType, activeSidebarSections,
 
@@ -4595,7 +4689,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         sidebarCollapsed,
         showScheduleModal,
         ignoredUrls, urlTags,
-        robotsTxt, sitemapData, siteType,
+        robotsTxt, sitemapData, siteType, wqaState,
         columnWidths,
         aiResults, aiProgress, aiNarrative, isAnalyzingAI,
         tasks, teamMembers, showCollabOverlay,
