@@ -134,12 +134,26 @@ export interface CrawledPage {
   recommendedAction: string | null;
   recommendedActionReason: string | null;
   recommendedActionFactors: string | null;
+  technicalAction?: string | null;
+  technicalActionReason?: string | null;
+  contentAction?: string | null;
+  contentActionReason?: string | null;
+  actionPriority?: number | null;
+  estimatedImpact?: number | null;
   techHealthScore: number | null;
   contentQualityScore: number | null;
   searchVisibilityScore: number | null;
   engagementScore: number | null;
   authorityComputedScore: number | null;
   businessComputedScore: number | null;
+  pageCategory?: string | null;
+  pageValue?: number | null;
+  pageValueTier?: string | null;
+  speedScore?: string | null;
+  expectedCtr?: number | null;
+  ctrGap?: number | null;
+  intentMatch?: string | null;
+  contentAge?: string | null;
   searchIntent: string | null;
   inSitemap: boolean | null;
   sitemapBrokenUrls?: number;
@@ -593,6 +607,28 @@ class CrawlDB extends Dexie {
 
     this.version(15).stores({
         competitorSnapshots: '++id, projectDomain, snapshotAt'
+    });
+
+    this.version(16).stores({
+        pages: 'url, crawlId, isHtmlPage, statusCode, [crawlId+statusCode]',
+        sessions: 'id, projectId, startedAt',
+    }).upgrade(tx => {
+        return tx.table('pages').toCollection().modify(page => {
+            page.pageCategory = page.pageCategory ?? null;
+            page.pageValue = page.pageValue ?? null;
+            page.pageValueTier = page.pageValueTier ?? null;
+            page.speedScore = page.speedScore ?? null;
+            page.expectedCtr = page.expectedCtr ?? null;
+            page.ctrGap = page.ctrGap ?? null;
+            page.intentMatch = page.intentMatch ?? null;
+            page.contentAge = page.contentAge ?? null;
+            page.technicalAction = page.technicalAction ?? null;
+            page.technicalActionReason = page.technicalActionReason ?? null;
+            page.contentAction = page.contentAction ?? null;
+            page.contentActionReason = page.contentActionReason ?? null;
+            page.actionPriority = page.actionPriority ?? null;
+            page.estimatedImpact = page.estimatedImpact ?? null;
+        });
     });
   }
 }

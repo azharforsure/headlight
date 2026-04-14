@@ -50,6 +50,24 @@ export const ALL_COLUMNS = [
     { key: 'h2_1Length', label: 'H2-1 Length', width: '100px', group: 'General' },
     { key: 'h2_2', label: 'H2-2', width: '250px', group: 'General' },
     { key: 'h2_2Length', label: 'H2-2 Length', width: '100px', group: 'General' },
+
+    // WQA Classification
+    { key: 'pageCategory', label: 'Page Category', width: '140px', group: 'WQA' },
+    { key: 'pageValueTier', label: 'Page Value', width: '100px', group: 'WQA' },
+    { key: 'pageValue', label: 'Page Value Score', width: '130px', group: 'WQA' },
+    { key: 'speedScore', label: 'Speed', width: '100px', group: 'WQA' },
+    { key: 'contentAge', label: 'Content Age', width: '120px', group: 'WQA' },
+
+    // WQA Actions
+    { key: 'technicalAction', label: 'Technical Action', width: '180px', group: 'WQA Actions' },
+    { key: 'contentAction', label: 'Content Action', width: '180px', group: 'WQA Actions' },
+    { key: 'estimatedImpact', label: 'Est. Impact (clicks)', width: '150px', group: 'WQA Actions' },
+    { key: 'actionPriority', label: 'Action Priority', width: '120px', group: 'WQA Actions' },
+
+    // WQA Search Performance
+    { key: 'expectedCtr', label: 'Expected CTR', width: '110px', group: 'WQA Search' },
+    { key: 'ctrGap', label: 'CTR Gap', width: '100px', group: 'WQA Search' },
+    { key: 'intentMatch', label: 'Intent Match', width: '110px', group: 'WQA Search' },
     
     // Technical
     { key: 'metaRobots1', label: 'Meta Robots 1', width: '120px', group: 'Technical' },

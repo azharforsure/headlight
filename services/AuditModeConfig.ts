@@ -33,16 +33,20 @@ export const AUDIT_MODES: Record<AuditMode, AuditModeConfig> = {
     },
     website_quality: {
         id: 'website_quality',
-        label: 'Website Quality Audit',
-        description: 'Errors, UX, and core quality signals',
+        label: 'Website Quality',
+        description: 'Page value, actions, search performance, and content health',
         icon: '🌐',
         totalChecks: '~80',
         viewType: 'grid',
-        sidebarSections: ['overview', 'issues', 'details'],
+        sidebarSections: ['quality', 'actions', 'search', 'content', 'history'],
         defaultColumns: [
-            'url', 'statusCode', 'title', 'metaDesc', 'wordCount', 'loadTime',
-            'lcp', 'cls', 'missingAltImages', 'spellingErrors', 'grammarErrors',
-            'techHealthScore', 'contentQualityScore', 'recommendedAction'
+            'pageCategory', 'url', 'statusCode', 'indexabilityStatus',
+            'technicalAction', 'contentAction',
+            'mainKeyword', 'mainKwPosition', 'gscImpressions', 'gscClicks', 'gscCtr',
+            'ga4Sessions', 'sessionsDeltaPct', 'isLosingTraffic', 'ga4BounceRate',
+            'backlinks', 'referringDomains', 'inlinks',
+            'title', 'h1_1', 'wordCount', 'contentQualityScore',
+            'pageValueTier', 'healthScore', 'speedScore'
         ]
     },
     technical_seo: {

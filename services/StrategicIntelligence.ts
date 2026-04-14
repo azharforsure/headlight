@@ -615,3 +615,127 @@ export function getRecommendedAction(page: any): ActionResult {
         factors: ['stable']
     };
 }
+
+// ─── WQA: Speed Score ───
+
+export function calculateSpeedScore(page: any): 'Good' | 'Needs Work' | 'Poor' {
+    const lcp = Number(page.lcp || page.fieldLcp || 0);
+    const cls = Number(page.cls || page.fieldCls || 0);
+    const inp = Number(page.inp || page.fieldInp || 0);
+    const ttfb = Number(page.loadTime || page.fieldTtfb || 0);
+
+    if (lcp === 0 && cls === 0 && inp === 0 && ttfb === 0) return 'Good';
+
+    let score = 0;
+    let factors = 0;
+
+    if (lcp > 0) {
+        factors += 40;
+        if (lcp <= 2500) score += 40;
+        else if (lcp <= 4000) score += 20;
+    }
+
+    if (cls > 0 || page.cls === 0) {
+        factors += 20;
+        if (cls <= 0.1) score += 20;
+        else if (cls <= 0.25) score += 10;
+    }
+
+    if (inp > 0) {
+        factors += 20;
+        if (inp <= 200) score += 20;
+        else if (inp <= 500) score += 10;
+    }
+
+    if (ttfb > 0) {
+        factors += 20;
+        if (ttfb <= 800) score += 20;
+        else if (ttfb <= 1800) score += 10;
+    }
+
+    if (factors === 0) return 'Good';
+
+    const normalized = (score / factors) * 100;
+    if (normalized >= 70) return 'Good';
+    if (normalized >= 40) return 'Needs Work';
+    return 'Poor';
+}
+
+// ─── WQA: Page Value ───
+
+export type PageValueTier = '★★★' | '★★' | '★' | '☆';
+
+export function calculatePageValue(page: any, industry: string = 'general'): { score: number; tier: PageValueTier } {
+    const sessions = Number(page.ga4Sessions || 0);
+    const clicks = Number(page.gscClicks || 0);
+    const refDomains = Number(page.referringDomains || 0);
+    const ipr = Number(page.internalPageRank || 0);
+
+    let conversionValue = 0;
+    if (industry === 'ecommerce') {
+        conversionValue = Number(page.ga4Revenue || 0);
+    } else if (industry === 'news' || industry === 'blog') {
+        conversionValue = Number(page.ga4Views || 0) * 0.005;
+    } else if (industry === 'local') {
+        conversionValue = Number(page.ga4Conversions || page.ga4GoalCompletions || 0) * 50;
+    } else if (industry === 'saas') {
+        conversionValue = Number(page.ga4Conversions || 0) * 100;
+    } else {
+        conversionValue = Number(page.ga4Conversions || 0) * 25;
+    }
+
+    const sessionScore = Math.min(100, sessions * 0.5);
+    const clickScore = Math.min(100, clicks);
+    const conversionScore = Math.min(100, conversionValue * 0.1);
+    const authorityScore = Math.min(100, refDomains * 5);
+    const iprScore = Math.min(100, ipr);
+
+    const rawScore = (
+        sessionScore * 0.25 +
+        clickScore * 0.20 +
+        conversionScore * 0.25 +
+        authorityScore * 0.15 +
+        iprScore * 0.15
+    );
+
+    const score = Math.max(0, Math.min(100, Math.round(rawScore)));
+
+    let tier: PageValueTier;
+    if (score >= 60) tier = '★★★';
+    else if (score >= 30) tier = '★★';
+    else if (score >= 10) tier = '★';
+    else tier = '☆';
+
+    return { score, tier };
+}
+
+// ─── WQA: Content Age ───
+
+export function classifyContentAge(visibleDate: string | null | undefined): 'fresh' | 'aging' | 'stale' | 'ancient' | 'unknown' {
+    if (!visibleDate) return 'unknown';
+
+    const parsed = new Date(visibleDate);
+    if (Number.isNaN(parsed.getTime())) return 'unknown';
+
+    const age = Date.now() - parsed.getTime();
+    const months = age / (30 * 24 * 60 * 60 * 1000);
+    if (months < 6) return 'fresh';
+    if (months < 12) return 'aging';
+    if (months < 24) return 'stale';
+    return 'ancient';
+}
+
+// ─── WQA: Intent Match ───
+
+export function checkIntentMatch(pageIntent: string | null, kwIntent: string | null): 'aligned' | 'misaligned' | 'unknown' {
+    if (!pageIntent || !kwIntent) return 'unknown';
+
+    const p = pageIntent.toLowerCase().trim();
+    const k = kwIntent.toLowerCase().trim();
+    if (p === k) return 'aligned';
+
+    if ((p === 'transactional' && k === 'commercial') || (p === 'commercial' && k === 'transactional')) return 'aligned';
+    if (p === 'informational' && k === 'navigational') return 'aligned';
+
+    return 'misaligned';
+}

@@ -85,6 +85,7 @@ import {
   DEFAULT_COMPETITIVE_STATE,
 } from '../services/CompetitorModeTypes';
 import { computeShareOfVoice, computeThreatScores } from '../services/CompetitorDiscoveryService';
+import type { SiteTypeResult } from '../services/SiteTypeDetector';
 // getPageIssues now imported from UnifiedIssueTaxonomy above
 
 import type { PageAIResult } from '../services/ai/AIAnalysisEngine';
@@ -343,6 +344,7 @@ export interface CrawlerContextType {
     setColumnWidths: (w: Record<string, number> | ((p: Record<string, number>) => Record<string, number>)) => void;
     robotsTxt: RobotsTxtState;
     sitemapData: { totalUrls: number; sources: string[]; coverageParsed?: boolean } | null;
+    siteType: SiteTypeResult | null;
     columns: any[];
     config: any;
     setConfig: (c: any) => void;
@@ -824,6 +826,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
     const [urlTags, setUrlTags] = useState<Record<string, string[]>>({});
     const [robotsTxt, setRobotsTxt] = useState<RobotsTxtState>(null);
     const [sitemapData, setSitemapData] = useState<{ totalUrls: number; sources: string[]; coverageParsed?: boolean } | null>(null);
+    const [siteType, setSiteType] = useState<SiteTypeResult | null>(null);
 
     // --- Column Width Overrides (Already declared above) ---
 
@@ -1640,6 +1643,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         setLogs([]);
         setSelectedPage(null);
         setSelectedRows(new Set());
+        setSiteType(null);
         setCurrentSessionId(null);
         currentSessionIdRef.current = null;
         setCompareSessionId(null);
@@ -2025,7 +2029,8 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
                 const completedPages = pagesRef.current;
                 if (completedPages.length > 0) {
                     addLog('Calculating Strategic PageRank & Health Scores...', 'info', { source: 'analysis' });
-                    const updated = runPostCrawlScoring(completedPages);
+                    const { pages: updated, siteType: detectedSiteType } = runPostCrawlScoring(completedPages);
+                    setSiteType(detectedSiteType);
                     
                     // Final Persistence Pass to Dexie
                     if (currentSessionIdRef.current) {
@@ -2382,7 +2387,8 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
                             // S4 fix: Shared post-crawl scoring pipeline
                             const completedPages = [...pagesRef.current];
                             addLog('Calculating Strategic PageRank & Health Scores...', 'info', { source: 'analysis' });
-                            const updated = runPostCrawlScoring(completedPages);
+                            const { pages: updated, siteType: detectedSiteType } = runPostCrawlScoring(completedPages);
+                            setSiteType(detectedSiteType);
 
                             await crawlDb.pages.bulkPut(updated);
                             
@@ -3675,6 +3681,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         setLogs([]);
         setRobotsTxt(null);
         setSitemapData(null);
+        setSiteType(null);
         setCrawlStartTime(null);
         setCrawlRuntime((prev) => ({
             ...prev,
@@ -4529,7 +4536,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         sidebarCollapsed, setSidebarCollapsed,
         showScheduleModal, setShowScheduleModal,
         ignoredUrls, setIgnoredUrls, urlTags, setUrlTags,
-        robotsTxt, sitemapData,
+        robotsTxt, sitemapData, siteType,
         columnWidths, setColumnWidths,
         aiResults, aiProgress, aiNarrative, isAnalyzingAI, runAIAnalysis,
         // Collaboration & Tasks (P5)
@@ -4588,7 +4595,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         sidebarCollapsed,
         showScheduleModal,
         ignoredUrls, urlTags,
-        robotsTxt, sitemapData,
+        robotsTxt, sitemapData, siteType,
         columnWidths,
         aiResults, aiProgress, aiNarrative, isAnalyzingAI,
         tasks, teamMembers, showCollabOverlay,

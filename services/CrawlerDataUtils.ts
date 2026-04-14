@@ -179,15 +179,41 @@ export const buildSitemapState = (
 
 // ─── Post-Crawl Scoring ───
 
-import { calculateInternalPageRank, calculatePredictiveScore } from './StrategicIntelligence';
+import {
+    calculateInternalPageRank,
+    calculatePredictiveScore,
+    calculateSpeedScore,
+    calculatePageValue,
+    classifyContentAge,
+    checkIntentMatch
+} from './StrategicIntelligence';
+import { getExpectedCtr, getCtrGap } from './ExpectedCtrCurve';
+import { classifyPageCategory } from './PageCategoryClassifier';
+import { assignTechnicalAction, assignContentAction } from './ActionAssignment';
+import { detectSiteType, type SiteTypeResult } from './SiteTypeDetector';
 
 /**
- * S4 fix: Shared post-crawl scoring pipeline.
- * Computes Internal PageRank and health scores for all completed pages.
+ * Shared post-crawl scoring pipeline.
+ * Computes site type, PageRank, category/value/speed/search/action fields, and health scores.
  * Called from both Ghost Engine and WebSocket completion handlers.
  */
-export const runPostCrawlScoring = (completedPages: any[]): any[] => {
-    if (completedPages.length === 0) return completedPages;
+export const runPostCrawlScoring = (completedPages: any[]): { pages: any[]; siteType: SiteTypeResult } => {
+    if (completedPages.length === 0) {
+        return {
+            pages: completedPages,
+            siteType: {
+                industry: 'general',
+                confidence: 0,
+                allScores: {} as any,
+                detectedLanguage: 'unknown',
+                detectedLanguages: [],
+                detectedCms: null,
+                isMultiLanguage: false
+            }
+        };
+    }
+
+    const siteType = detectSiteType(completedPages);
 
     const ranks = calculateInternalPageRank(completedPages);
     
@@ -207,7 +233,22 @@ export const runPostCrawlScoring = (completedPages: any[]): any[] => {
     // B3 — Hreflang Return Tag Verification
     const hreflangReturnMap = verifyHreflangReciprocity(completedPages);
 
-    return completedPages.map(p => {
+    const siteCtx = {
+        detectedIndustry: siteType.industry,
+        detectedLanguage: siteType.detectedLanguage,
+        totalPages: completedPages.length,
+        isMultiLanguage: siteType.isMultiLanguage,
+        rootHostname: ''
+    };
+
+    try {
+        const firstUrl = completedPages.find((p) => p.crawlDepth === 0)?.url || completedPages[0]?.url;
+        if (firstUrl) siteCtx.rootHostname = new URL(firstUrl).hostname.replace(/^www\./, '');
+    } catch {
+        // noop
+    }
+
+    const pages = completedPages.map(p => {
         const internalPageRank = ranks[p.url] || 0;
         
         // Apply Cannibalization flag
@@ -218,16 +259,48 @@ export const runPostCrawlScoring = (completedPages: any[]): any[] => {
             isCannibalized = urls && urls.length > 1;
         }
 
-        const updatedPage = { 
-            ...p, 
-            internalPageRank, 
+        const pageCategory = classifyPageCategory(p, siteCtx);
+        const speedScore = calculateSpeedScore(p);
+        const position = Number(p.gscPosition || 0);
+        const actualCtr = Number(p.gscCtr || 0);
+        const expectedCtr = getExpectedCtr(position);
+        const ctrGap = position > 0 ? getCtrGap(position, actualCtr) : 0;
+        const kwIntent = p.extractedKeywords?.[0]?.intent || null;
+        const intentMatch = checkIntentMatch(p.searchIntent, kwIntent);
+        const contentAge = classifyContentAge(p.visibleDate || p.wpPublishDate || p.lastModified);
+
+        const updatedPage = {
+            ...p,
+            internalPageRank,
             isCannibalized,
             wwwInconsistency: wwwInconsistency.hasInconsistency,
-            hreflangNoReturn: hreflangReturnMap.get(p.url) || false
+            hreflangNoReturn: hreflangReturnMap.get(p.url) || false,
+            pageCategory,
+            speedScore,
+            expectedCtr,
+            ctrGap,
+            intentMatch,
+            contentAge
         };
-        
-        return { ...updatedPage, healthScore: calculatePredictiveScore(updatedPage) };
+
+        const { score: pageValueScore, tier: pageValueTier } = calculatePageValue(updatedPage, siteType.industry);
+        updatedPage.pageValue = pageValueScore;
+        updatedPage.pageValueTier = pageValueTier;
+        updatedPage.healthScore = calculatePredictiveScore(updatedPage);
+
+        const techAction = assignTechnicalAction(updatedPage, siteCtx);
+        const contentAction = assignContentAction(updatedPage, siteCtx);
+        updatedPage.technicalAction = techAction.action;
+        updatedPage.technicalActionReason = techAction.reason;
+        updatedPage.contentAction = contentAction.action;
+        updatedPage.contentActionReason = contentAction.reason;
+        updatedPage.actionPriority = Math.min(techAction.priority, contentAction.priority);
+        updatedPage.estimatedImpact = techAction.estimatedImpact + contentAction.estimatedImpact;
+
+        return updatedPage;
     });
+
+    return { pages, siteType };
 };
 
 /**
