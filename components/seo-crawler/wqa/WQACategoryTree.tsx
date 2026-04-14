@@ -410,40 +410,43 @@ export default function WQACategoryTree({
     }, [categories, searchQuery]);
 
     return (
-        <div className="h-full flex flex-col bg-[#0a0a0a] border-r border-[#1a1a1a] text-[12px] select-none">
-            <div className="px-3 py-2 border-b border-[#1a1a1a]">
-                <div className="text-[10px] font-black uppercase tracking-widest text-[#555] mb-2">Website Quality</div>
+        <div className="h-full flex flex-col bg-[#111] text-[12px] select-none">
+            <div className="px-2 py-2 border-b border-[#1a1a1a] shrink-0 space-y-2">
+                <div className="flex items-center justify-between px-1">
+                    <span className="text-[9px] text-[#555] uppercase tracking-widest font-bold">Categories</span>
+                    <span className="text-[8px] font-bold uppercase tracking-wider text-[#F5364E]">WQA</span>
+                </div>
                 <div className="relative">
-                    <Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-[#444]" />
+                    <Search size={11} className="absolute left-2 top-1/2 -translate-y-1/2 text-[#444]" />
                     <input
                         type="text"
-                        placeholder="Filter..."
+                        placeholder="Search..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full bg-[#111] border border-[#222] rounded pl-7 pr-2 py-1 text-[11px] text-white placeholder-[#444] focus:outline-none focus:border-[#333]"
+                        className="w-full bg-[#0a0a0a]/50 border border-[#222] rounded pl-6 pr-2 py-1 text-[11px] text-[#e0e0e0] placeholder-[#444] focus:border-[#F5364E]/50 focus:outline-none transition-colors"
                     />
                 </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto custom-scrollbar px-1 py-1">
+            <div className="flex-1 overflow-y-auto custom-scrollbar py-1 px-1">
                 {filteredCategories.map((group) => {
                     if (group.id === 'all') {
                         const node = group.nodes[0];
                         const isActive = activeFilter === null;
                         return (
-                            <div
+                            <button
                                 key={group.id}
                                 onClick={onClearFilter}
-                                className={`flex items-center justify-between px-3 py-1.5 rounded cursor-pointer mb-1 ${
-                                    isActive ? 'bg-[#1a1a1a] text-white' : 'text-[#888] hover:text-white hover:bg-[#111]'
+                                className={`w-full flex items-center justify-between px-2.5 py-1.5 text-[11px] rounded-sm transition-colors mb-0.5 ${
+                                    isActive ? 'bg-[#F5364E]/10 text-[#F5364E] font-medium' : 'text-[#888] hover:text-[#ccc] hover:bg-[#1a1a1a]'
                                 }`}
                             >
-                                <span className="flex items-center gap-2">
+                                <span className="flex items-center gap-2 min-w-0">
                                     {group.icon}
-                                    <span className="font-medium">{node.label}</span>
+                                    <span className="truncate">{node.label}</span>
                                 </span>
-                                <span className="text-[10px] text-[#555] font-mono">{node.count.toLocaleString()}</span>
-                            </div>
+                                <span className="text-[10px] text-[#555] font-mono shrink-0">{node.count.toLocaleString()}</span>
+                            </button>
                         );
                     }
 
@@ -451,36 +454,38 @@ export default function WQACategoryTree({
 
                     return (
                         <div key={group.id} className="mb-0.5">
-                            <div
+                            <button
                                 onClick={() => toggleGroup(group.id)}
-                                className="flex items-center justify-between px-3 py-1.5 cursor-pointer text-[#666] hover:text-[#999] rounded hover:bg-[#0d0d0d]"
+                                className={`w-full flex items-center justify-between px-2.5 py-1.5 text-[12px] font-semibold rounded-sm transition-colors ${isOpen ? 'text-[#eee]' : 'text-[#aaa] hover:bg-[#1a1a1a]'}`}
                             >
-                                <span className="flex items-center gap-1.5">
-                                    {isOpen ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
-                                    {group.icon}
-                                    <span className="text-[10px] font-bold uppercase tracking-wider">{group.label}</span>
+                                <span className="flex items-center gap-2 min-w-0">
+                                    <span className="text-[#666] shrink-0">{group.icon}</span>
+                                    <span className="truncate">{group.label}</span>
                                 </span>
-                            </div>
+                                <span className="flex items-center gap-1.5 shrink-0 text-[#666]">
+                                    {isOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                                </span>
+                            </button>
 
                             {isOpen && (
-                                <div className="ml-2">
+                                <div className="ml-[18px] pl-3 my-1 space-y-0.5 border-l border-[#222]">
                                     {group.nodes.map((node) => {
                                         const isActive = activeFilter?.nodeId === node.id;
                                         return (
-                                            <div
+                                            <button
                                                 key={node.id}
                                                 onClick={() => handleNodeClick(group.id, node)}
-                                                className={`flex items-center justify-between px-3 py-1 rounded cursor-pointer ${
+                                                className={`w-full text-left px-2.5 py-1 text-[11px] rounded-sm transition-all flex items-center justify-between gap-1 ${
                                                     isActive
-                                                        ? 'bg-[#1a1a1a] text-white'
-                                                        : 'text-[#777] hover:text-white hover:bg-[#111]'
+                                                        ? 'bg-[#F5364E]/10 text-[#F5364E] font-medium'
+                                                        : 'text-[#888] hover:text-[#ccc] hover:bg-[#1a1a1a]'
                                                 }`}
                                             >
                                                 <span className="truncate">{node.label}</span>
-                                                <span className={`text-[10px] font-mono ml-2 flex-shrink-0 ${isActive ? 'text-[#aaa]' : 'text-[#444]'}`}>
+                                                <span className={`text-[10px] font-mono ml-2 shrink-0 ${isActive ? 'text-[#F5364E]' : 'text-[#555]'}`}>
                                                     {node.count.toLocaleString()}
                                                 </span>
-                                            </div>
+                                            </button>
                                         );
                                     })}
                                 </div>
