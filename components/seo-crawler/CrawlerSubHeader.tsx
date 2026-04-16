@@ -6,7 +6,6 @@ import {
 import { useSeoCrawler } from '../../contexts/SeoCrawlerContext';
 import { ALL_COLUMNS } from './constants';
 import { INDUSTRY_FILTERS, AUDIT_MODES_LIST } from '../../services/AuditModeConfig';
-import WQASubheader from './wqa/WQASubheader';
 
 import type { AuditMode, IndustryFilter } from '../../services/CheckRegistry';
 
