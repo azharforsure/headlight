@@ -12,9 +12,6 @@ import ChartsView from './ChartsView';
 import WQADashboardView from './wqa/WQADashboardView';
 import WQAPrioritiesView from './wqa/WQAPrioritiesView';
 import WQAInspector from './wqa/WQAInspector';
-import WqaStructureView from './wqa/WqaStructureView';
-import WqaViewSwitcher from './wqa/WqaViewSwitcher';
-import { formatCat } from './wqa/wqaUtils';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
 import MobilePageCard from './MobilePageCard';
 import MobilePageDetail from './MobilePageDetail';
@@ -29,49 +26,16 @@ import { getEffectiveIndustry, getEffectiveLanguage } from '../../services/Websi
 const ForceGraph3D = lazy(() => import('react-force-graph-3d'));
 
 const ACTION_COLORS: Record<string, { text: string; bg: string; border: string }> = {
-  // ── Technical: critical ──────────────────────────────────
-  'Fix Server Errors':         { text: '#FCA5A5', bg: 'rgba(239,68,68,0.12)',   border: 'rgba(239,68,68,0.35)'   },
-  'Restore Broken Page':       { text: '#FCA5A5', bg: 'rgba(239,68,68,0.12)',   border: 'rgba(239,68,68,0.35)'   },
-  'Fix Security':              { text: '#FCA5A5', bg: 'rgba(239,68,68,0.12)',   border: 'rgba(239,68,68,0.35)'   },
-  'Remove Dead Page':          { text: '#6B7280', bg: 'rgba(107,114,128,0.10)', border: 'rgba(107,114,128,0.28)' },
-  // ── Technical: warning ──────────────────────────────────
-  'Unblock From Index':        { text: '#FCD34D', bg: 'rgba(245,158,11,0.12)',  border: 'rgba(245,158,11,0.35)'  },
-  'Fix Redirect Chain':        { text: '#FCD34D', bg: 'rgba(245,158,11,0.12)',  border: 'rgba(245,158,11,0.35)'  },
-  'Fix Canonical':             { text: '#FCD34D', bg: 'rgba(245,158,11,0.12)',  border: 'rgba(245,158,11,0.35)'  },
-  'Fix Hreflang':              { text: '#FCD34D', bg: 'rgba(245,158,11,0.12)',  border: 'rgba(245,158,11,0.35)'  },
-  'Consolidate Duplicates':    { text: '#FCD34D', bg: 'rgba(245,158,11,0.12)',  border: 'rgba(245,158,11,0.35)'  },
-  'Fix Navigation Structure':  { text: '#FCD34D', bg: 'rgba(245,158,11,0.12)',  border: 'rgba(245,158,11,0.35)'  },
-  // ── Technical: optimize ─────────────────────────────────
-  'Add to Sitemap':            { text: '#93C5FD', bg: 'rgba(59,130,246,0.12)',  border: 'rgba(59,130,246,0.35)'  },
-  'Improve Speed':             { text: '#93C5FD', bg: 'rgba(59,130,246,0.12)',  border: 'rgba(59,130,246,0.35)'  },
-  'Add Internal Links':        { text: '#FDBA74', bg: 'rgba(249,115,22,0.12)',  border: 'rgba(249,115,22,0.35)'  },
-  // ── Content: urgent ─────────────────────────────────────
-  'Recover Declining Content': { text: '#FCA5A5', bg: 'rgba(239,68,68,0.12)',   border: 'rgba(239,68,68,0.35)'   },
-  // ── Content: improve ────────────────────────────────────
-  'Rewrite Title & Meta':      { text: '#C4B5FD', bg: 'rgba(139,92,246,0.12)',  border: 'rgba(139,92,246,0.35)'  },
-  'Fix Keyword Mismatch':      { text: '#FCD34D', bg: 'rgba(245,158,11,0.12)',  border: 'rgba(245,158,11,0.35)'  },
-  'Rebuild for Intent':        { text: '#FCD34D', bg: 'rgba(245,158,11,0.12)',  border: 'rgba(245,158,11,0.35)'  },
-  'Expand Thin Content':       { text: '#93C5FD', bg: 'rgba(59,130,246,0.12)',  border: 'rgba(59,130,246,0.35)'  },
-  'Update Stale Content':      { text: '#93C5FD', bg: 'rgba(59,130,246,0.12)',  border: 'rgba(59,130,246,0.35)'  },
-  'Add Schema':                { text: '#93C5FD', bg: 'rgba(59,130,246,0.12)',  border: 'rgba(59,130,246,0.35)'  },
-  'Add FAQ Schema':            { text: '#93C5FD', bg: 'rgba(59,130,246,0.12)',  border: 'rgba(59,130,246,0.35)'  },
-  'Improve E-E-A-T':           { text: '#93C5FD', bg: 'rgba(59,130,246,0.12)',  border: 'rgba(59,130,246,0.35)'  },
-  'Improve Readability':       { text: '#93C5FD', bg: 'rgba(59,130,246,0.12)',  border: 'rgba(59,130,246,0.35)'  },
-  'Resolve Cannibalization':   { text: '#FCD34D', bg: 'rgba(245,158,11,0.12)',  border: 'rgba(245,158,11,0.35)'  },
-  'Optimize for SERP Features':{ text: '#C4B5FD', bg: 'rgba(139,92,246,0.12)',  border: 'rgba(139,92,246,0.35)'  },
-  'Acquire Backlinks':         { text: '#C4B5FD', bg: 'rgba(139,92,246,0.12)',  border: 'rgba(139,92,246,0.35)'  },
-  'Remove or Merge':           { text: '#6B7280', bg: 'rgba(107,114,128,0.10)', border: 'rgba(107,114,128,0.28)' },
-  'Repurpose Page':            { text: '#6B7280', bg: 'rgba(107,114,128,0.10)', border: 'rgba(107,114,128,0.28)' },
-  // ── Industry ────────────────────────────────────────────
-  'Add Product Schema':        { text: '#86EFAC', bg: 'rgba(34,197,94,0.10)',   border: 'rgba(34,197,94,0.28)'   },
-  'Add Visible Price':         { text: '#86EFAC', bg: 'rgba(34,197,94,0.10)',   border: 'rgba(34,197,94,0.28)'   },
-  'Add Article Schema':        { text: '#86EFAC', bg: 'rgba(34,197,94,0.10)',   border: 'rgba(34,197,94,0.28)'   },
-  'Add Publish Date':          { text: '#86EFAC', bg: 'rgba(34,197,94,0.10)',   border: 'rgba(34,197,94,0.28)'   },
-  'Add Local Schema':          { text: '#86EFAC', bg: 'rgba(34,197,94,0.10)',   border: 'rgba(34,197,94,0.28)'   },
-  'Add Medical Author':        { text: '#86EFAC', bg: 'rgba(34,197,94,0.10)',   border: 'rgba(34,197,94,0.28)'   },
-  // ── Neutral ─────────────────────────────────────────────
-  'Monitor':                   { text: '#374151', bg: 'rgba(55,65,81,0.06)',    border: 'rgba(55,65,81,0.15)'    },
-  'No Action':                 { text: '#1F2937', bg: 'rgba(31,41,55,0.06)',    border: 'rgba(31,41,55,0.12)'    },
+    'Fix Errors': { text: '#FCA5A5', bg: 'rgba(239,68,68,0.12)', border: 'rgba(239,68,68,0.35)' },
+    'Protect High-Value Page': { text: '#FCD34D', bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.35)' },
+    'Rewrite Title & Description': { text: '#93C5FD', bg: 'rgba(59,130,246,0.12)', border: 'rgba(59,130,246,0.35)' },
+    'Push to Page One': { text: '#C4B5FD', bg: 'rgba(139,92,246,0.12)', border: 'rgba(139,92,246,0.35)' },
+    'Add Internal Links': { text: '#FDBA74', bg: 'rgba(249,115,22,0.12)', border: 'rgba(249,115,22,0.35)' },
+    'Fix Technical Issues': { text: '#FCA5A5', bg: 'rgba(239,68,68,0.12)', border: 'rgba(239,68,68,0.35)' },
+    'Improve Content': { text: '#93C5FD', bg: 'rgba(59,130,246,0.12)', border: 'rgba(59,130,246,0.35)' },
+    'Reduce Bounce Rate': { text: '#FCD34D', bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.35)' },
+    'Merge or Remove': { text: '#D1D5DB', bg: 'rgba(107,114,128,0.12)', border: 'rgba(107,114,128,0.35)' },
+    'Monitor': { text: '#86EFAC', bg: 'rgba(34,197,94,0.12)', border: 'rgba(34,197,94,0.35)' }
 };
 
 const getSafePathname = (url: string) => {
@@ -850,11 +814,6 @@ export default function AuditPane() {
 
     return (
         <main className="flex-1 flex flex-col min-h-0 min-w-0 bg-[#0a0a0a] relative">
-            {wqaState.isActive && (
-                <div className="flex items-center justify-between px-4 py-2 border-b border-[#1a1a1a] bg-[#0d0d0d] shrink-0">
-                    <WqaViewSwitcher />
-                </div>
-            )}
             <div className="flex-1 min-h-0 bg-[#0a0a0a] relative overflow-hidden" ref={graphContainerRef}>
                 {pages.length === 0 && !isCrawling ? (
                      <div className="absolute inset-0 flex flex-col items-center justify-center p-8 bg-[#0a0a0a]">
@@ -932,7 +891,16 @@ export default function AuditPane() {
                         }}
                     />
                 ) : wqaState.isActive && wqaState.viewMode === 'structure' ? (
-                    <WqaStructureView />
+                     <div className="flex flex-col items-center justify-center p-12 text-[#555] h-full">
+                        <div className="text-center group">
+                            <div className="mb-6 text-6xl group-hover:scale-110 transition-transform duration-500">🏗️</div>
+                            <h3 className="text-xl font-bold text-[#888] mb-2">Site Structure Analysis</h3>
+                            <p className="max-w-[420px] text-sm text-[#555] leading-relaxed">
+                                Visualizing crawl depth, internal link flow, and directory architecture. 
+                                Our engine is building the structural map of your site.
+                            </p>
+                        </div>
+                    </div>
                 ) : viewMode === 'map' ? (
                     renderMapView(false)
                 ) : viewMode === 'charts' ? (
@@ -966,18 +934,6 @@ export default function AuditPane() {
                                 const index = props['data-index'];
                                 const page = filteredPages[index];
                                 const isSelected = selectedPage?.url === page?.url;
-
-                                // WQA left-border signal
-                                const wqaRowBorder = wqaState.isActive
-                                    ? page?.statusCode >= 400
-                                        ? 'border-l-2 border-l-red-500/60'
-                                        : page?.isLosingTraffic
-                                        ? 'border-l-2 border-l-amber-500/60'
-                                        : page?.pageValueTier === '★★★'
-                                        ? 'border-l-2 border-l-green-500/40'
-                                        : 'border-l border-l-transparent'
-                                    : '';
-
                                 return (
                                     <tr 
                                         {...props} 
@@ -989,7 +945,7 @@ export default function AuditPane() {
                                             setSelectedPage(page);
                                             setShowFullDetailDrawer(true);
                                         }}
-                                        className={`cursor-default transition-none border-b border-[#1a1a1a] ${wqaRowBorder} ${isSelected ? 'bg-[#1e2333] border-[#3a4466]' : 'hover:bg-[#141414]'}`}
+                                        className={`cursor-default transition-none border-b border-[#1a1a1a] ${isSelected ? 'bg-[#1e2333] border-[#3a4466]' : 'hover:bg-[#141414]'}`}
                                     />
                                 );
                             },
@@ -1214,63 +1170,6 @@ export default function AuditPane() {
                                             const intentColor = rawVal === 'Transactional' ? 'text-purple-400 bg-purple-400/10' : rawVal === 'Commercial' ? 'text-blue-400 bg-blue-400/10' : 'text-gray-400 bg-gray-400/10';
                                             displayElement = <span className={`px-2 py-0.5 rounded-full text-[10px] ${intentColor}`}>{rawVal || 'Info'}</span>;
                                             cellClass = 'text-center';
-                                        } else if (col.key === 'technicalAction' || col.key === 'contentAction') {
-                                            const isNeutral = rawVal === 'Monitor' || rawVal === 'No Action' || !rawVal;
-                                            if (isNeutral) {
-                                              displayElement = <span className="text-[#3a3a3a] text-[11px]">—</span>;
-                                            } else {
-                                              const colors = ACTION_COLORS[rawVal] || ACTION_COLORS['Monitor'];
-                                              displayElement = (
-                                                <span
-                                                  className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium whitespace-nowrap"
-                                                  style={{
-                                                    color: colors.text,
-                                                    backgroundColor: colors.bg,
-                                                    border: `1px solid ${colors.border}`,
-                                                  }}
-                                                >
-                                                  {rawVal}
-                                                </span>
-                                              );
-                                            }
-                                        } else if (col.key === 'pageValueTier') {
-                                            const tierColors: Record<string, string> = {
-                                              '★★★': '#22c55e',
-                                              '★★':  '#3b82f6',
-                                              '★':   '#f59e0b',
-                                              '☆':   '#333',
-                                            };
-                                            displayElement = (
-                                              <span style={{ color: tierColors[rawVal] || '#555' }} className="font-medium text-[12px]">
-                                                {rawVal || '☆'}
-                                              </span>
-                                            );
-                                        } else if (col.key === 'speedScore') {
-                                            const speedColors: Record<string, string> = {
-                                              'Good':       '#22c55e',
-                                              'Needs Work': '#f59e0b',
-                                              'Poor':       '#ef4444',
-                                            };
-                                            displayElement = (
-                                              <span style={{ color: speedColors[rawVal] || '#666' }} className="text-[11px]">
-                                                {rawVal || '—'}
-                                              </span>
-                                            );
-                                        } else if (col.key === 'isLosingTraffic') {
-                                            displayElement = rawVal
-                                              ? <span className="text-amber-400 text-[10px]">↓ Losing</span>
-                                              : <span className="text-[#333] text-[10px]">—</span>;
-                                        } else if (col.key === 'sessionsDeltaPct') {
-                                            const pct = Number(rawVal || 0);
-                                            const label = pct === 0 ? '—' : `${pct > 0 ? '+' : ''}${(pct * 100).toFixed(0)}%`;
-                                            const color = pct > 0.1 ? '#22c55e' : pct < -0.1 ? '#ef4444' : '#666';
-                                            displayElement = <span style={{ color }} className="font-mono text-[11px]">{label}</span>;
-                                        } else if (col.key === 'pageCategory') {
-                                            displayElement = (
-                                              <span className="text-[11px] text-[#999]">
-                                                {formatCat(rawVal || 'other')}
-                                              </span>
-                                            );
                                         } else if (col.key === 'recommendedAction') {
                                             const actionStyle = ACTION_COLORS[String(rawVal)] || ACTION_COLORS.Monitor;
                                             let tooltip = page.recommendedActionReason || '';
