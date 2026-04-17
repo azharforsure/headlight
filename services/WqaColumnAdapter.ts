@@ -9,14 +9,18 @@ import { getHiddenColumnsForLanguage } from './LanguageAdaptation';
 import { getDefaultVisibleColumns } from './MetricRoles';
 
 const WQA_UNIVERSAL_COLUMNS = [
-  // Identity
   'pageCategory',
+  'pageCategoryConfidence', // NEW
   'url',
   'statusCode',
   'indexabilityStatus',
   'funnelStage',
   'crawlDepth',
   // Actions
+  'primaryAction',         // NEW: derived "best" action
+  'primaryActionCategory', // NEW
+  'secondaryAction',       // NEW: next-best action
+  'secondaryActionCategory', // NEW
   'technicalAction',
   'contentAction',
   'industryAction',       // NEW: primary industry-specific action (from getIndustryActions)
@@ -106,6 +110,8 @@ export function getWqaDefaultVisibleColumns(industry: DetectedIndustry, language
     'isLosingTraffic',
     'intentMatch',
     'contentAge',
+    'isCannibalized',
+    'wwwInconsistency',
     'url',
     'pageCategory',
   ]);

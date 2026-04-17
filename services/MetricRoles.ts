@@ -22,44 +22,56 @@ export interface ColumnRoleConfig {
 }
 
 export const METRIC_ROLES: ColumnRoleConfig[] = [
-  // Technical
-  { key: 'status', role: 'technical', isPriority: true },
+  // ─── Technical / Core ────────────────────────────────
+  { key: 'url', role: 'technical', isPriority: true },
+  { key: 'statusCode', role: 'technical', isPriority: true },
   { key: 'indexabilityStatus', role: 'technical', isPriority: true },
   { key: 'title', role: 'technical', isPriority: true },
   { key: 'metaDesc', role: 'technical', isPriority: true },
+  { key: 'crawlDepth', role: 'technical' },
+  { key: 'inlinks', role: 'technical' },
+  { key: 'outlinks', role: 'technical' },
   { key: 'canonical', role: 'technical' },
-  { key: 'h1_1', role: 'technical' },
-  { key: 'robots', role: 'technical' },
+  { key: 'healthScore', role: 'technical', isPriority: true },
+  { key: 'isCannibalized', role: 'technical' },
+  { key: 'wwwInconsistency', role: 'technical' },
+  { key: 'hreflangNoReturn', role: 'technical' },
 
-  // Performance
+  // ─── Performance ────────────────────────────────────
   { key: 'speedScore', role: 'performance', isPriority: true },
-  { key: 'lcp', role: 'performance' },
-  { key: 'cls', role: 'performance' },
+  { key: 'loadTime', role: 'performance' },
   { key: 'domNodeCount', role: 'performance' },
+  { key: 'renderBlockingJs', role: 'performance' },
+  { key: 'imagesWithoutLazy', role: 'performance' },
 
-  // Content
-  { key: 'wordCount', role: 'content', isPriority: true },
+  // ─── Content ────────────────────────────────────────
   { key: 'pageCategory', role: 'content', isPriority: true },
-  { key: 'language', role: 'content' },
+  { key: 'wordCount', role: 'content', isPriority: true },
+  { key: 'contentAge', role: 'content' },
   { key: 'topicCluster', role: 'content' },
   { key: 'searchIntent', role: 'content' },
+  { key: 'intentMatch', role: 'content' },
+  { key: 'readability', role: 'content' },
+  { key: 'language', role: 'content' },
 
-  // Metrics
+  // ─── Search Performance & Value ─────────────────────
   { key: 'gscClicks', role: 'metrics', isPriority: true },
-  { key: 'gscImpressions', role: 'metrics' },
+  { key: 'gscImpressions', role: 'metrics', isPriority: true },
   { key: 'gscPosition', role: 'metrics', isPriority: true },
-  { key: 'pageValue', role: 'metrics', isPriority: true },
+  { key: 'ctrGap', role: 'metrics' },
   { key: 'ga4Sessions', role: 'metrics' },
+  { key: 'ga4Conversions', role: 'metrics' },
+  { key: 'pageValue', role: 'metrics', isPriority: true },
+  { key: 'pageValueTier', role: 'metrics' },
+  { key: 'opportunityScore', role: 'metrics', isPriority: true },
 
-  // Business
-  { key: 'hasForms', role: 'business' },
-  { key: 'exposedEmails', role: 'business' },
-  { key: 'hasTrustBadges', role: 'business' },
-
-  // CMS Specific
-  { key: 'wpPublishDate', role: 'industry', cmsSpecific: ['WordPress'] },
-  { key: 'shopifyProductType', role: 'industry', cmsSpecific: ['Shopify'] },
-  { key: 'webflowCollection', role: 'industry', cmsSpecific: ['Webflow'] },
+  // ─── Industry Specific ──────────────────────────────
+  { key: 'priceVisible', role: 'industry', industrySpecific: ['ecommerce'] },
+  { key: 'hasAddToCartButton', role: 'industry', industrySpecific: ['ecommerce'] },
+  { key: 'inNewsSitemap', role: 'industry', industrySpecific: ['news'] },
+  { key: 'hasAuthorByline', role: 'industry', industrySpecific: ['news', 'blog'] },
+  { key: 'hasMedicalReviewer', role: 'industry', industrySpecific: ['healthcare'] },
+  { key: 'hasPricingPage', role: 'industry', industrySpecific: ['saas'] },
 ];
 
 export function getDefaultVisibleColumns(industry: string, cms: string | null): string[] {

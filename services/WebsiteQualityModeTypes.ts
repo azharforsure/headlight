@@ -60,6 +60,9 @@ export interface WqaSiteStats {
   pagesGoodSpeed: number;           // pages with speedScore === 'Good'
   pagesByCategory: Record<string, number>; // count per pageCategory string
 
+  newsSitemapCoverage: number;      // NEW
+  decayRiskCount: number;           // NEW
+
   industryStats: WqaIndustryStats | null;
 }
 
@@ -77,6 +80,7 @@ export interface WqaIndustryStats {
   publishDateRate?: number;
   publishingFrequency?: number;
   hasNewsSitemap?: boolean;
+  newsSitemapCoverage?: number;
   hasRssFeed?: boolean;
 
   // Local
@@ -145,6 +149,9 @@ export interface WebsiteQualityState {
 
   detectedIndustry: DetectedIndustry;
   industryConfidence: number;
+  detectedIndustries: Array<{ industry: DetectedIndustry; confidence: number }>;   // NEW
+  secondaryIndustry: DetectedIndustry | null;                                      // NEW
+  isLowIndustryConfidence: boolean;                                                // NEW
   detectedLanguage: string;
   detectedLanguages: Array<{ code: string; percentage: number }>;
   detectedCms: string | null;
@@ -166,6 +173,9 @@ export const DEFAULT_WQA_STATE: WebsiteQualityState = {
   viewMode: 'grid',
   detectedIndustry: 'general',
   industryConfidence: 0,
+  detectedIndustries: [],
+  secondaryIndustry: null,
+  isLowIndustryConfidence: false,
   detectedLanguage: 'unknown',
   detectedLanguages: [],
   detectedCms: null,

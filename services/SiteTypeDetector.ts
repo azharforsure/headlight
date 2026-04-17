@@ -21,14 +21,21 @@ export type DetectedIndustry =
   | 'general';
 
 export interface SiteTypeResult {
-  industry: DetectedIndustry;
-  confidence: number;
+  industry: DetectedIndustry;                                       // primary (back-compat)
+  confidence: number;                                               // 0–100
+  secondaryIndustry: DetectedIndustry | null;                       // NEW
+  secondaryConfidence: number;                                      // NEW
+  detectedIndustries: Array<{ industry: DetectedIndustry; confidence: number }>;  // NEW, sorted desc
   allScores: Record<DetectedIndustry, number>;
   detectedLanguage: string;
   detectedLanguages: Array<{ code: string; percentage: number }>;
   detectedCms: string | null;
   isMultiLanguage: boolean;
+  isLowConfidence: boolean;                                         // NEW: true if top < 50
 }
+
+const INDUSTRY_CONFIDENCE_MIN = 50;   // hard floor — below → general
+const SECONDARY_MIN_DELTA = 15;       // secondary must be within 15 pts of primary
 
 interface PageSignals {
   url: string;
@@ -339,41 +346,101 @@ const ALL_INDUSTRIES: DetectedIndustry[] = [
   'general',
 ];
 
+// NEW: evidence sources that the existing 5 layers don't capture
+function scoreByExtraEvidence(pages: PageSignals[]): Partial<Record<DetectedIndustry, number>> {
+  const scores: Partial<Record<DetectedIndustry, number>> = {};
+  const html = pages.filter((p) => p.isHtmlPage && p.statusCode === 200);
+  if (html.length === 0) return scores;
+
+  // NEWS: RSS feed + news-sitemap + date density
+  const hasRss = html.some((p) => p.industrySignals?.hasRssFeed);
+  const inNewsSitemapCount = html.filter((p) => p.industrySignals?.inNewsSitemap).length;
+  const timeTagDensity = html.filter((p) => p.industrySignals?.hasTimeTag).length / html.length;
+  if (hasRss) scores.news = Math.max(scores.news || 0, 55);
+  if (inNewsSitemapCount >= 5) scores.news = Math.max(scores.news || 0, 75);
+  if (timeTagDensity >= 0.4) scores.news = Math.max(scores.news || 0, 60);
+
+  // ECOMMERCE: currency density + add-to-cart + cart endpoint
+  const currencyDensity = html.filter((p) => p.industrySignals?.currencySymbolDensity > 0.002).length / html.length;
+  const hasCart = html.some((p) => p.industrySignals?.hasAddToCartButton || p.industrySignals?.hasCartEndpoint);
+  if (currencyDensity > 0.3) scores.ecommerce = Math.max(scores.ecommerce || 0, 70);
+  if (hasCart) scores.ecommerce = Math.max(scores.ecommerce || 0, 80);
+
+  // LOCAL: multi-location NAP
+  const locationPages = html.filter((p) =>
+    (p.phoneNumbers || []).length > 0 && p.hasPostalAddress
+  );
+  if (locationPages.length >= 3) scores.local = Math.max(scores.local || 0, 75);
+
+  // SAAS: pricing + docs + status
+  const saasMarkers = [
+    html.some((p) => p.hasPricingPage),
+    html.some((p) => /\/docs(?:\/|$)/i.test(p.url)),
+    html.some((p) => /\/changelog(?:\/|$)/i.test(p.url)),
+    html.some((p) => /\/status(?:\/|$)/i.test(p.url)),
+  ].filter(Boolean).length;
+  if (saasMarkers >= 2) scores.saas = Math.max(scores.saas || 0, 40 + saasMarkers * 10);
+
+  // JOB BOARD: JobPosting density
+  const jobCount = html.filter((p) => (p.schemaTypes || []).includes('JobPosting')).length;
+  if (jobCount >= 5) scores.job_board = Math.max(scores.job_board || 0, 60 + Math.min(35, jobCount));
+
+  return scores;
+}
+
 export function detectSiteType(rawPages: PageSignals[]): SiteTypeResult {
   const pages = Array.isArray(rawPages) ? rawPages : [];
-  const cmsScores = scoreByCms(pages);
-  const schemaScores = scoreBySchema(pages);
-  const contentScores = scoreByContentPatterns(pages);
-  const urlScores = scoreByUrlStructure(pages);
-  const gscScores = scoreByGscQueries(pages);
+  const cms = scoreByCms(pages);
+  const schema = scoreBySchema(pages);
+  const content = scoreByContentPatterns(pages);
+  const url = scoreByUrlStructure(pages);
+  const gsc = scoreByGscQueries(pages);
+  const extra = scoreByExtraEvidence(pages);  // NEW
 
   const finalScores = {} as Record<DetectedIndustry, number>;
   for (const ind of ALL_INDUSTRIES) {
     finalScores[ind] = Math.round(
-      (cmsScores[ind] || 0) * SIGNAL_WEIGHTS.cms +
-      (schemaScores[ind] || 0) * SIGNAL_WEIGHTS.schema +
-      (contentScores[ind] || 0) * SIGNAL_WEIGHTS.content +
-      (urlScores[ind] || 0) * SIGNAL_WEIGHTS.url +
-      (gscScores[ind] || 0) * SIGNAL_WEIGHTS.gsc
+      (cms[ind]     || 0) * SIGNAL_WEIGHTS.cms     +
+      (schema[ind]  || 0) * SIGNAL_WEIGHTS.schema  +
+      (content[ind] || 0) * SIGNAL_WEIGHTS.content +
+      (url[ind]     || 0) * SIGNAL_WEIGHTS.url     +
+      (gsc[ind]     || 0) * SIGNAL_WEIGHTS.gsc     +
+      (extra[ind]   || 0) * 0.15                    // extra weight stacks on top
     );
   }
 
-  const sorted = Object.entries(finalScores).sort((a, b) => b[1] - a[1]) as Array<[DetectedIndustry, number]>;
-  const winner = sorted[0] || ['general', 0];
+  const sorted = (Object.entries(finalScores) as Array<[DetectedIndustry, number]>)
+    .sort((a, b) => b[1] - a[1]);
 
-  const industry: DetectedIndustry = winner[1] >= 30 ? winner[0] : 'general';
-  const confidence = winner[1] >= 30 ? Math.min(100, winner[1]) : 0;
+  const top = sorted[0] || ['general', 0];
+  const primary: DetectedIndustry = top[1] >= INDUSTRY_CONFIDENCE_MIN ? top[0] : 'general';
+  const confidence = top[1] >= INDUSTRY_CONFIDENCE_MIN ? Math.min(100, top[1]) : top[1];
+  const isLowConfidence = top[1] < INDUSTRY_CONFIDENCE_MIN;
+
+  const second = sorted[1];
+  const secondaryIndustry = second && (top[1] - second[1]) <= SECONDARY_MIN_DELTA && second[1] >= 40
+    ? second[0] : null;
+  const secondaryConfidence = secondaryIndustry ? second[1] : 0;
+
+  const detectedIndustries = sorted
+    .filter(([, s]) => s >= 30)
+    .slice(0, 3)
+    .map(([industry, conf]) => ({ industry, confidence: Math.min(100, conf) }));
 
   const lang = detectLanguages(pages);
-  const cms = detectCms(pages);
+  const cmsDetected = detectCms(pages);
 
   return {
-    industry,
+    industry: primary,
     confidence,
+    secondaryIndustry,
+    secondaryConfidence,
+    detectedIndustries,
     allScores: finalScores,
     detectedLanguage: lang.primary,
     detectedLanguages: lang.all,
-    detectedCms: cms,
+    detectedCms: cmsDetected,
     isMultiLanguage: lang.isMulti,
+    isLowConfidence,
   };
 }

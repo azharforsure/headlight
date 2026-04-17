@@ -35,6 +35,11 @@ export function computeWqaSiteStats(pages: any[], industry: DetectedIndustry): W
   const totalImpressions = pages.reduce((s, p) => s + asNum(p.gscImpressions), 0);
   const totalClicks = pages.reduce((s, p) => s + asNum(p.gscClicks), 0);
   const totalSessions = pages.reduce((s, p) => s + asNum(p.ga4Sessions), 0);
+  const newsSitemapPages = pages.filter((p) => p.inNewsSitemap).length; // NEW
+  const newsSitemapCoverage = htmlCount > 0 ? (newsSitemapPages / htmlCount) * 100 : 0; // NEW
+
+  // Content Decay Risk Count
+  const decayRiskCount = pages.filter(p => (asNum(p.contentDecayRisk) || 0) > 40).length; // NEW
 
   const posPages = pages.filter((p) => asNum(p.gscPosition) > 0);
   const avgPosition = avg(posPages.map((p) => asNum(p.gscPosition)));
@@ -157,6 +162,7 @@ export function computeWqaSiteStats(pages: any[], industry: DetectedIndustry): W
         ).length / postCount) * 100,
         authorAttributionRate: (posts.filter((p) => p.industrySignals?.hasAuthorAttribution).length / postCount) * 100,
         publishDateRate: (posts.filter((p) => !!p.visibleDate).length / postCount) * 100,
+        newsSitemapCoverage, // NEW
       };
     } else if (industry === 'local') {
       industryStats = {
@@ -241,6 +247,8 @@ export function computeWqaSiteStats(pages: any[], industry: DetectedIndustry): W
     brokenRate,
     schemaCoverage,
     sitemapCoverage,
+    newsSitemapCoverage, // NEW
+    decayRiskCount,      // NEW
     avgHealthScore,
     avgContentQuality,
     avgSpeedScore,

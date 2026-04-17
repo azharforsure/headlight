@@ -207,11 +207,15 @@ export const runPostCrawlScoring = (completedPages: any[]): { pages: any[]; site
             siteType: {
                 industry: 'general',
                 confidence: 0,
+                secondaryIndustry: null,
+                secondaryConfidence: 0,
+                detectedIndustries: [],
                 allScores: {} as any,
                 detectedLanguage: 'unknown',
                 detectedLanguages: [],
                 detectedCms: null,
-                isMultiLanguage: false
+                isMultiLanguage: false,
+                isLowConfidence: true
             }
         };
     }
@@ -310,7 +314,7 @@ export const runPostCrawlScoring = (completedPages: any[]): { pages: any[]; site
         const intentMatch = checkIntentMatch(p.searchIntent, kwIntent);
         const contentAge = classifyContentAge(p.visibleDate || p.wpPublishDate || p.lastModified);
 
-        const updatedPage = {
+        const updatedPage: any = {
             ...p,
             internalPageRank,
             isCannibalized,
@@ -327,6 +331,9 @@ export const runPostCrawlScoring = (completedPages: any[]): { pages: any[]; site
             intentMatch,
             contentAge
         };
+
+        const contentDecayRisk = calculateContentDecayRisk(updatedPage);
+        updatedPage.contentDecayRisk = contentDecayRisk;
 
         const { score: pageValueScore, tier: pageValueTier } = calculatePageValue(updatedPage, siteType.industry);
         updatedPage.pageValue = pageValueScore;
@@ -349,21 +356,36 @@ export const runPostCrawlScoring = (completedPages: any[]): { pages: any[]; site
         // Consolidated action priority: weighted so tech-critical (priority 1-3) always win,
         // but remaining tech/content/industry are ranked by estimated impact.
         const actionsForPage = [techAction, contentAction, ...industryActions];
-        const critical = actionsForPage.find((a) => a.priority <= 3);
-        if (critical) {
-            updatedPage.actionPriority = critical.priority;
-            updatedPage.primaryAction = critical.action;
-            updatedPage.primaryActionCategory = critical.category;
-        } else {
-            const best = actionsForPage
-                .filter((a) => a.action !== 'Monitor' && a.action !== 'No Action')
-                .sort((a, b) => b.estimatedImpact - a.estimatedImpact || a.priority - b.priority)[0];
-            updatedPage.actionPriority = best?.priority ?? 99;
-            updatedPage.primaryAction = best?.action ?? 'Monitor';
-            updatedPage.primaryActionCategory = best?.category ?? 'technical';
-        }
-        updatedPage.estimatedImpact = actionsForPage.reduce((sum, a) => sum + a.estimatedImpact, 0);
+        
+        const sortedActions = actionsForPage
+            .filter((a) => a.action !== 'Monitor' && a.action !== 'No Action')
+            .sort((a, b) => {
+                // Critical priority (1-3) wins first
+                if (a.priority <= 3 && b.priority > 3) return -1;
+                if (b.priority <= 3 && a.priority > 3) return 1;
+                // Otherwise sort by impact
+                return b.estimatedImpact - a.estimatedImpact || a.priority - b.priority;
+            });
 
+        const primary = sortedActions[0] ?? null;
+        const secondary = sortedActions[1] ?? null;
+
+        if (primary) {
+            updatedPage.primaryAction = primary.action;
+            updatedPage.primaryActionCategory = primary.category;
+            updatedPage.actionPriority = primary.priority;
+        } else {
+            updatedPage.primaryAction = 'Monitor';
+            updatedPage.primaryActionCategory = 'technical';
+            updatedPage.actionPriority = 99;
+        }
+
+        if (secondary) {
+            updatedPage.secondaryAction = secondary.action;
+            updatedPage.secondaryActionCategory = secondary.category;
+        }
+
+        updatedPage.estimatedImpact = actionsForPage.reduce((sum, a) => sum + a.estimatedImpact, 0);
 
         return updatedPage;
     });

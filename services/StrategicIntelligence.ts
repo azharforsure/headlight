@@ -739,3 +739,26 @@ export function checkIntentMatch(pageIntent: string | null, kwIntent: string | n
 
     return 'misaligned';
 }
+
+/**
+ * Advanced Content Decay Risk
+ * Specific for News/Blog industries or dated content.
+ * Combines age, traffic trends (30/60/90 day), and GSC position shifts.
+ */
+export function calculateContentDecayRisk(page: any): number {
+  const age = classifyContentAge(page.visibleDate || page.wpPublishDate);
+  const status = getTrafficPerformanceStatus(page);
+  const position = Number(page.gscPosition || 0);
+  const positionDelta = Number(page.gscPositionDelta || 0);
+
+  let risk = 0;
+  if (age === 'ancient') risk += 40;
+  else if (age === 'stale') risk += 25;
+  else if (age === 'aging') risk += 10;
+
+  if (status === 'losing') risk += 30;
+  if (positionDelta > 2) risk += 20; // dropped 2+ positions
+  if (position > 10 && status === 'losing') risk += 10;
+
+  return Math.min(risk, 100);
+}

@@ -815,7 +815,7 @@ async function fetchSitemapUrls(sitemapUrl, requestHeaders, maxUrls = 500000) {
                     if (/sitemap|\.xml(\?|$)|format=xml/i.test(normalizedLoc)) {
                         await parseSitemap(normalizedLoc);
                     } else {
-                        addUrlEntry(normalizedLoc);
+                        addUrlEntry(normalizedLoc, { inNewsSitemap: isNewsSitemap });
                     }
                 }
             }
@@ -1659,6 +1659,7 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
     const crawlStartedAt = initialState?.crawlStartedAt || Date.now();
     let lastProgressEmitAt = 0;
     let sitemapData = {}; // normalized url -> { url, lastmod, changefreq, priority }
+    const newsSitemapKeys = new Set();
     let localRootSensitiveFiles = []; // populated by the sensitive file probe inside processQueue
 
     const firstUrl = normalizeUrl(startUrls[0], undefined, urlNormalizationOptions);
@@ -2560,7 +2561,8 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
                         // Sitemap data if available
                         sitemapLastmod: sitemapData[toSitemapKey(currentUrl)]?.lastmod || '',
                         sitemapPriority: sitemapData[toSitemapKey(currentUrl)]?.priority || '',
-                        inSitemap: !!sitemapData[toSitemapKey(currentUrl)]
+                        inSitemap: !!sitemapData[toSitemapKey(currentUrl)],
+                        inNewsSitemap: newsSitemapKeys.has(toSitemapKey(currentUrl))
                     };
                     pagePayloads.set(currentUrl, nonHtmlPayload);
                     onEvent('PAGE_CRAWLED', nonHtmlPayload);
@@ -2841,7 +2843,8 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
                             // Sitemap info
                             sitemapLastmod: sitemapData[toSitemapKey(currentUrl)]?.lastmod || '',
                             sitemapPriority: sitemapData[toSitemapKey(currentUrl)]?.priority || '',
-                            inSitemap: !!sitemapData[toSitemapKey(currentUrl)]
+                            inSitemap: !!sitemapData[toSitemapKey(currentUrl)],
+                            inNewsSitemap: newsSitemapKeys.has(toSitemapKey(currentUrl))
                         };
 
                         // Handle initial redirect hostname transition (e.g. non-www to www)
@@ -3078,6 +3081,7 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
 
             await Promise.all(targetSitemaps.map(async (smUrl) => {
                 try {
+                    const isNewsSource = /news[-_]?sitemap/i.test(smUrl);
                     onEvent('LOG', { message: `Fetching sitemap: ${smUrl}`, type: 'info' });
                     // 15 seconds max for a single sitemap
                     const entries = await withTimeout(
@@ -3097,6 +3101,9 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
                         if (!sitemapKey) continue;
                         if (!sitemapData[sitemapKey]) {
                             sitemapData[sitemapKey] = entry;
+                        }
+                        if (isNewsSource || entry.inNewsSitemap) {
+                            newsSitemapKeys.add(sitemapKey);
                         }
                         if (mode === 'sitemap') {
                             enqueueUrl(entry.url, 0, null);
@@ -3118,8 +3125,12 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
             let backfillCount = 0;
             for (const [url, payload] of pagePayloads.entries()) {
                 const sitemapKey = toSitemapKey(url);
-                if (sitemapData[sitemapKey] && !payload.inSitemap) {
-                    payload.inSitemap = true;
+                const inSitemap = !!sitemapData[sitemapKey];
+                const inNewsSitemap = newsSitemapKeys.has(sitemapKey);
+                
+                if ((inSitemap && !payload.inSitemap) || (inNewsSitemap && !payload.inNewsSitemap)) {
+                    payload.inSitemap = payload.inSitemap || inSitemap;
+                    payload.inNewsSitemap = payload.inNewsSitemap || inNewsSitemap;
                     onEvent('UPDATE_PAGE', payload);
                     backfillCount++;
                 }
@@ -3387,6 +3398,7 @@ export function runCrawler(config, rawOnEvent, initialState = null) {
             failedUrlSamples: Array.from(failedUrls.entries()).slice(0, 10).map(([url, message]) => ({ url, message })),
             sitemapCoverage: Object.keys(sitemapData).length > 0 ? {
                 inSitemap: [...visited].filter(u => sitemapData[toSitemapKey(u)]).length,
+                inNewsSitemap: [...visited].filter(u => newsSitemapKeys.has(toSitemapKey(u))).length,
                 notInSitemap: [...visited].filter(u => !sitemapData[toSitemapKey(u)]).length,
                 sitemapOnly: Object.keys(sitemapData).filter(u => ![...visited].some(v => toSitemapKey(v) === u)).length,
                 totalSitemapUrls: Object.keys(sitemapData).length

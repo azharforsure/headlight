@@ -9,6 +9,12 @@ import {
   hasBlogSlug, hasCategorySlug, hasProductSlug, hasLocationSlug,
 } from './SlugDictionaries';
 
+export const CONFIDENCE_THRESHOLDS = {
+  HIGH: 80,   // "Certain" — used for core technical assignments
+  MEDIUM: 50, // "Probable" — used for content recommendations
+  LOW: 30     // "Heuristic" — used for rollups only
+};
+
 export type PageCategory =
   | 'homepage'
   | 'product'

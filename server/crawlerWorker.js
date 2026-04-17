@@ -825,14 +825,14 @@ parentPort.on('message', (task) => {
             const text = $(el).text().trim();
             return /^[A-Z][A-Za-z0-9\s-]{2,60}\s+(is|refers to|means)\s+/i.test(text);
         }).length;
-        const selfContainedAnswers = $('h2, h3').filter((_, el) => {
+        const passageAnswers = $('h2, h3').filter((_, el) => {
             const nextP = $(el).next('p').text().trim();
             return nextP.length > 150 && nextP.length < 500;
         }).length;
         if (headingHierarchy.length >= 3) passageReadiness += 30;
         if (wordCount > 500) passageReadiness += 20;
         if ($('p').length >= 5) passageReadiness += 20;
-        if (selfContainedAnswers > 0) passageReadiness += 30;
+        if (passageAnswers > 0) passageReadiness += 30;
         if (definitionParagraphs > 0) passageReadiness += 10;
         passageReadiness = Math.min(100, passageReadiness);
         const hasPassageStructure = passageReadiness >= 70;
@@ -950,73 +950,68 @@ parentPort.on('message', (task) => {
         const hasFormsWithAutocomplete = forms.find('input[autocomplete]').length > 0;
 
         // ─── Industry Specific (t4-*) ───────────────────────
-        const industry = config?.industry || 'all';
-        const industrySignals = {};
+        // ─── Ecommerce fingerprints ─────────────────────────────
+        const currencyMatches = (pageSource.match(/[$€£¥₹₽₺₴₦₨R$]\s?\d|USD\s?\d|EUR\s?\d|BAM\s?\d/g) || []).length;
+        const currencySymbolDensity = textContent.length > 0 ? currencyMatches / textContent.length : 0;
+        const hasAddToCartButton = /(\b|id=|class=)["']?[^"']*(add[-_ ]?to[-_ ]?cart|add[-_ ]?to[-_ ]?basket|buy[-_ ]?now|dodaj[-_ ]?u[-_ ]?kos|in[-_ ]?den[-_ ]?warenkorb|ajouter[-_ ]?au[-_ ]?panier|aggiungi[-_ ]?al[-_ ]?carrello)/i.test(pageSource);
+        const hasCartEndpoint = $('a[href*="/cart"], a[href*="/korpa"], a[href*="/panier"], a[href*="/warenkorb"], a[href*="/checkout"]').length > 0;
+        const priceVisible = /(\b\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{2})\b)\s?(€|\$|£|USD|EUR|BAM|GBP|KM)\b|(€|\$|£|USD|EUR|BAM|GBP|KM)\s?\b\d/i.test(textContent);
+        const hasStockStatus = /(in[-_ ]?stock|out[-_ ]?of[-_ ]?stock|na[-_ ]?stanju|nema[-_ ]?na[-_ ]?stanju|auf[-_ ]?lager|ausverkauft|en[-_ ]?stock|agotado)/i.test(textContent);
 
-        if (industry === 'ecommerce' || industry === 'all') {
-          industrySignals.hasProductSchema = schemaTypes.includes('Product');
-          industrySignals.hasReviewSchema = schemaTypes.includes('Review') || schemaTypes.includes('AggregateRating');
-          industrySignals.priceVisible = $('[class*="price"], [itemprop="price"], [data-price]').length > 0;
-          industrySignals.hasBreadcrumbUI = $('[class*="breadcrumb"], nav[aria-label*="breadcrumb"], .breadcrumbs').length > 0;
-          industrySignals.hasFacetedNav = $('[class*="filter"], [class*="facet"], [class*="refinement"]').length > 0;
-          industrySignals.hasStockStatus = /instock|outofstock|availability/i.test(JSON.stringify(schemaBlocks)) || $('[class*="stock"], [class*="availability"]').length > 0;
-          industrySignals.hasPaginationNav = $('a[rel="next"], a[rel="prev"], nav[aria-label*="pagination"], .pagination').length > 0;
-          industrySignals.hasFilterCanonicals = Boolean(canonical) && /[?&](color|size|sort|filter|brand|price)=/i.test(url);
-        }
+        // ─── News/Blog fingerprints ─────────────────────────────
+        const hasTimeTag = $('time[datetime]').length > 0 || $('meta[property="article:published_time"]').length > 0;
+        const hasAuthorByline = Boolean(
+          $('[rel="author"], .byline, .author, [itemprop="author"]').length > 0 ||
+          $('meta[name="author"]').attr('content') ||
+          $('meta[property="article:author"]').attr('content')
+        );
+        const hasRssFeed = $('link[type="application/rss+xml"], link[type="application/atom+xml"]').length > 0;
 
-        if (industry === 'local' || industry === 'all') {
-          industrySignals.hasLocalBusinessSchema = schemaTypes.some(t => ['LocalBusiness', 'Restaurant', 'Store', 'MedicalBusiness'].includes(t));
-          industrySignals.hasMap = hasEmbeddedMap;
-          industrySignals.hasOpeningHours = JSON.stringify(schemaBlocks).includes('openingHours');
-          industrySignals.hasGmbLink = $('a[href*="google.com/maps"], a[href*="g.page"], a[href*="maps.app.goo.gl"]').length > 0;
-          industrySignals.hasDirectionsPage = $('a[href*="direction"], a[href*="location"], a[href*="find-us"]').length > 0;
-          industrySignals.hasServiceAreaPages = $('a[href*="service-area"], a[href*="locations"], a[href*="areas-we-serve"]').length > 0;
-          industrySignals.directoryLinks = $('a[href*="yelp.com"], a[href*="yellowpages.com"], a[href*="bbb.org"], a[href*="tripadvisor.com"]').length;
-          industrySignals.hasServiceAreaText = /serving\s+(?:the\s+)?(?:greater\s+)?[\w\s]{2,30}\s+area/i.test(textContent);
-          industrySignals.hasPriceRange = JSON.stringify(schemaBlocks).includes('priceRange') || textContent.includes('$$');
-          industrySignals.hasMenuLink = $('a[href*="menu"], a[href*="pricelist"], a[href*="price-list"]').length > 0;
-          industrySignals.hasReservationIntent = /book\s+(?:a\s+)?table|reserve\s+(?:a\s+)?table|make\s+(?:a\s+)?reservation/i.test(textContent);
-          industrySignals.hasReservationLink = $('a[href*="opentable.com"], a[href*="resy.com"], a[href*="booking.com"], a[href*="reserve"]').length > 0;
-        }
+        // ─── Q&A / FAQ content shape (for FAQ schema action) ────
+        const headings = $('h2, h3').map((_, el) => $(el).text().trim()).get();
+        const questionLike = headings.filter((t) => /\?$/.test(t) || /^(what|why|how|when|where|who|can|is|do|does|zašto|kako|šta|warum|wie|was|qué|comment|pourquoi)\b/i.test(t));
+        const selfContainedAnswers = Math.min(questionLike.length, headings.length); // capped
 
-        if (industry === 'news' || industry === 'blog' || industry === 'all') {
-          industrySignals.hasArticleSchema = schemaTypes.some(t => ['NewsArticle', 'Article', 'BlogPosting'].includes(t));
-          industrySignals.hasAuthorByline = $('[class*="author"], [rel="author"], [itemprop="author"]').length > 0;
-          industrySignals.hasNewsletterForm = $('form[action*="subscribe"], [class*="newsletter"]').length > 0;
-          industrySignals.hasAmpVersion = Boolean(amphtml);
-          industrySignals.hasCommentSection = $('[id*="comments"], [class*="comments"], [class*="disqus"]').length > 0;
-          industrySignals.hasRelatedArticles = $('[class*="related"], [class*="recommended"], [class*="more-posts"]').length > 0;
-        }
+        // ─── Industry signal bag (what ActionAssignment reads) ──
+        const phoneMatches = textContent.match(phonePattern);
+        const industrySignals = {
+          // Ecommerce
+          priceVisible,
+          hasAddToCartButton,
+          hasCartEndpoint,
+          hasStockStatus,
+          currencySymbolDensity,
+          hasBreadcrumbUI: $('[class*="breadcrumb"], nav[aria-label*="bread" i]').length > 0,
+          hasProductSchema: /"@type"\s*:\s*"Product"/i.test(pageSource),
+          // News/Blog
+          hasRssFeed,
+          hasTimeTag,
+          hasAuthorByline,
+          hasAuthorAttribution: hasAuthorByline,
+          // Local
+          hasLocalBusinessSchema: /"@type"\s*:\s*"(LocalBusiness|Restaurant|Store|Dentist|[A-Za-z]+Service)"/i.test(pageSource),
+          hasNapOnPage: (phoneMatches && phoneMatches.length > 0) && hasPostalAddress,
+          hasEmbeddedMap: $('iframe[src*="google.com/maps"], iframe[src*="maps.google"], [class*="map"]').length > 0,
+          hasReservationLink: $('a[href*="opentable"], a[href*="resy"], a[href*="reserv"]').length > 0,
+          hasMenuLink: $('a[href*="menu"]').length > 0,
+          hasPriceRange: /"priceRange"\s*:/i.test(pageSource) || /\$+\s?to\s?\$+/i.test(textContent),
+          // SaaS
+          hasPricingPage: $('a[href*="/pricing"], a[href*="/prices"]').length > 0,
+          hasTrialCta: /(free[-_ ]?trial|start[-_ ]?free|try[-_ ]?free|get[-_ ]?started[-_ ]?free)/i.test(pageSource),
+          hasPricingLink: $('a[href*="/pricing"]').length > 0,
+          hasIntegrationsPage: $('a[href*="/integration"]').length > 0,
+          // Healthcare / Finance
+          hasMedicalAuthor: /medically[-_ ]?reviewed|md\b|m\.d\.|physician/i.test(textContent),
+          hasMedicalReviewer: /reviewed[-_ ]?by[^<.]{0,80}(md|m\.d\.|physician|dr\.)/i.test(textContent),
+          hasMedicalDisclaimer: /(not[-_ ]?medical[-_ ]?advice|educational[-_ ]?purposes[-_ ]?only|consult[-_ ]?a[-_ ]?doctor)/i.test(textContent),
+          hasFinancialDisclaimer: /(not[-_ ]?financial[-_ ]?advice|for[-_ ]?informational[-_ ]?purposes[-_ ]?only|past[-_ ]?performance)/i.test(textContent),
+          hasAuthorCredentials: /(cfa\b|cfp\b|phd\b|ph\.d\.|md\b|m\.d\.|jd\b)/i.test(textContent),
+          // Q&A
+          selfContainedAnswers,
+        };
 
-        if (industry === 'saas' || industry === 'all') {
-          industrySignals.hasPricingTable = $('[class*="pricing"], [class*="plans"], [class*="tier"]').length > 0;
-          industrySignals.hasDocsLink = $('a[href*="/docs"], a[href*="/documentation"], a[href*="/help"]').length > 0;
-          industrySignals.hasStatusPage = $('a[href*="status."], a[href*="/status"]').length > 0;
-          industrySignals.hasChangelog = $('a[href*="changelog"], a[href*="release-notes"], a[href*="whats-new"]').length > 0;
-          industrySignals.hasIntegrationsPage = $('a[href*="integrations"], a[href*="marketplace"], a[href*="apps"]').length > 0;
-          industrySignals.hasComparisonPages = $('a[href*="/compare"], a[href*="/comparison"], a[href*="/vs-"], a[href*="/alternative"]').length > 0;
-          industrySignals.hasSecurityPage = $('a[href*="/security"], a[href*="/trust"], a[href*="/compliance"], a[href*="soc-2"]').length > 0;
-          industrySignals.hasTrialFlow = $('a[href*="trial"], a[href*="signup"], a[href*="start-free"]').length > 0;
-        }
 
-        if (industry === 'healthcare' || industry === 'all') {
-          industrySignals.hasMedicalAuthor = /\b(MD|DO|NP|PA|RN|PhD)\b/.test(textContent);
-          industrySignals.hasMedicalDisclaimer = /not (a substitute|intended).*(medical|professional) (advice|diagnosis|treatment)/i.test(textContent);
-          industrySignals.hasMedicalReview = /medically reviewed by|reviewed by\s+[A-Z][a-z]+/i.test(textContent);
-          industrySignals.hasMedicalSchema = schemaTypes.some(t => ['MedicalWebPage', 'MedicalCondition', 'Drug', 'Physician'].includes(t));
-        }
 
-        if (industry === 'finance' || industry === 'all') {
-          industrySignals.hasFinancialDisclaimer = /not financial advice|for informational purposes only|consult (a|your) financial advisor/i.test(textContent);
-          industrySignals.hasFinancialCredentials = /\b(CFP|CPA|CFA|ChFC|RIA)\b/.test(textContent);
-          industrySignals.financialDataDate = visibleDate || '';
-        }
-
-        if (industry === 'education' || industry === 'all') {
-          industrySignals.hasCourseSchema = schemaTypes.includes('Course') || schemaTypes.includes('EducationalOccupationalProgram');
-          industrySignals.hasAccreditation = /accredited|accreditation|ABET|WASC|HLC|NEASC|SACSCOC/i.test(textContent);
-          industrySignals.hasSyllabus = /syllabus|curriculum|course outline|learning outcomes|module \d+/i.test(textContent);
-        }
 
         // ─── Custom Extraction (Phase 7) ────────────────────
         const customFieldResults = {};
@@ -1112,7 +1107,12 @@ parentPort.on('message', (task) => {
                 schemaTypes,
                 schemaMissingRequired,
                 hasBreadcrumbSchema,
-                hasFaqSchema,
+                hasFaqSchema: /"@type"\s*:\s*"FAQPage"/i.test(pageSource),
+                selfContainedAnswers,
+                hasAddToCartButton,
+                currencySymbolDensity,
+                hasRssFeed,
+                hasTimeTag,
                 hasArticleSchema,
                 hasOrgSchema,
                 schemaErrors,
@@ -1121,7 +1121,7 @@ parentPort.on('message', (task) => {
                 hreflang: hreflangTags.length > 0 ? hreflangTags : null,
                 hreflangNoSelf,
                 hreflangInvalid,
-                selfContainedAnswers,
+                selfContainedAnswers_orig: selfContainedAnswers,
                 legacyFormatImages,
                 modernFormatImages,
                 domNodeCount,
