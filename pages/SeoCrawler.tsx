@@ -3,6 +3,7 @@ import { SeoCrawlerProvider, getHashRouteSearchParams } from '../contexts/SeoCra
 import CrawlerHeader from '../components/seo-crawler/CrawlerHeader';
 import CrawlerSubHeader from '../components/seo-crawler/CrawlerSubHeader';
 import SiteExplorer from '../components/seo-crawler/SiteExplorer';
+import WqaLeftSidebar from '../components/seo-crawler/wqa/WqaLeftSidebar';
 import AuditViewRouter from '../components/seo-crawler/AuditViewRouter';
 
 import AuditSidebar from '../components/seo-crawler/AuditSidebar';
@@ -105,7 +106,8 @@ function SeoCrawlerLayout() {
         setShowAiChat,
         showSettings,
         setShowSettings,
-        activeViewType
+        activeViewType,
+        isWqaMode
     } = useSeoCrawler();
 
     const projectContext = useOptionalProject();
@@ -134,8 +136,8 @@ function SeoCrawlerLayout() {
 
             <div className="flex-1 flex min-h-0 relative overflow-hidden">
                 {!isCompactLayout && activeViewType !== 'competitor_matrix' && (
-                    <PanelErrorBoundary name="Site Explorer" fallback={<div className="m-3 rounded border border-[#2b2b2f] bg-[#111] p-3 text-[12px] text-[#999]">Category tree failed to load.</div>}>
-                        <SiteExplorer />
+                    <PanelErrorBoundary name="Sidebar" fallback={<div className="m-3 rounded border border-[#2b2b2f] bg-[#111] p-3 text-[12px] text-[#999]">Sidebar failed to load.</div>}>
+                        {isWqaMode ? <WqaLeftSidebar /> : <SiteExplorer />}
                     </PanelErrorBoundary>
                 )}
                 <PanelErrorBoundary name="Audit View" fallback={<div className="m-3 rounded border border-[#2b2b2f] bg-[#111] p-3 text-[12px] text-[#999]">Audit view failed to load.</div>}>
@@ -185,8 +187,8 @@ function SeoCrawlerLayout() {
                         </button>
                     </div>
 
-                    <MobileBottomSheet isOpen={showMobileExplorer} onClose={() => setShowMobileExplorer(false)} title="Site Explorer" defaultHeight={82}>
-                        <SiteExplorer embedded />
+                    <MobileBottomSheet isOpen={showMobileExplorer} onClose={() => setShowMobileExplorer(false)} title={isWqaMode ? "Filters" : "Site Explorer"} defaultHeight={82}>
+                        {isWqaMode ? <WqaLeftSidebar /> : <SiteExplorer embedded />}
                     </MobileBottomSheet>
 
                     <MobileBottomSheet isOpen={showMobileAudit} onClose={() => setShowMobileAudit(false)} title="Audit Panel" defaultHeight={82}>

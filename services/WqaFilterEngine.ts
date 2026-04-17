@@ -63,13 +63,14 @@ export const EMPTY_FACETS: WqaFacets = {
   technicalActions: {},
   contentActions:   {},
   priorities:       { '1': 0, '2': 0, '3': 0 },
-  valueTiers:       {},
-  trafficStatuses:  {},
-  searchStatuses:   {},
-  contentAges:      {},
-  indexabilities:   {},
+  valueTiers:       { '★★★': 0, '★★': 0, '★': 0, '☆': 0 },
+  trafficStatuses:  { growing: 0, declining: 0, stable: 0, none: 0 },
+  searchStatuses:   { top3: 0, page1: 0, striking: 0, weak: 0, none: 0 },
+  contentAges:      { fresh: 0, aging: 0, stale: 0, nodate: 0 },
+  indexabilities:   { indexed: 0, blocked: 0, redirect: 0, error: 0 },
   funnelStages:     {},
 };
+
 
 // ─── Derived signal helpers (exported for use in sidebar / inspector) ─────────
 

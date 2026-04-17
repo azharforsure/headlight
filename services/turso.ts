@@ -219,6 +219,18 @@ export async function initializeDatabase(): Promise<void> {
     `);
 
     await client.execute(`
+        CREATE TABLE IF NOT EXISTS crawl_wqa_views (
+            id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            filter_json TEXT NOT NULL,
+            columns_json TEXT,
+            created_at INTEGER NOT NULL,
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+        )
+    `);
+
+    await client.execute(`
         CREATE TABLE IF NOT EXISTS crawler_configs (
             id TEXT PRIMARY KEY,
             config_json TEXT NOT NULL,
