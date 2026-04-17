@@ -235,54 +235,34 @@ export default function CrawlerSubHeader() {
 
                 {isGridView && (
                     <div className="flex bg-[#0a0a0a] rounded border border-[#222] p-0.5">
-                        {wqaState.isActive ? (
-                            <>
-                                <button
-                                    onClick={() => setWqaState((prev) => ({ ...prev, viewMode: 'grid' }))}
-                                    className={`px-3 py-1 text-[11px] font-medium rounded-sm flex items-center gap-1.5 transition-colors ${wqaState.viewMode === 'grid' ? 'bg-[#222] text-white' : 'text-[#888] hover:text-[#ccc]'}`}
-                                >
-                                    <List size={12} /> Grid
-                                </button>
-                                <button
-                                    onClick={() => setWqaState((prev) => ({ ...prev, viewMode: 'overview' }))}
-                                    className={`px-3 py-1 text-[11px] font-medium rounded-sm flex items-center gap-1.5 transition-colors ${wqaState.viewMode === 'overview' ? 'bg-[#222] text-white' : 'text-[#888] hover:text-[#ccc]'}`}
-                                >
-                                    <BarChart3 size={12} /> Overview
-                                </button>
-                                <button
-                                    onClick={() => setWqaState((prev) => ({ ...prev, viewMode: 'actions' }))}
-                                    className={`px-3 py-1 text-[11px] font-medium rounded-sm flex items-center gap-1.5 transition-colors ${wqaState.viewMode === 'actions' ? 'bg-[#222] text-white' : 'text-[#888] hover:text-[#ccc]'}`}
-                                >
-                                    <Sparkles size={12} /> Actions
-                                </button>
-                                <button
-                                    onClick={() => setWqaState((prev) => ({ ...prev, viewMode: 'structure' }))}
-                                    className={`px-3 py-1 text-[11px] font-medium rounded-sm flex items-center gap-1.5 transition-colors ${wqaState.viewMode === 'structure' ? 'bg-[#222] text-white' : 'text-[#888] hover:text-[#ccc]'}`}
-                                >
-                                    <AlignLeft size={12} /> Structure
-                                </button>
-                            </>
-                        ) : (
-                            <>
-                                <button 
-                                    onClick={() => setViewMode('grid')}
-                                    className={`px-3 py-1 text-[11px] font-medium rounded-sm flex items-center gap-1.5 transition-colors ${viewMode === 'grid' ? 'bg-[#222] text-white' : 'text-[#888] hover:text-[#ccc]'}`}
-                                >
-                                    <List size={12} /> Grid
-                                </button>
-                                <button 
-                                    onClick={() => setViewMode('map')}
-                                    className={`px-3 py-1 text-[11px] font-medium rounded-sm flex items-center gap-1.5 transition-colors ${viewMode === 'map' ? 'bg-[#222] text-white' : 'text-[#888] hover:text-[#ccc]'}`}
-                                >
-                                    <MapIcon size={12} /> Map
-                                </button>
-                                <button 
-                                    onClick={() => setViewMode('charts')}
-                                    className={`px-3 py-1 text-[11px] font-medium rounded-sm flex items-center gap-1.5 transition-colors ${viewMode === 'charts' ? 'bg-[#222] text-white' : 'text-[#888] hover:text-[#ccc]'}`}
-                                >
-                                    <BarChart3 size={12} /> Charts
-                                </button>
-                            </>
+                        <button 
+                            onClick={() => setViewMode('grid')}
+                            className={`px-3 py-1 text-[11px] font-medium rounded-sm flex items-center gap-1.5 transition-colors ${viewMode === 'grid' ? 'bg-[#222] text-white' : 'text-[#888] hover:text-[#ccc]'}`}
+                        >
+                            <List size={12} /> {wqaState.isActive ? 'Grid' : 'Grid'}
+                        </button>
+                        <button 
+                            onClick={() => setViewMode(wqaState.isActive ? 'charts' : 'map')}
+                            className={`px-3 py-1 text-[11px] font-medium rounded-sm flex items-center gap-1.5 transition-colors ${(wqaState.isActive ? viewMode === 'charts' : viewMode === 'map') ? 'bg-[#222] text-white' : 'text-[#888] hover:text-[#ccc]'}`}
+                        >
+                            {wqaState.isActive ? <BarChart3 size={12} /> : <MapIcon size={12} />}
+                            {wqaState.isActive ? 'Overview' : 'Map'}
+                        </button>
+                        {!wqaState.isActive && (
+                            <button 
+                                onClick={() => setViewMode('charts')}
+                                className={`px-3 py-1 text-[11px] font-medium rounded-sm flex items-center gap-1.5 transition-colors ${viewMode === 'charts' ? 'bg-[#222] text-white' : 'text-[#888] hover:text-[#ccc]'}`}
+                            >
+                                <BarChart3 size={12} /> Charts
+                            </button>
+                        )}
+                        {wqaState.isActive && (
+                            <button 
+                                onClick={() => setViewMode('map')}
+                                className={`px-3 py-1 text-[11px] font-medium rounded-sm flex items-center gap-1.5 transition-colors ${viewMode === 'map' ? 'bg-[#222] text-white' : 'text-[#888] hover:text-[#ccc]'}`}
+                            >
+                                <MapIcon size={12} /> Structure
+                            </button>
                         )}
                     </div>
                 )}

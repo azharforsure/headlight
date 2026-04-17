@@ -2,7 +2,7 @@ import React, { useState, useEffect, lazy, Suspense, useMemo, useRef, ReactNode 
 import { 
     List, Map as MapIcon, ChevronDown, ChevronUp, AlignLeft, Search, Download, CheckCircle2,
     Focus, EyeOff, X, AlertCircle, Sparkles, Expand, Shrink,
-    MessageSquare, CheckSquare
+    MessageSquare, CheckSquare, BarChart3
 } from 'lucide-react';
 import { useSeoCrawler } from '../../contexts/SeoCrawlerContext';
 import { ALL_COLUMNS, formatBytes } from './constants';
@@ -10,7 +10,6 @@ import InspectorShell from './inspector/InspectorShell';
 import FullDetailDrawer from './inspector/FullDetailDrawer';
 import ChartsView from './ChartsView';
 import WQADashboardView from './wqa/WQADashboardView';
-import WQAPrioritiesView from './wqa/WQAPrioritiesView';
 import WQAInspector from './wqa/WQAInspector';
 import WqaActiveFilterBar from './wqa/WqaActiveFilterBar';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
@@ -95,7 +94,8 @@ export default function AuditPane() {
         createTaskForCategory, runAIAnalysis, exportSubset,
         aiNarrative,
         filteredWqaPagesExport, wqaFilter, setWqaFilter,
-        isWqaMode
+        isWqaMode,
+        wqaSidebarTab, setWqaSidebarTab
     } = useSeoCrawler();
 
     const isCompactLayout = isMobile || isTablet;
@@ -1149,75 +1149,32 @@ export default function AuditPane() {
                              }
                          `}} />
                      </div>
-                ) : wqaState.isActive && wqaState.viewMode === 'overview' ? (
-                    <WQADashboardView
-                        wqaState={wqaState}
-                        pages={pages}
-                        stats={wqaStats}
-                        actionGroups={wqaActionGroups}
-                        aiNarrative={aiNarrative}
-                        onFilterByCategory={(category) => {
-                            setWqaState((prev) => ({ ...prev, viewMode: 'grid' }));
-                            setWqaFilter(prev => ({ ...prev, pageCategory: category }));
-                        }}
-                        onFilterByAction={(action) => {
-                            setWqaState((prev) => ({ ...prev, viewMode: 'grid' }));
-                            setWqaFilter(prev => ({ ...prev, technicalAction: action }));
-                        }}
-                        onNavigateToGrid={() => setWqaState((prev) => ({ ...prev, viewMode: 'grid' }))}
-                    />
-                ) : wqaState.isActive && wqaState.viewMode === 'actions' ? (
-                    <WQAPrioritiesView
-                        wqaState={wqaState}
-                        pages={pages}
-                        stats={wqaStats}
-                        actionGroups={wqaActionGroups}
-                        onSelectPage={(url) => {
-                            const page = pages.find((p: any) => p.url === url);
-                            if (page) setSelectedPage(page);
-                        }}
-                        onFilterByAction={(action) => {
-                            setWqaState((prev) => ({ ...prev, viewMode: 'grid' }));
-                            setWqaFilter(prev => ({ ...prev, technicalAction: action }));
-                        }}
-                        onRunAIWrite={(urls) => {
-                            const selected = pages.filter((p: any) => urls.includes(p.url));
-                            void runAIAnalysis(selected);
-                        }}
-                        onCreateTasks={(action, urls) => {
-                            void createTaskForCategory({
-                                group: action,
-                                sub: 'All',
-                                condition: (p: any) => urls.includes(p.url)
-                            });
-                        }}
-                        onExportGroup={(group) => {
-                            const selected = new Set(group.pages.map((p) => p.url));
-                            exportSubset({
-                                group: group.action,
-                                sub: 'All',
-                                condition: (p: any) => selected.has(p.url)
-                            });
-                        }}
-                    />
-                ) : wqaState.isActive && wqaState.viewMode === 'structure' ? (
-                     <div className="flex flex-col items-center justify-center p-12 text-[#555] h-full">
-                        <div className="text-center group">
-                            <div className="mb-6 text-6xl group-hover:scale-110 transition-transform duration-500">🏗️</div>
-                            <h3 className="text-xl font-bold text-[#888] mb-2">Site Structure Analysis</h3>
-                            <p className="max-w-[420px] text-sm text-[#555] leading-relaxed">
-                                Visualizing crawl depth, internal link flow, and directory architecture. 
-                                Our engine is building the structural map of your site.
-                            </p>
-                        </div>
-                    </div>
-                ) : viewMode === 'map' ? (
+                 ) : viewMode === 'map' ? (
                     renderMapView(false)
-                ) : viewMode === 'charts' ? (
-                    <ChartsView />
-                ) : wqaState.isActive && wqaState.viewMode === 'grid' ? (
-                    renderGrid(filteredPages)
-                ) : isCrawling && filteredPages.length === 0 ? (
+                 ) : viewMode === 'charts' ? (
+                     isWqaMode ? (
+                        <WQADashboardView
+                            wqaState={wqaState}
+                            pages={pages}
+                            stats={wqaStats}
+                            actionGroups={wqaActionGroups}
+                            aiNarrative={aiNarrative}
+                            onFilterByCategory={(category) => {
+                                setWqaSidebarTab('wqa_content');
+                                setWqaFilter(prev => ({ ...prev, pageCategory: category }));
+                                setViewMode('grid');
+                            }}
+                            onFilterByAction={(action) => {
+                                setWqaSidebarTab('wqa_actions');
+                                setWqaFilter(prev => ({ ...prev, technicalAction: action }));
+                                setViewMode('grid');
+                            }}
+                            onNavigateToGrid={() => setViewMode('grid')}
+                        />
+                     ) : (
+                        <ChartsView />
+                     )
+                 ) : isCrawling && filteredPages.length === 0 ? (
                     <div className="p-4">
                         <SkeletonTable rows={12} />
                     </div>

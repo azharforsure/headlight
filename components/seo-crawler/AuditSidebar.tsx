@@ -11,7 +11,6 @@ import ChangeMonitorService from '../../services/ChangeMonitorService';
 import MigrationPlannerService, { type MigrationMapping } from '../../services/MigrationPlannerService';
 import OverviewTab from './audit-tabs/OverviewTab';
 import CompSidebarRouter from './competitive/CompSidebarRouter';
-import WQARightSidebar from './wqa/WQARightSidebar';
 
 interface AuditSidebarProps {
     embedded?: boolean;
@@ -216,44 +215,6 @@ export default function AuditSidebar({ embedded = false }: AuditSidebarProps) {
                     {isCrawling && <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" title="Crawling..." />}
                 </div>
             </button>
-        );
-    }
-
-    if (wqaState.isActive) {
-        return (
-            <aside
-                style={embedded ? undefined : { width: auditSidebarWidth }}
-                className={`bg-[#111] flex flex-col z-10 relative min-h-0 ${embedded ? 'w-full h-full overflow-hidden rounded-2xl border border-[#222]' : 'shrink-0 border-l border-[#222] shadow-[-4px_0_15px_rgba(0,0,0,0.2)]'}`}
-            >
-                {!embedded && (
-                    <div
-                        onMouseDown={() => setIsDraggingSidebar(true)}
-                        className="absolute top-0 bottom-0 left-0 w-1.5 cursor-ew-resize z-50 transition-colors hover:bg-[#F5364E]"
-                    ></div>
-                )}
-                <WQARightSidebar
-                    wqaState={wqaState}
-                    pages={pages}
-                    filteredPages={filteredPages}
-                    crawlHistory={crawlHistory}
-                    currentSessionId={currentSessionId}
-                    aiNarrative={aiNarrative}
-                    onCompare={(id1, id2) => {
-                        void compareSessions(id1, id2);
-                    }}
-                    onFilterByAction={(action) => {
-                        setWqaFilter(prev => ({ ...prev, technicalAction: action }));
-                    }}
-                    onFilterByCategory={(cat) => {
-                        setWqaFilter(prev => ({ ...prev, pageCategory: cat }));
-                    }}
-                    onNavigateToPriorities={() => {
-                        setWqaState((prev) => ({ ...prev, viewMode: 'actions' }));
-                    }}
-                    embedded={embedded}
-                    onClose={() => setShowAuditSidebar(false)}
-                />
-            </aside>
         );
     }
 
