@@ -91,10 +91,9 @@ export default function AuditPane() {
         integrationConnections,
         setShowCollabOverlay, setCollabOverlayTarget,
         wqaState, setWqaState,
-        setWqaCategoryFilter, setWqaPageFilter,
         createTaskForCategory, runAIAnalysis, exportSubset,
         aiNarrative,
-        filteredWqaPagesExport, wqaFilter
+        filteredWqaPagesExport, wqaFilter, setWqaFilter
     } = useSeoCrawler();
 
     const isCompactLayout = isMobile || isTablet;
@@ -1156,13 +1155,11 @@ export default function AuditPane() {
                         aiNarrative={aiNarrative}
                         onFilterByCategory={(category) => {
                             setWqaState((prev) => ({ ...prev, viewMode: 'grid' }));
-                            setWqaCategoryFilter({ groupId: 'page-category', nodeId: `pageCategory:${category}` });
-                            setWqaPageFilter(() => (p: any) => String(p.pageCategory || '').toLowerCase() === category.toLowerCase());
+                            setWqaFilter(prev => ({ ...prev, pageCategory: category }));
                         }}
                         onFilterByAction={(action) => {
                             setWqaState((prev) => ({ ...prev, viewMode: 'grid' }));
-                            setWqaCategoryFilter({ groupId: 'action', nodeId: `action:${action}` });
-                            setWqaPageFilter(() => (p: any) => p.technicalAction === action || p.contentAction === action);
+                            setWqaFilter(prev => ({ ...prev, action: action }));
                         }}
                         onNavigateToGrid={() => setWqaState((prev) => ({ ...prev, viewMode: 'grid' }))}
                     />
@@ -1178,8 +1175,7 @@ export default function AuditPane() {
                         }}
                         onFilterByAction={(action) => {
                             setWqaState((prev) => ({ ...prev, viewMode: 'grid' }));
-                            setWqaCategoryFilter({ groupId: 'action', nodeId: `action:${action}` });
-                            setWqaPageFilter(() => (p: any) => p.technicalAction === action || p.contentAction === action);
+                            setWqaFilter(prev => ({ ...prev, action: action }));
                         }}
                         onRunAIWrite={(urls) => {
                             const selected = pages.filter((p: any) => urls.includes(p.url));

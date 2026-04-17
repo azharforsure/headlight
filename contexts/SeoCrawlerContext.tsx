@@ -90,7 +90,14 @@ import { DEFAULT_WQA_STATE, getEffectiveIndustry, getEffectiveLanguage, type Web
 import { computeWqaActionGroups, computeWqaSiteStats, deriveWqaScore } from '../services/WqaSidebarData';
 // getPageIssues now imported from UnifiedIssueTaxonomy above
 
-import { filterWqaPages, computeWqaFacets, type WqaFilterState, type WqaFacets } from '../services/WqaFilterEngine';
+import {
+  filterWqaPages,
+  computeWqaFacets,
+  DEFAULT_WQA_FILTER,
+  EMPTY_FACETS,
+  type WqaFilterState,
+  type WqaFacets,
+} from '../services/WqaFilterEngine';
 import { ForecastService } from '../services/ForecastService';
 
 import type { PageAIResult } from '../services/ai/AIAnalysisEngine';
@@ -213,9 +220,6 @@ export interface CrawlerContextType {
     setActiveCategories: React.Dispatch<React.SetStateAction<Array<{ group: string; sub: string }>>>;
     activeCategory: { group: string; sub: string };
     setActiveCategory: (c: { group: string; sub: string }) => void;
-    wqaCategoryFilter: { groupId: string; nodeId: string } | null;
-    setWqaCategoryFilter: React.Dispatch<React.SetStateAction<{ groupId: string; nodeId: string } | null>>;
-    setWqaPageFilter: React.Dispatch<React.SetStateAction<((page: any) => boolean) | null>>;
     auditFilter: AuditFilterState;
     activeCheckIds: Set<string>;
     activeCheckCategories: Set<string>;
@@ -761,15 +765,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         { group: 'internal', sub: 'All' }
     ]);
     const activeCategory = activeCategories[0] || { group: 'internal', sub: 'All' };
-    const [wqaCategoryFilter, setWqaCategoryFilter] = useState<{ groupId: string; nodeId: string } | null>(null);
-    const [wqaPageFilter, setWqaPageFilter] = useState<((page: any) => boolean) | null>(null);
-
-    const [wqaFilter, setWqaFilter] = useState<WqaFilterState>({
-        pageCategory: 'all',
-        actionType: 'all',
-        priorityLevel: 0,
-        searchTerm: ''
-    });
+    const [wqaFilter, setWqaFilter] = useState<WqaFilterState>(DEFAULT_WQA_FILTER);
     const setActiveCategory = useCallback((category: { group: string; sub: string }) => {
         setActiveCategories([category]);
     }, []);
@@ -879,8 +875,6 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         }
 
         setWqaState(DEFAULT_WQA_STATE);
-        setWqaCategoryFilter(null);
-        setWqaPageFilter(null);
     }, [isWqaMode]);
 
     // Live query for pages from IndexedDB (moved after currentSessionId)
@@ -1828,8 +1822,6 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         setSelectedPage(null);
         setSelectedRows(new Set());
         setSiteType(null);
-        setWqaCategoryFilter(null);
-        setWqaPageFilter(null);
         setWqaState(DEFAULT_WQA_STATE);
         setCurrentSessionId(null);
         currentSessionIdRef.current = null;
@@ -2997,8 +2989,8 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
             );
         }
 
-        if (isWqaMode && wqaPageFilter) {
-            list = list.filter(wqaPageFilter);
+        if (isWqaMode) {
+            list = filterWqaPages(list, wqaFilter);
         }
 
         if (sortConfig) {
@@ -3012,16 +3004,17 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         }
 
         return list;
-    }, [pagesWithDerivedSignals, activeCategories, deferredSearchQuery, activeMacro, sortConfig, MACRO_FILTERS, ignoredUrls, rootHostname, filteredIssuePages, isWqaMode, wqaPageFilter]);
+    }, [pagesWithDerivedSignals, activeCategories, deferredSearchQuery, activeMacro, sortConfig, MACRO_FILTERS, ignoredUrls, rootHostname, filteredIssuePages, isWqaMode, wqaFilter]);
 
     const filteredWqaPagesExport = useMemo(() => {
         if (!isWqaMode) return [];
         return filterWqaPages(pagesWithDerivedSignals, wqaFilter);
     }, [pagesWithDerivedSignals, wqaFilter, isWqaMode]);
 
-    const wqaFacets = useMemo(() => {
+    const wqaFacets = useMemo<WqaFacets>(() => {
+        if (!isWqaMode || pagesWithDerivedSignals.length === 0) return EMPTY_FACETS;
         return computeWqaFacets(pagesWithDerivedSignals);
-    }, [pagesWithDerivedSignals]);
+    }, [isWqaMode, pagesWithDerivedSignals]);
 
     const wqaForecast = useMemo(() => {
         if (!isWqaMode || pagesWithDerivedSignals.length === 0) return null;
@@ -3033,8 +3026,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         && hasOnlyDefaultCategory
         && activeMacro === 'all'
         && ignoredUrls.size === 0
-        && !isWqaMode
-        && !wqaPageFilter;
+        && !isWqaMode;
 
     useEffect(() => {
         if (!statsWorkerRef.current || !canUseWorkerFiltering) {
@@ -3895,8 +3887,6 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         setRobotsTxt(null);
         setSitemapData(null);
         setSiteType(null);
-        setWqaCategoryFilter(null);
-        setWqaPageFilter(null);
         setWqaState(DEFAULT_WQA_STATE);
         setCrawlStartTime(null);
         setCrawlRuntime((prev) => ({
@@ -4720,7 +4710,6 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         crawlDb,
         activeCategories, setActiveCategories,
         activeCategory, setActiveCategory,
-        wqaCategoryFilter, setWqaCategoryFilter, setWqaPageFilter,
         auditFilter, activeCheckIds, activeCheckCategories, filteredIssuePages,
         activeViewType, activeSidebarSections,
 
@@ -4787,7 +4776,6 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         crawlingMode, urlInput, listUrls, showListModal,
         isCrawling, pagesWithDerivedSignals, analysisPages, logs, crawlStartTime,
         activeCategories, activeCategory,
-        wqaCategoryFilter,
         auditFilter, activeCheckIds, activeCheckCategories, filteredIssuePages,
         activeViewType, activeSidebarSections,
 

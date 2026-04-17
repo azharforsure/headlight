@@ -30,7 +30,7 @@ export default function SiteExplorer({ embedded = false }: SiteExplorerProps) {
         activeCheckCategories,
         prioritizedCategories, prioritizeByIssues, setPrioritizeByIssues,
         auditFilter,
-        wqaState, wqaCategoryFilter, setWqaCategoryFilter, setWqaPageFilter,
+        wqaState,
         exportSubset, createTaskForCategory, bulkAIAnalyzeCategory
     } = useSeoCrawler();
 
@@ -118,19 +118,7 @@ export default function SiteExplorer({ embedded = false }: SiteExplorerProps) {
                         className="absolute top-0 bottom-0 right-0 w-1.5 cursor-ew-resize z-50 transition-colors hover:bg-[#F5364E]"
                     ></div>
                 )}
-                <WQACategoryTree
-                    pages={pages}
-                    industry={getEffectiveIndustry(wqaState)}
-                    activeFilter={wqaCategoryFilter}
-                    onFilterChange={(groupId, nodeId, filter) => {
-                        setWqaCategoryFilter({ groupId, nodeId });
-                        setWqaPageFilter(() => filter);
-                    }}
-                    onClearFilter={() => {
-                        setWqaCategoryFilter(null);
-                        setWqaPageFilter(null);
-                    }}
-                />
+                <WQACategoryTree industry={getEffectiveIndustry(wqaState)} />
             </aside>
         );
     }

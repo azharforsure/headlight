@@ -40,8 +40,7 @@ export default function AuditSidebar({ embedded = false }: AuditSidebarProps) {
         aiNarrative, isAnalyzingAI,
         wqaState,
         setWqaState,
-        setWqaPageFilter,
-        setWqaCategoryFilter,
+        setWqaFilter,
         filteredPages,
         tasks, setShowCollabOverlay, setCollabOverlayTarget,
         crawlDb, addLog,
@@ -243,8 +242,7 @@ export default function AuditSidebar({ embedded = false }: AuditSidebarProps) {
                         void compareSessions(id1, id2);
                     }}
                     onFilterByAction={(action) => {
-                        setWqaCategoryFilter({ groupId: 'action', nodeId: `action:${action}` });
-                        setWqaPageFilter(() => (p: any) => p.technicalAction === action || p.contentAction === action);
+                        setWqaFilter(prev => ({ ...prev, action: action }));
                     }}
                     onNavigateToPriorities={() => {
                         setWqaState((prev) => ({ ...prev, viewMode: 'actions' }));

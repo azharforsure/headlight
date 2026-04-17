@@ -1,499 +1,614 @@
-import React, { useMemo, useState, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
-    LayoutGrid,
-    Star,
-    Wrench,
-    FileText,
-    TrendingUp,
-    Server,
-    Eye,
-    Search,
-    ChevronDown,
-    ChevronRight,
-    Sparkles,
-    AlertTriangle,
+  Search,
+  ChevronDown,
+  ChevronRight,
+  X,
+  Layers,
+  Zap,
+  Settings,
+  FileText,
+  Star,
+  Activity,
+  Search as SearchIcon,
+  Clock,
+  Fingerprint,
+  Filter,
+  Briefcase
 } from 'lucide-react';
+import { useSeoCrawler } from '../../../contexts/SeoCrawlerContext';
+import {
+  DEFAULT_WQA_FILTER,
+  matchesIndustryFilter,
+  type WqaFilterState,
+} from '../../../services/WqaFilterEngine';
+import { formatCat, formatIndustryLabel } from './wqaUtils';
 import type { DetectedIndustry } from '../../../services/SiteTypeDetector';
 
-interface CategoryNode {
-    id: string;
-    label: string;
-    icon?: React.ReactNode;
-    count: number;
-    filter: (page: any) => boolean;
+// ─── Label maps ───────────────────────────────────────────────────────────────
+
+const PRIORITY_LABELS: Record<string, string> = {
+  '1': 'High',
+  '2': 'Medium',
+  '3': 'Low',
+};
+
+const VALUE_LABELS: Record<string, string> = {
+  '★★★': '★★★  High value',
+  '★★':  '★★   Medium value',
+  '★':   '★    Low value',
+  '☆':   '☆    No value',
+};
+
+const TRAFFIC_LABELS: Record<string, string> = {
+  growing:   '▲  Growing',
+  declining: '▼  Declining',
+  stable:    '→  Stable',
+  none:      'No data',
+};
+
+const SEARCH_LABELS: Record<string, string> = {
+  top3:     'Top 3',
+  page1:    'Page 1  (4–10)',
+  striking: 'Striking  (11–20)',
+  weak:     'Weak  (21+)',
+  none:     'Not ranking',
+};
+
+const AGE_LABELS: Record<string, string> = {
+  fresh:  'Fresh  (< 6 mo)',
+  aging:  'Aging  (6–12 mo)',
+  stale:  'Stale  (> 12 mo)',
+  nodate: 'No date',
+};
+
+const INDEX_LABELS: Record<string, string> = {
+  indexed:  'Indexed',
+  blocked:  'Blocked / Noindex',
+  redirect: 'Redirect',
+  error:    'Error  (4xx / 5xx)',
+};
+
+const FUNNEL_LABELS: Record<string, string> = {
+  Transactional: 'Transactional',
+  Commercial:    'Commercial',
+  Consideration: 'Consideration',
+  Informational: 'Informational',
+};
+
+// ─── Industry filter options (per industry) ───────────────────────────────────
+
+const INDUSTRY_OPTIONS: Partial<Record<DetectedIndustry, { value: string; label: string }[]>> = {
+  ecommerce:   [
+    { value: 'in_stock',          label: 'In stock' },
+    { value: 'out_of_stock',      label: 'Out of stock (indexed)' },
+    { value: 'no_product_schema', label: 'No product schema' },
+  ],
+  news: [
+    { value: 'has_author', label: 'Has author' },
+    { value: 'no_author',  label: 'Missing author' },
+  ],
+  blog: [
+    { value: 'has_author', label: 'Has author' },
+    { value: 'no_author',  label: 'Missing author' },
+  ],
+  local: [
+    { value: 'location_pages',  label: 'Location pages' },
+    { value: 'no_local_schema', label: 'No local schema' },
+  ],
+};
+
+// ─── Active chip derivation ───────────────────────────────────────────────────
+
+function getActiveChips(filter: WqaFilterState): { key: keyof WqaFilterState; label: string }[] {
+  const chips: { key: keyof WqaFilterState; label: string }[] = [];
+
+  const add = (key: keyof WqaFilterState, label: string | undefined | null, defaultValue: any = 'all') => {
+    if (filter[key] !== defaultValue && label && label.trim() !== '') {
+      chips.push({ key, label: label.trim() });
+    }
+  };
+
+  add('pageCategory',    formatCat(filter.pageCategory));
+  add('technicalAction', filter.technicalAction);
+  add('contentAction',   filter.contentAction);
+  add('action',          filter.action);
+  add('priorityLevel',   PRIORITY_LABELS[String(filter.priorityLevel)] ?? '', 0);
+  add('valueTier',       filter.valueTier);
+  add('trafficStatus',   TRAFFIC_LABELS[filter.trafficStatus] ?? filter.trafficStatus);
+  add('searchStatus',    SEARCH_LABELS[filter.searchStatus]  ?? filter.searchStatus);
+  add('contentAge',      AGE_LABELS[filter.contentAge]       ?? filter.contentAge);
+  add('indexability',    INDEX_LABELS[filter.indexability]   ?? filter.indexability);
+  add('funnelStage',     FUNNEL_LABELS[filter.funnelStage]   ?? filter.funnelStage);
+  add('industryFilter',  filter.industryFilter);
+  
+  return chips;
 }
 
-interface CategoryGroup {
-    id: string;
-    label: string;
-    icon?: React.ReactNode;
-    nodes: CategoryNode[];
-    defaultOpen?: boolean;
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+interface FilterItemProps {
+  label:    string;
+  count:    number;
+  active:   boolean;
+  onClick:  () => void;
+  barPct?:  number;
+  hideCount?: boolean;
 }
 
-function buildWqaCategories(pages: any[], industry: DetectedIndustry): CategoryGroup[] {
-    const html = pages.filter((p) => p.isHtmlPage && p.statusCode >= 200 && p.statusCode < 600);
-
-    const groups: CategoryGroup[] = [
-        {
-            id: 'all',
-            label: 'All Pages',
-            icon: <LayoutGrid size={14} />,
-            defaultOpen: false,
-            nodes: [{ id: 'all:all', label: 'All', count: pages.length, filter: () => true }],
-        },
-        {
-            id: 'page-category',
-            label: 'Page Category',
-            icon: <LayoutGrid size={14} />,
-            defaultOpen: true,
-            nodes: buildCountNodes(html, 'pageCategory', [
-                ['homepage', 'Homepage'],
-                ['product', 'Product'],
-                ['category', 'Category / Listing'],
-                ['blog_post', 'Blog Post'],
-                ['landing_page', 'Landing Page'],
-                ['service_page', 'Service Page'],
-                ['about_legal', 'About / Legal'],
-                ['faq_help', 'FAQ / Help'],
-                ['resource', 'Resource'],
-                ['login_account', 'Login / Account'],
-                ['pagination', 'Pagination'],
-                ['media', 'Media (PDF / Image)'],
-                ['other', 'Other'],
-            ]),
-        },
-        {
-            id: 'page-value',
-            label: 'Page Value',
-            icon: <Star size={14} />,
-            defaultOpen: true,
-            nodes: buildCountNodes(html, 'pageValueTier', [
-                ['★★★', '★★★ High Value'],
-                ['★★', '★★ Medium Value'],
-                ['★', '★ Low Value'],
-                ['☆', '☆ Zero Value'],
-            ]),
-        },
-        {
-            id: 'tech-action',
-            label: 'Technical Action',
-            icon: <Wrench size={14} />,
-            defaultOpen: true,
-            nodes: buildCountNodes(html, 'technicalAction', [
-                ['Fix Server Errors', 'Fix Server Errors'],
-                ['Restore Broken Page', 'Restore Broken Page'],
-                ['Remove Dead Page', 'Remove Dead Page'],
-                ['Unblock From Index', 'Unblock From Index'],
-                ['Fix Redirect Chain', 'Fix Redirect Chain'],
-                ['Fix Canonical', 'Fix Canonical'],
-                ['Add to Sitemap', 'Add to Sitemap'],
-                ['Improve Speed', 'Improve Speed'],
-                ['Fix Security', 'Fix Security'],
-                ['Add Internal Links', 'Add Internal Links'],
-                ['Consolidate Duplicates', 'Consolidate Duplicates'],
-                ['Fix Hreflang', 'Fix Hreflang'],
-                ['Monitor', 'Monitor'],
-            ]),
-        },
-        {
-            id: 'content-action',
-            label: 'Content Action',
-            icon: <FileText size={14} />,
-            defaultOpen: true,
-            nodes: buildCountNodes(html, 'contentAction', [
-                ['Rewrite Title & Meta', 'Rewrite Title & Meta'],
-                ['Recover Declining Content', 'Recover Declining'],
-                ['Fix Keyword Mismatch', 'Fix Keyword Mismatch'],
-                ['Expand Thin Content', 'Expand Thin Content'],
-                ['Update Stale Content', 'Update Stale Content'],
-                ['Add Schema', 'Add Schema'],
-                ['Improve E-E-A-T', 'Improve E-E-A-T'],
-                ['Resolve Cannibalization', 'Resolve Cannibalization'],
-                ['Optimize for SERP Features', 'Optimize for SERP'],
-                ['Improve Readability', 'Improve Readability'],
-                ['Remove or Merge', 'Remove or Merge'],
-                ['Fill Content Gap', 'Fill Content Gap'],
-                ['No Action', 'No Action Needed'],
-            ]),
-        },
-        {
-            id: 'traffic-status',
-            label: 'Traffic Status',
-            icon: <TrendingUp size={14} />,
-            defaultOpen: true,
-            nodes: [
-                {
-                    id: 'traffic:growing',
-                    label: 'Growing ↑',
-                    count: html.filter((p) => Number(p.sessionsDeltaPct || 0) > 0.15).length,
-                    filter: (p: any) => Number(p.sessionsDeltaPct || 0) > 0.15,
-                },
-                {
-                    id: 'traffic:stable',
-                    label: 'Stable →',
-                    count: html.filter((p) => {
-                        const d = Number(p.sessionsDeltaPct || 0);
-                        return d >= -0.15 && d <= 0.15 && Number(p.ga4Sessions || 0) > 0;
-                    }).length,
-                    filter: (p: any) => {
-                        const d = Number(p.sessionsDeltaPct || 0);
-                        return d >= -0.15 && d <= 0.15 && Number(p.ga4Sessions || 0) > 0;
-                    },
-                },
-                {
-                    id: 'traffic:declining',
-                    label: 'Declining ↓',
-                    count: html.filter((p) => p.isLosingTraffic === true).length,
-                    filter: (p: any) => p.isLosingTraffic === true,
-                },
-                {
-                    id: 'traffic:none',
-                    label: 'No Traffic',
-                    count: html.filter((p) => !Number(p.ga4Sessions || 0) && !Number(p.gscClicks || 0)).length,
-                    filter: (p: any) => !Number(p.ga4Sessions || 0) && !Number(p.gscClicks || 0),
-                },
-            ],
-        },
-        {
-            id: 'status-code',
-            label: 'Status Code',
-            icon: <Server size={14} />,
-            defaultOpen: false,
-            nodes: buildCountNodes(pages, 'statusCode', [
-                [200, '200 OK'],
-                [301, '301 Redirect'],
-                [302, '302 Temporary'],
-                [404, '404 Not Found'],
-                [410, '410 Gone'],
-                [500, '500+ Server Error'],
-            ], (page, value) => {
-                if (value === 500) return Number(page.statusCode || 0) >= 500;
-                return Number(page.statusCode || 0) === value;
-            }),
-        },
-        {
-            id: 'index-status',
-            label: 'Index Status',
-            icon: <Eye size={14} />,
-            defaultOpen: false,
-            nodes: [
-                {
-                    id: 'index:indexable',
-                    label: 'Indexable',
-                    count: html.filter((p) => p.indexable !== false && p.statusCode === 200).length,
-                    filter: (p: any) => p.indexable !== false && p.statusCode === 200,
-                },
-                {
-                    id: 'index:noindex',
-                    label: 'Noindex',
-                    count: html.filter((p) => String(p.metaRobots1 || '').toLowerCase().includes('noindex') || p.xRobotsNoindex).length,
-                    filter: (p: any) => String(p.metaRobots1 || '').toLowerCase().includes('noindex') || p.xRobotsNoindex === true,
-                },
-                {
-                    id: 'index:canonicalized',
-                    label: 'Canonicalized',
-                    count: html.filter((p) => p.canonical && String(p.canonical).trim() !== String(p.url).trim()).length,
-                    filter: (p: any) => Boolean(p.canonical) && String(p.canonical).trim() !== String(p.url).trim(),
-                },
-                {
-                    id: 'index:blocked',
-                    label: 'Blocked',
-                    count: pages.filter((p) => p.status === 'Blocked by Robots.txt').length,
-                    filter: (p: any) => p.status === 'Blocked by Robots.txt',
-                },
-            ],
-        },
-        {
-            id: 'content-quality',
-            label: 'Content Quality',
-            icon: <Sparkles size={14} />,
-            defaultOpen: false,
-            nodes: [
-                {
-                    id: 'quality:good',
-                    label: 'Good (70-100)',
-                    count: html.filter((p) => Number(p.contentQualityScore || 0) >= 70).length,
-                    filter: (p: any) => Number(p.contentQualityScore || 0) >= 70,
-                },
-                {
-                    id: 'quality:fair',
-                    label: 'Fair (40-69)',
-                    count: html.filter((p) => {
-                        const s = Number(p.contentQualityScore || 0);
-                        return s >= 40 && s < 70;
-                    }).length,
-                    filter: (p: any) => {
-                        const s = Number(p.contentQualityScore || 0);
-                        return s >= 40 && s < 70;
-                    },
-                },
-                {
-                    id: 'quality:poor',
-                    label: 'Poor (0-39)',
-                    count: html.filter((p) => {
-                        const s = Number(p.contentQualityScore || 0);
-                        return s > 0 && s < 40;
-                    }).length,
-                    filter: (p: any) => {
-                        const s = Number(p.contentQualityScore || 0);
-                        return s > 0 && s < 40;
-                    },
-                },
-                {
-                    id: 'quality:unscored',
-                    label: 'Not Scored',
-                    count: html.filter((p) => !p.contentQualityScore).length,
-                    filter: (p: any) => !p.contentQualityScore,
-                },
-            ],
-        },
-    ];
-
-    const industryGroup = buildIndustryGroup(html, industry);
-    if (industryGroup) groups.push(industryGroup);
-
-    return groups.filter((g) => g.id === 'all' || g.nodes.some((n) => n.count > 0));
+function FilterItem({ label, count, active, onClick, barPct, hideCount = false }: FilterItemProps) {
+  return (
+    <button
+      onClick={onClick}
+      className={`w-full text-left flex items-center justify-between gap-1 px-2.5 py-1 rounded-sm transition-all ${
+        active
+          ? 'bg-[#F5364E]/10 text-[#F5364E] font-medium'
+          : 'text-[#888] hover:text-[#ccc] hover:bg-[#1a1a1a]'
+      }`}
+    >
+      <span className="truncate flex-1 text-[11px]">{label}</span>
+      <div className="flex items-center gap-2 shrink-0">
+        {barPct !== undefined && (
+          <div className="w-[32px] h-[3px] bg-[#222] rounded-full overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all ${active ? 'bg-[#F5364E]' : 'bg-[#333]'}`}
+              style={{ width: `${barPct}%` }}
+            />
+          </div>
+        )}
+        {!hideCount && (
+          <span className={`text-[10px] font-mono shrink-0 ${active ? 'text-[#F5364E]/70' : 'text-[#555]'}`}>
+            {count > 0 ? count : ''}
+          </span>
+        )}
+      </div>
+    </button>
+  );
 }
 
-function buildCountNodes(
-    pages: any[],
-    field: string,
-    entries: Array<[any, string]>,
-    customMatcher?: (page: any, value: any) => boolean
-): CategoryNode[] {
-    return entries
-        .map(([value, label]) => {
-            const matcher = customMatcher
-                ? (p: any) => customMatcher(p, value)
-                : (p: any) => String(p[field] || '') === String(value);
-            return {
-                id: `${field}:${String(value)}`,
-                label,
-                count: pages.filter(matcher).length,
-                filter: matcher,
-            };
-        })
-        .filter((n) => n.count > 0);
+interface SectionHeaderProps {
+  label:     string;
+  icon:      React.ReactNode;
+  isOpen:    boolean;
+  onToggle:  () => void;
+  hasActive: boolean;
 }
 
-function buildIndustryGroup(pages: any[], industry: DetectedIndustry): CategoryGroup | null {
-    const nodes: CategoryNode[] = [];
-
-    if (industry === 'ecommerce') {
-        nodes.push(
-            countNode(pages, 'Missing Product Schema', (p) => p.pageCategory === 'product' && !(p.schemaTypes || []).includes('Product')),
-            countNode(pages, 'Missing Review Schema', (p) => p.pageCategory === 'product' && !(p.schemaTypes || []).includes('Review')),
-            countNode(pages, 'Out-of-stock Indexed', (p) => p.industrySignals?.outOfStock && p.indexable !== false),
-            countNode(pages, 'No Breadcrumbs', (p) => p.pageCategory === 'product' && !(p.schemaTypes || []).includes('BreadcrumbList')),
-        );
-    }
-
-    if (industry === 'news' || industry === 'blog') {
-        nodes.push(
-            countNode(pages, 'Missing Article Schema', (p) => p.pageCategory === 'blog_post' && !p.hasArticleSchema),
-            countNode(pages, 'No Author', (p) => p.pageCategory === 'blog_post' && !p.industrySignals?.hasAuthorAttribution),
-            countNode(pages, 'No Publish Date', (p) => p.pageCategory === 'blog_post' && !p.visibleDate),
-            countNode(pages, 'Stale Articles (>6mo)', (p) => {
-                if (p.pageCategory !== 'blog_post' || !p.visibleDate) return false;
-                return (Date.now() - new Date(p.visibleDate).getTime()) > 180 * 24 * 60 * 60 * 1000;
-            }),
-        );
-    }
-
-    if (industry === 'local') {
-        nodes.push(
-            countNode(pages, 'No Local Schema', (p) => p.crawlDepth === 0 && !p.industrySignals?.hasLocalBusinessSchema),
-            countNode(pages, 'NAP Missing', (p) => p.isHtmlPage && !p.industrySignals?.hasNapOnPage && p.crawlDepth <= 1),
-            countNode(pages, 'No Map Embed', (p) => p.crawlDepth === 0 && !p.hasEmbeddedMap),
-        );
-    }
-
-    if (industry === 'saas') {
-        nodes.push(
-            countNode(pages, 'No Pricing Page', (p) => p.crawlDepth === 0 && !p.hasPricingPage),
-            countNode(pages, 'No Docs Section', (p) => p.crawlDepth === 0 && !pages.some((pp) => String(pp.url || '').toLowerCase().includes('/doc'))),
-        );
-    }
-
-    if (industry === 'healthcare') {
-        nodes.push(
-            countNode(pages, 'No Medical Author', (p) => p.pageCategory === 'blog_post' && !p.industrySignals?.hasMedicalAuthor),
-            countNode(pages, 'No Medical Disclaimer', (p) => p.pageCategory === 'blog_post' && !p.industrySignals?.hasMedicalDisclaimer),
-        );
-    }
-
-    if (industry === 'finance') {
-        nodes.push(
-            countNode(pages, 'No Financial Disclaimer', (p) => p.pageCategory === 'blog_post' && !p.industrySignals?.hasFinancialDisclaimer),
-        );
-    }
-
-    const filtered = nodes.filter((n) => n.count > 0);
-    if (filtered.length === 0) return null;
-
-    const industryLabels: Partial<Record<DetectedIndustry, string>> = {
-        ecommerce: 'E-commerce Issues',
-        news: 'News / Magazine Issues',
-        blog: 'Blog Issues',
-        local: 'Local Business Issues',
-        saas: 'SaaS Issues',
-        healthcare: 'Healthcare Issues',
-        finance: 'Finance Issues',
-        education: 'Education Issues',
-    };
-
-    return {
-        id: 'industry-issues',
-        label: industryLabels[industry] || 'Industry Issues',
-        icon: <AlertTriangle size={14} />,
-        defaultOpen: true,
-        nodes: filtered,
-    };
+function SectionHeader({ label, icon, isOpen, onToggle, hasActive }: SectionHeaderProps) {
+  return (
+    <button
+      onClick={onToggle}
+      className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-sm transition-colors group ${
+        isOpen ? 'text-[#eee]' : 'text-[#aaa] hover:bg-[#1a1a1a]'
+      }`}
+    >
+      <div className="flex items-center gap-2 min-w-0">
+        <span className={`shrink-0 transition-colors ${hasActive ? 'text-[#F5364E]/60' : 'text-[#666] group-hover:text-[#888]'}`}>
+          {icon}
+        </span>
+        <span className={`truncate text-[12px] font-semibold tracking-tight`}>
+          {label}
+        </span>
+        {hasActive && <div className="w-1.5 h-1.5 rounded-full bg-[#F5364E] shrink-0" />}
+      </div>
+      <div className="flex items-center gap-1.5 shrink-0">
+        {isOpen ? <ChevronDown size={12} className="text-[#555]"/> : <ChevronRight size={12} className="text-[#555]"/>}
+      </div>
+    </button>
+  );
 }
 
-function countNode(pages: any[], label: string, filter: (p: any) => boolean): CategoryNode {
-    return {
-        id: `industry:${label.toLowerCase().replace(/\s+/g, '-')}`,
-        label,
-        count: pages.filter(filter).length,
-        filter,
-    };
-}
+// ─── Main ─────────────────────────────────────────────────────────────────────
+
+const SHOW_ACTIONS_DEFAULT = 6;
+const COLLAPSE_KEY = 'wqa_sidebar_sections';
 
 interface WQACategoryTreeProps {
-    pages: any[];
-    industry: DetectedIndustry;
-    activeFilter: { groupId: string; nodeId: string } | null;
-    onFilterChange: (groupId: string, nodeId: string, filter: (page: any) => boolean) => void;
-    onClearFilter: () => void;
+  industry: DetectedIndustry;
 }
 
-export default function WQACategoryTree({
-    pages,
-    industry,
-    activeFilter,
-    onFilterChange,
-    onClearFilter,
-}: WQACategoryTreeProps) {
-    const [searchQuery, setSearchQuery] = useState('');
-    const [openGroups, setOpenGroups] = useState<Set<string>>(new Set(['page-category', 'page-value', 'tech-action', 'content-action', 'traffic-status']));
+export default function WQACategoryTree({ industry }: WQACategoryTreeProps) {
+  const { wqaFilter, setWqaFilter, wqaFacets, pages } = useSeoCrawler();
 
-    const categories = useMemo(() => buildWqaCategories(pages, industry), [pages, industry]);
+  // Section collapse state, persisted
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => {
+    try { return JSON.parse(localStorage.getItem(COLLAPSE_KEY) ?? '{}'); } catch { return {}; }
+  });
 
-    const toggleGroup = useCallback((groupId: string) => {
-        setOpenGroups((prev) => {
-            const next = new Set(prev);
-            if (next.has(groupId)) next.delete(groupId);
-            else next.add(groupId);
-            return next;
-        });
-    }, []);
+  useEffect(() => {
+    try { localStorage.setItem(COLLAPSE_KEY, JSON.stringify(collapsed)); } catch {}
+  }, [collapsed]);
 
-    const handleNodeClick = useCallback((groupId: string, node: CategoryNode) => {
-        if (activeFilter?.groupId === groupId && activeFilter?.nodeId === node.id) {
-            onClearFilter();
-        } else {
-            onFilterChange(groupId, node.id, node.filter);
-        }
-    }, [activeFilter, onFilterChange, onClearFilter]);
+  const [showMoreTech,    setShowMoreTech]    = useState(false);
+  const [showMoreContent, setShowMoreContent] = useState(false);
 
-    const filteredCategories = useMemo(() => {
-        if (!searchQuery.trim()) return categories;
-        const q = searchQuery.toLowerCase();
-        return categories
-            .map((group) => ({
-                ...group,
-                nodes: group.nodes.filter((n) => n.label.toLowerCase().includes(q)),
-            }))
-            .filter((g) => g.nodes.length > 0);
-    }, [categories, searchQuery]);
+  const toggle = useCallback((id: string) => {
+    setCollapsed(prev => ({ ...prev, [id]: !prev[id] }));
+  }, []);
 
-    return (
-        <div className="h-full flex flex-col bg-[#111] text-[12px] select-none">
-            <div className="px-2 py-2 border-b border-[#1a1a1a] shrink-0 space-y-2">
-                <div className="flex items-center justify-between px-1">
-                    <span className="text-[9px] text-[#555] uppercase tracking-widest font-bold">Categories</span>
-                    <span className="text-[8px] font-bold uppercase tracking-wider text-[#F5364E]">WQA</span>
-                </div>
-                <div className="relative">
-                    <Search size={11} className="absolute left-2 top-1/2 -translate-y-1/2 text-[#444]" />
-                    <input
-                        type="text"
-                        placeholder="Search..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full bg-[#0a0a0a]/50 border border-[#222] rounded pl-6 pr-2 py-1 text-[11px] text-[#e0e0e0] placeholder-[#444] focus:border-[#F5364E]/50 focus:outline-none transition-colors"
-                    />
-                </div>
-            </div>
+  const isOpen = (id: string) => !collapsed[id]; // default open
 
-            <div className="flex-1 overflow-y-auto custom-scrollbar py-1 px-1">
-                {filteredCategories.map((group) => {
-                    if (group.id === 'all') {
-                        const node = group.nodes[0];
-                        const isActive = activeFilter === null;
-                        return (
-                            <button
-                                key={group.id}
-                                onClick={onClearFilter}
-                                className={`w-full flex items-center justify-between px-2.5 py-1.5 text-[11px] rounded-sm transition-colors mb-0.5 ${
-                                    isActive ? 'bg-[#F5364E]/10 text-[#F5364E] font-medium' : 'text-[#888] hover:text-[#ccc] hover:bg-[#1a1a1a]'
-                                }`}
-                            >
-                                <span className="flex items-center gap-2 min-w-0">
-                                    {group.icon}
-                                    <span className="truncate">{node.label}</span>
-                                </span>
-                                <span className="text-[10px] text-[#555] font-mono shrink-0">{node.count.toLocaleString()}</span>
-                            </button>
-                        );
-                    }
+  // Setter that toggles back to default if the same value is clicked
+  const set = useCallback((key: keyof WqaFilterState, value: any) => {
+    setWqaFilter((prev: WqaFilterState) => ({
+      ...prev,
+      [key]: (prev[key] as any) === value ? (DEFAULT_WQA_FILTER[key] as any) : value,
+    }));
+  }, [setWqaFilter]);
 
-                    const isOpen = openGroups.has(group.id);
+  const clearAll = useCallback(() => setWqaFilter(DEFAULT_WQA_FILTER), [setWqaFilter]);
 
-                    return (
-                        <div key={group.id} className="mb-0.5">
-                            <button
-                                onClick={() => toggleGroup(group.id)}
-                                className={`w-full flex items-center justify-between px-2.5 py-1.5 text-[12px] font-semibold rounded-sm transition-colors ${isOpen ? 'text-[#eee]' : 'text-[#aaa] hover:bg-[#1a1a1a]'}`}
-                            >
-                                <span className="flex items-center gap-2 min-w-0">
-                                    <span className="text-[#666] shrink-0">{group.icon}</span>
-                                    <span className="truncate">{group.label}</span>
-                                </span>
-                                <span className="flex items-center gap-1.5 shrink-0 text-[#666]">
-                                    {isOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                                </span>
-                            </button>
+  const chips     = useMemo(() => getActiveChips(wqaFilter), [wqaFilter]);
+  const hasActive = chips.length >= 2;
 
-                            {isOpen && (
-                                <div className="ml-[18px] pl-3 my-1 space-y-0.5 border-l border-[#222]">
-                                    {group.nodes.map((node) => {
-                                        const isActive = activeFilter?.nodeId === node.id;
-                                        return (
-                                            <button
-                                                key={node.id}
-                                                onClick={() => handleNodeClick(group.id, node)}
-                                                className={`w-full text-left px-2.5 py-1 text-[11px] rounded-sm transition-all flex items-center justify-between gap-1 ${
-                                                    isActive
-                                                        ? 'bg-[#F5364E]/10 text-[#F5364E] font-medium'
-                                                        : 'text-[#888] hover:text-[#ccc] hover:bg-[#1a1a1a]'
-                                                }`}
-                                            >
-                                                <span className="truncate">{node.label}</span>
-                                                <span className={`text-[10px] font-mono ml-2 shrink-0 ${isActive ? 'text-[#F5364E]' : 'text-[#555]'}`}>
-                                                    {node.count.toLocaleString()}
-                                                </span>
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                            )}
-                        </div>
-                    );
-                })}
-            </div>
+  const dismissChip = (key: keyof WqaFilterState) => {
+    setWqaFilter((prev: WqaFilterState) => ({ ...prev, [key]: DEFAULT_WQA_FILTER[key] as any }));
+  };
+
+  // Sorted category items
+  const categoryItems = useMemo(() =>
+    Object.entries(wqaFacets.categories).sort((a, b) => b[1] - a[1]),
+  [wqaFacets.categories]);
+
+  // Action items (non-trivial only, sorted by count)
+  const techActionItems = useMemo(() =>
+    Object.entries(wqaFacets.technicalActions)
+      .filter(([a]) => a !== 'Monitor')
+      .sort((a, b) => b[1] - a[1]),
+  [wqaFacets.technicalActions]);
+
+  const contentActionItems = useMemo(() =>
+    Object.entries(wqaFacets.contentActions)
+      .filter(([a]) => a !== 'No Action')
+      .sort((a, b) => b[1] - a[1]),
+  [wqaFacets.contentActions]);
+
+  // Priority bar widths
+  const maxPriority = Math.max(
+    wqaFacets.priorities['1'],
+    wqaFacets.priorities['2'],
+    wqaFacets.priorities['3'],
+    1,
+  );
+
+  // Industry section
+  const industryOptions = INDUSTRY_OPTIONS[industry] ?? [];
+  const showIndustry    = industryOptions.length > 0;
+
+  // Industry facet counts (computed from pages directly, since they're industry-specific)
+  const industryFacets = useMemo(() => {
+    if (!showIndustry) return {};
+    const counts: Record<string, number> = {};
+    for (const opt of industryOptions) {
+      counts[opt.value] = pages.filter(p => matchesIndustryFilter(p, opt.value)).length;
+    }
+    return counts;
+  }, [pages, industryOptions, showIndustry]);
+
+  const total = wqaFacets.total;
+
+  return (
+    <div className="flex flex-col h-full min-h-0 bg-[#111]">
+
+      {/* Search input */}
+      <div className="px-2 pt-2 pb-1.5 shrink-0 border-b border-[#1a1a1a]">
+        <div className="relative">
+          <Search size={11} className="absolute left-2 top-1/2 -translate-y-1/2 text-[#444] pointer-events-none" />
+          <input
+            type="text"
+            value={wqaFilter.searchTerm}
+            onChange={e => setWqaFilter((prev: WqaFilterState) => ({ ...prev, searchTerm: e.target.value }))}
+            placeholder="Search... (⌘K)"
+            className="w-full bg-[#0a0a0a]/50 border border-[#222] rounded pl-6 pr-2 py-1 text-[11px] text-[#e0e0e0] placeholder-[#444] focus:border-[#F5364E]/50 focus:outline-none transition-colors"
+          />
+          {wqaFilter.searchTerm && (
+            <button
+              onClick={() => setWqaFilter((prev: WqaFilterState) => ({ ...prev, searchTerm: '' }))}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-[#555] hover:text-[#aaa] transition-colors"
+            >
+              <X size={11} />
+            </button>
+          )}
         </div>
-    );
+      </div>
+
+      {/* Active filter chips - Only show if >= 2 active */}
+      {hasActive && (
+        <div className="px-2 py-1.5 shrink-0 border-b border-[#1a1a1a] flex flex-wrap gap-1">
+          {chips.map(chip => (
+            <button
+              key={chip.key}
+              onClick={() => dismissChip(chip.key)}
+              className="flex items-center gap-1 px-1.5 py-0.5 bg-[#F5364E]/10 border border-[#F5364E]/20 rounded text-[10px] text-[#F5364E] hover:bg-[#F5364E]/20 transition-colors max-w-[120px]"
+            >
+              <span className="truncate">{chip.label}</span>
+              <X size={9} className="shrink-0" />
+            </button>
+          ))}
+          <button
+            onClick={clearAll}
+            className="px-1.5 py-0.5 text-[10px] text-[#555] hover:text-[#888] transition-colors"
+          >
+            Clear all
+          </button>
+        </div>
+      )}
+
+      {/* Filter sections */}
+      <div className="flex-1 overflow-y-auto custom-scrollbar px-1 py-1">
+
+        {/* ── Page Category ── */}
+        <div className="mb-0.5">
+          <SectionHeader
+            label="Page Category"
+            icon={<Layers size={14} />}
+            isOpen={isOpen('category')}
+            onToggle={() => toggle('category')}
+            hasActive={wqaFilter.pageCategory !== 'all'}
+          />
+          {isOpen('category') && (
+            <div className="ml-[18px] pl-3 my-1 border-l border-[#222]">
+              <FilterItem label="All" count={total} active={wqaFilter.pageCategory === 'all'}
+                onClick={() => setWqaFilter((prev: WqaFilterState) => ({ ...prev, pageCategory: 'all' }))} />
+              {categoryItems.map(([cat, count]) => (
+                <FilterItem key={cat} label={formatCat(cat)} count={count}
+                  active={wqaFilter.pageCategory === cat}
+                  onClick={() => set('pageCategory', cat)} />
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* ── Priority ── */}
+        <div className="mb-0.5">
+          <SectionHeader
+            label="Priority"
+            icon={<Zap size={14} />}
+            isOpen={isOpen('priority')}
+            onToggle={() => toggle('priority')}
+            hasActive={wqaFilter.priorityLevel !== 0}
+          />
+          {isOpen('priority') && (
+            <div className="ml-[18px] pl-3 my-1 border-l border-[#222]">
+              <FilterItem label="All" count={total} active={wqaFilter.priorityLevel === 0}
+                onClick={() => setWqaFilter((prev: WqaFilterState) => ({ ...prev, priorityLevel: 0 }))} />
+              {([['1', 'High'], ['2', 'Medium'], ['3', 'Low']] as [string, string][]).map(([level, label]) => {
+                const count = wqaFacets.priorities[level as '1' | '2' | '3'];
+                return (
+                  <FilterItem key={level} label={label} count={count}
+                    active={String(wqaFilter.priorityLevel) === level}
+                    onClick={() => set('priorityLevel', Number(level))}
+                    barPct={Math.round((count / maxPriority) * 100)} />
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* ── Technical Action ── */}
+        {techActionItems.length > 0 && (
+          <div className="mb-0.5">
+            <SectionHeader
+              label="Technical Action"
+              icon={<Settings size={14} />}
+              isOpen={isOpen('techAction')}
+              onToggle={() => toggle('techAction')}
+              hasActive={wqaFilter.technicalAction !== 'all'}
+            />
+            {isOpen('techAction') && (
+              <div className="ml-[18px] pl-3 my-1 border-l border-[#222]">
+                <FilterItem label="All" count={total} active={wqaFilter.technicalAction === 'all'}
+                  onClick={() => setWqaFilter((prev: WqaFilterState) => ({ ...prev, technicalAction: 'all' }))} />
+                {(showMoreTech ? techActionItems : techActionItems.slice(0, SHOW_ACTIONS_DEFAULT)).map(([action, count]) => (
+                  <FilterItem key={action} label={action} count={count}
+                    active={wqaFilter.technicalAction === action}
+                    onClick={() => set('technicalAction', action)} />
+                ))}
+                {techActionItems.length > SHOW_ACTIONS_DEFAULT && (
+                  <button
+                    onClick={() => setShowMoreTech(v => !v)}
+                    className="w-full text-left px-2.5 py-[5px] text-[10px] text-[#555] hover:text-[#888] transition-colors"
+                  >
+                    {showMoreTech ? '↑ Show less' : `+ ${techActionItems.length - SHOW_ACTIONS_DEFAULT} more`}
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Content Action ── */}
+        {contentActionItems.length > 0 && (
+          <div className="mb-0.5">
+            <SectionHeader
+              label="Content Action"
+              icon={<FileText size={14} />}
+              isOpen={isOpen('contentAction')}
+              onToggle={() => toggle('contentAction')}
+              hasActive={wqaFilter.contentAction !== 'all'}
+            />
+            {isOpen('contentAction') && (
+              <div className="ml-[18px] pl-3 my-1 border-l border-[#222]">
+                <FilterItem label="All" count={total} active={wqaFilter.contentAction === 'all'}
+                  onClick={() => setWqaFilter((prev: WqaFilterState) => ({ ...prev, contentAction: 'all' }))} />
+                {(showMoreContent ? contentActionItems : contentActionItems.slice(0, SHOW_ACTIONS_DEFAULT)).map(([action, count]) => (
+                  <FilterItem key={action} label={action} count={count}
+                    active={wqaFilter.contentAction === action}
+                    onClick={() => set('contentAction', action)} />
+                ))}
+                {contentActionItems.length > SHOW_ACTIONS_DEFAULT && (
+                  <button
+                    onClick={() => setShowMoreContent(v => !v)}
+                    className="w-full text-left px-2.5 py-[5px] text-[10px] text-[#555] hover:text-[#888] transition-colors"
+                  >
+                    {showMoreContent ? '↑ Show less' : `+ ${contentActionItems.length - SHOW_ACTIONS_DEFAULT} more`}
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Page Value ── */}
+        <div className="mb-0.5">
+          <SectionHeader
+            label="Page Value"
+            icon={<Star size={14} />}
+            isOpen={isOpen('valueTier')}
+            onToggle={() => toggle('valueTier')}
+            hasActive={wqaFilter.valueTier !== 'all'}
+          />
+          {isOpen('valueTier') && (
+            <div className="ml-[18px] pl-3 my-1 border-l border-[#222]">
+              <FilterItem label="All" count={total} active={wqaFilter.valueTier === 'all'}
+                onClick={() => setWqaFilter((prev: WqaFilterState) => ({ ...prev, valueTier: 'all' }))} />
+              {(['★★★', '★★', '★', '☆'] as const).map(tier => (
+                <FilterItem key={tier} label={VALUE_LABELS[tier]} count={wqaFacets.valueTiers[tier] ?? 0}
+                  active={wqaFilter.valueTier === tier}
+                  onClick={() => set('valueTier', tier)} />
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* ── Traffic Status ── */}
+        <div className="mb-0.5">
+          <SectionHeader
+            label="Traffic Status"
+            icon={<Activity size={14} />}
+            isOpen={isOpen('trafficStatus')}
+            onToggle={() => toggle('trafficStatus')}
+            hasActive={wqaFilter.trafficStatus !== 'all'}
+          />
+          {isOpen('trafficStatus') && (
+            <div className="ml-[18px] pl-3 my-1 border-l border-[#222]">
+              <FilterItem label="All" count={total} active={wqaFilter.trafficStatus === 'all'}
+                onClick={() => setWqaFilter((prev: WqaFilterState) => ({ ...prev, trafficStatus: 'all' }))} />
+              {(['growing', 'declining', 'stable', 'none'] as const).map(s => (
+                <FilterItem key={s} label={TRAFFIC_LABELS[s]} count={wqaFacets.trafficStatuses[s] ?? 0}
+                  active={wqaFilter.trafficStatus === s}
+                  onClick={() => set('trafficStatus', s)} />
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* ── Search Status ── */}
+        <div className="mb-0.5">
+          <SectionHeader
+            label="Search Status"
+            icon={<SearchIcon size={14} />}
+            isOpen={isOpen('searchStatus')}
+            onToggle={() => toggle('searchStatus')}
+            hasActive={wqaFilter.searchStatus !== 'all'}
+          />
+          {isOpen('searchStatus') && (
+            <div className="ml-[18px] pl-3 my-1 border-l border-[#222]">
+              <FilterItem label="All" count={total} active={wqaFilter.searchStatus === 'all'}
+                onClick={() => setWqaFilter((prev: WqaFilterState) => ({ ...prev, searchStatus: 'all' }))} />
+              {(['top3', 'page1', 'striking', 'weak', 'none'] as const).map(s => (
+                <FilterItem key={s} label={SEARCH_LABELS[s]} count={wqaFacets.searchStatuses[s] ?? 0}
+                  active={wqaFilter.searchStatus === s}
+                  onClick={() => set('searchStatus', s)} />
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* ── Content Age ── */}
+        <div className="mb-0.5">
+          <SectionHeader
+            label="Content Age"
+            icon={<Clock size={14} />}
+            isOpen={isOpen('contentAge')}
+            onToggle={() => toggle('contentAge')}
+            hasActive={wqaFilter.contentAge !== 'all'}
+          />
+          {isOpen('contentAge') && (
+            <div className="ml-[18px] pl-3 my-1 border-l border-[#222]">
+              <FilterItem label="All" count={total} active={wqaFilter.contentAge === 'all'}
+                onClick={() => setWqaFilter((prev: WqaFilterState) => ({ ...prev, contentAge: 'all' }))} />
+              {(['fresh', 'aging', 'stale', 'nodate'] as const).map(a => (
+                <FilterItem key={a} label={AGE_LABELS[a]} count={wqaFacets.contentAges[a] ?? 0}
+                  active={wqaFilter.contentAge === a}
+                  onClick={() => set('contentAge', a)} />
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* ── Indexability ── */}
+        <div className="mb-0.5">
+          <SectionHeader
+            label="Indexability"
+            icon={<Fingerprint size={14} />}
+            isOpen={isOpen('indexability')}
+            onToggle={() => toggle('indexability')}
+            hasActive={wqaFilter.indexability !== 'all'}
+          />
+          {isOpen('indexability') && (
+            <div className="ml-[18px] pl-3 my-1 border-l border-[#222]">
+              <FilterItem label="All" count={total} active={wqaFilter.indexability === 'all'}
+                onClick={() => setWqaFilter((prev: WqaFilterState) => ({ ...prev, indexability: 'all' }))} />
+              {(['indexed', 'blocked', 'redirect', 'error'] as const).map(s => (
+                <FilterItem key={s} label={INDEX_LABELS[s]} count={wqaFacets.indexabilities[s] ?? 0}
+                  active={wqaFilter.indexability === s}
+                  onClick={() => set('indexability', s)} />
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* ── Funnel Stage ── */}
+        {Object.keys(wqaFacets.funnelStages).length > 1 && (
+          <div className="mb-0.5">
+            <SectionHeader
+              label="Funnel Stage"
+              icon={<Filter size={14} />}
+              isOpen={isOpen('funnelStage')}
+              onToggle={() => toggle('funnelStage')}
+              hasActive={wqaFilter.funnelStage !== 'all'}
+            />
+            {isOpen('funnelStage') && (
+              <div className="ml-[18px] pl-3 my-1 border-l border-[#222]">
+                <FilterItem label="All" count={total} active={wqaFilter.funnelStage === 'all'}
+                  onClick={() => setWqaFilter((prev: WqaFilterState) => ({ ...prev, funnelStage: 'all' }))} />
+                {Object.entries(wqaFacets.funnelStages).sort((a, b) => b[1] - a[1]).map(([stage, count]) => (
+                  <FilterItem key={stage} label={FUNNEL_LABELS[stage] ?? stage} count={count}
+                    active={wqaFilter.funnelStage === stage}
+                    onClick={() => set('funnelStage', stage)} />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Industry-specific ── */}
+        {showIndustry && (
+          <div className="mb-0.5">
+            <SectionHeader
+              label={formatIndustryLabel(industry)}
+              icon={<Briefcase size={14} />}
+              isOpen={isOpen('industry')}
+              onToggle={() => toggle('industry')}
+              hasActive={wqaFilter.industryFilter !== 'all'}
+            />
+            {isOpen('industry') && (
+              <div className="ml-[18px] pl-3 my-1 border-l border-[#222]">
+                <FilterItem label="All" count={total} active={wqaFilter.industryFilter === 'all'}
+                  onClick={() => setWqaFilter((prev: WqaFilterState) => ({ ...prev, industryFilter: 'all' }))} />
+                {industryOptions.map(opt => (
+                  <FilterItem key={opt.value} label={opt.label}
+                    count={industryFacets[opt.value] ?? 0}
+                    active={wqaFilter.industryFilter === opt.value}
+                    onClick={() => set('industryFilter', opt.value)} />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+      </div>
+    </div>
+  );
 }
