@@ -1217,16 +1217,7 @@ export default function AuditPane() {
                 ) : viewMode === 'charts' ? (
                     <ChartsView />
                 ) : wqaState.isActive && wqaState.viewMode === 'grid' ? (
-                    <div className="flex-1 flex min-h-0 min-w-0 bg-[#0a0a0a]">
-                        <div className="w-[220px] shrink-0 border-r border-[#1a1a1a]">
-                            <Suspense fallback={<div className="p-4 text-[10px] text-[#444]">Loading filters...</div>}>
-                                <WqaFilterSidebar />
-                            </Suspense>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                            {renderGrid(filteredWqaPagesExport)}
-                        </div>
-                    </div>
+                    renderGrid(filteredPages)
                 ) : isCrawling && filteredPages.length === 0 ? (
                     <div className="p-4">
                         <SkeletonTable rows={12} />

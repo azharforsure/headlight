@@ -5,6 +5,7 @@
  * Weights derived from AXIS_EFFECT table (Content, Tech, Authority).
  */
 import { AssignedAction } from './ActionAssignment';
+import { computeWqaSiteStats, computeWqaActionGroups, deriveWqaScore } from './WqaSidebarData';
 
 export interface ForecastResult {
   currentScore: number;
@@ -73,3 +74,23 @@ export function computeForecast(
     },
   };
 }
+
+export function computeForecastFromPages(
+  pages: any[],
+  industry: any
+): ForecastResult {
+  const stats = computeWqaSiteStats(pages, industry);
+  const { score } = deriveWqaScore(stats);
+  const actions = computeWqaActionGroups(pages);
+  
+  return computeForecast(score, actions, {
+    totalPages: pages.length,
+    crawlDepth: Math.max(...pages.map((p: any) => Number(p.crawlDepth || 0))),
+    industry: String(industry)
+  });
+}
+
+export const ForecastService = {
+  computeForecast: computeForecastFromPages,
+  computeForecastRaw: computeForecast
+};

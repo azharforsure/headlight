@@ -66,18 +66,18 @@ export default function WQAQualityTab({ stats, wqaState, aiNarrative, industry }
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                         <div className="text-center">
-                            <div className="text-[18px] font-bold text-green-400">+{wqaForecast.scoreGain}</div>
+                            <div className="text-[18px] font-bold text-green-400">+{wqaForecast.projectedScore - wqaForecast.currentScore}</div>
                             <div className="text-[9px] text-[#888] uppercase">Score Gain</div>
                         </div>
                         <div className="text-center">
-                            <div className="text-[18px] font-bold text-blue-400">+{formatCompact(wqaForecast.maxClickGain)}</div>
+                            <div className="text-[18px] font-bold text-blue-400">+{formatCompact(wqaForecast.estimatedClickGain || 0)}</div>
                             <div className="text-[9px] text-[#888] uppercase">Est. Click Gain</div>
                         </div>
                     </div>
                     <div className="mt-3 space-y-1.5">
-                        <ProjectionBar label="Technical" pct={wqaForecast.buckets.technical} color="#ef4444" />
-                        <ProjectionBar label="Content" pct={wqaForecast.buckets.content} color="#3b82f6" />
-                        <ProjectionBar label="Authority" pct={wqaForecast.buckets.authority} color="#a855f7" />
+                        <ProjectionBar label="Technical" pct={wqaForecast.breakdown.technical} color="#ef4444" />
+                        <ProjectionBar label="Content" pct={wqaForecast.breakdown.content} color="#3b82f6" />
+                        <ProjectionBar label="Authority" pct={wqaForecast.breakdown.authority} color="#a855f7" />
                     </div>
                 </section>
             )}
