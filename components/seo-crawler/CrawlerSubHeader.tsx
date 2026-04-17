@@ -107,9 +107,6 @@ export default function CrawlerSubHeader() {
 
                 {!isCompetitiveMode && (
                     <>
-                        <button onClick={() => setActiveMacro('all')} className={`px-2.5 py-1 rounded text-[12px] font-bold transition-colors shrink-0 ${activeMacro === 'all' ? 'bg-[#F5364E]/10 text-[#F5364E]' : 'bg-transparent text-[#888] hover:bg-[#1a1a1a] hover:text-[#ccc]'}`}>
-                            All Pages
-                        </button>
                         {stats.broken > 0 && (
                             <button onClick={() => setActiveMacro('broken')} className={`px-2.5 py-1 rounded text-[12px] transition-colors shrink-0 ${activeMacro === 'broken' ? 'bg-red-950/40 text-red-400 border border-red-500/20' : 'bg-transparent text-[#888] hover:bg-[#1a1a1a] hover:text-[#ccc]'}`}>
                                 Errors 4xx/5xx
@@ -118,11 +115,6 @@ export default function CrawlerSubHeader() {
                         {stats.redirects > 0 && (
                             <button onClick={() => setActiveMacro('redirects')} className={`px-2.5 py-1 rounded text-[12px] transition-colors shrink-0 ${activeMacro === 'redirects' ? 'bg-orange-950/40 text-orange-400' : 'bg-transparent text-[#888] hover:bg-[#1a1a1a] hover:text-[#ccc]'}`}>
                                 Redirects 3xx
-                            </button>
-                        )}
-                        {stats.missingMetaDesc > 0 && (
-                            <button onClick={() => setActiveMacro('missingMetaDesc')} className={`px-2.5 py-1 rounded text-[12px] transition-colors shrink-0 ${activeMacro === 'missingMetaDesc' ? 'bg-[#F5364E]/10 text-[#F5364E]' : 'bg-transparent text-[#888] hover:bg-[#1a1a1a] hover:text-[#ccc]'}`}>
-                                Missing Meta
                             </button>
                         )}
                         {stats.slowPages > 0 && (

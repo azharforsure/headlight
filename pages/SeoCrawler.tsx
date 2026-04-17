@@ -136,25 +136,30 @@ function SeoCrawlerLayout() {
     return (
         <div className="flex flex-col h-screen bg-[var(--bg-main)] text-[var(--text-secondary)] font-sans overflow-hidden">
             <CrawlerHeader />
-            {!showComparisonView && <CrawlerSubHeader />}
-
             <div className="flex-1 flex min-h-0 relative overflow-hidden">
                 {!isCompactLayout && activeViewType !== 'competitor_matrix' && (
                     <PanelErrorBoundary name="Sidebar" fallback={<div className="m-3 rounded border border-[#2b2b2f] bg-[#111] p-3 text-[12px] text-[#999]">Sidebar failed to load.</div>}>
                         {isWqaMode ? <WqaLeftSidebar /> : <SiteExplorer />}
                     </PanelErrorBoundary>
                 )}
-                <PanelErrorBoundary name="Audit View" fallback={<div className="m-3 rounded border border-[#2b2b2f] bg-[#111] p-3 text-[12px] text-[#999]">Audit view failed to load.</div>}>
-                    {isWqaMode ? <WqaMainCanvas /> : <AuditViewRouter />}
-                </PanelErrorBoundary>
 
-                {!isCompactLayout && (
-                    <PanelErrorBoundary name="Audit Sidebar" fallback={<div className="m-3 rounded border border-[#2b2b2f] bg-[#111] p-3 text-[12px] text-[#999]">Audit panel failed to load.</div>}>
-                        {isWqaMode ? <WqaSidebarRouter />
-                         : auditFilter.modes.includes('competitor_gap') ? <CompSidebarRouter />
-                         : <AuditSidebar />}
-                    </PanelErrorBoundary>
-                )}
+                <div className="flex-1 flex flex-col min-h-0">
+                    {!showComparisonView && <CrawlerSubHeader />}
+                    
+                    <div className="flex-1 flex min-h-0 relative overflow-hidden">
+                        <PanelErrorBoundary name="Audit View" fallback={<div className="m-3 rounded border border-[#2b2b2f] bg-[#111] p-3 text-[12px] text-[#999]">Audit view failed to load.</div>}>
+                            {isWqaMode ? <WqaMainCanvas /> : <AuditViewRouter />}
+                        </PanelErrorBoundary>
+
+                        {!isCompactLayout && (
+                            <PanelErrorBoundary name="Audit Sidebar" fallback={<div className="m-3 rounded border border-[#2b2b2f] bg-[#111] p-3 text-[12px] text-[#999]">Audit panel failed to load.</div>}>
+                                {isWqaMode ? <WqaSidebarRouter />
+                                : auditFilter.modes.includes('competitor_gap') ? <CompSidebarRouter />
+                                : <AuditSidebar />}
+                            </PanelErrorBoundary>
+                        )}
+                    </div>
+                </div>
 
                 <CollaborationOverlay 
                     isOpen={showCollabOverlay} 
