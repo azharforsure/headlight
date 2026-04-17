@@ -392,29 +392,7 @@ export default function ArchitectureMap({ isWorkspace = false }: { isWorkspace?:
                 import('three').then((mod) => setTHREE(mod));
             }
         }
-
-        const handleMouseMove = (e: MouseEvent) => {
-            if (!resizingCol) return;
-            const currentResizing = resizingCol;
-            const deltaX = e.clientX - currentResizing.startX;
-            const newWidth = Math.max(50, currentResizing.startWidth + deltaX);
-            setColumnWidths(prev => ({ ...prev, [currentResizing.key]: newWidth }));
-        };
-
-        const handleMouseUp = () => {
-            setResizingCol(null);
-        };
-
-        if (resizingCol) {
-            window.addEventListener('mousemove', handleMouseMove);
-            window.addEventListener('mouseup', handleMouseUp);
-        }
-
-        return () => {
-            window.removeEventListener('mousemove', handleMouseMove);
-            window.removeEventListener('mouseup', handleMouseUp);
-        };
-    }, [resizingCol, setColumnWidths, viewMode, mapMode, SpriteText, mapPerformanceProfile.showLabels]);
+    }, [viewMode, mapMode, SpriteText, mapPerformanceProfile.showLabels, THREE]);
 
     const centerMapNodeId = selectedMapNodeId || rootMapNodeId;
     useEffect(() => {
@@ -482,13 +460,11 @@ export default function ArchitectureMap({ isWorkspace = false }: { isWorkspace?:
         return () => window.clearTimeout(timeoutId);
     }, [viewMode, mapMode, mapScope, mapGraphData, fgRef, architectureLayout, centerMapNodeId, rootMapNodeId, THREE]);
 
-    return (
-        
-        const viewportWidth = isWorkspace ? workspaceGraphWidth : graphWidth;
-        const viewportHeight = isWorkspace ? workspaceGraphHeight : graphHeight;
+    const viewportWidth = isWorkspace ? workspaceGraphWidth : graphWidth;
+    const viewportHeight = isWorkspace ? workspaceGraphHeight : graphHeight;
 
-        return (
-            <div className={isWorkspace ? "fixed inset-3 z-50 overflow-hidden rounded-[28px] border border-[#2a2a2a] bg-[#090909] shadow-[0_30px_100px_rgba(0,0,0,0.55)] flex flex-col" : "absolute inset-0 bg-[#0d0d0d] overflow-hidden flex flex-col"}>
+    return (
+        <div className={isWorkspace ? "fixed inset-3 z-50 overflow-hidden rounded-[28px] border border-[#2a2a2a] bg-[#090909] shadow-[0_30px_100px_rgba(0,0,0,0.55)] flex flex-col" : "absolute inset-0 bg-[#0d0d0d] overflow-hidden flex flex-col"}>
                 {isWorkspace && (
                     <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(245,54,78,0.08),transparent_30%),linear-gradient(180deg,rgba(255,255,255,0.02),transparent_20%)] pointer-events-none" />
                 )}
@@ -713,3 +689,4 @@ export default function ArchitectureMap({ isWorkspace = false }: { isWorkspace?:
                 </div>
             </div>
         );
+}

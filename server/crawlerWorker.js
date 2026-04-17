@@ -965,7 +965,7 @@ parentPort.on('message', (task) => {
           $('meta[name="author"]').attr('content') ||
           $('meta[property="article:author"]').attr('content')
         );
-        const hasRssFeed = $('link[type="application/rss+xml"], link[type="application/atom+xml"]').length > 0;
+        hasRssFeed = $('link[type="application/rss+xml"], link[type="application/atom+xml"]').length > 0;
 
         // ─── Q&A / FAQ content shape (for FAQ schema action) ────
         const headings = $('h2, h3').map((_, el) => $(el).text().trim()).get();
