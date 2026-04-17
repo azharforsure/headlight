@@ -160,6 +160,16 @@ export type InspectorTab =
     | 'jsdiff'
     | 'visual';
 
+export type WqaInspectorTab =
+  | 'summary'
+  | 'actions'
+  | 'search'
+  | 'content'
+  | 'links'
+  | 'tech'
+  | 'schema'
+  | 'industry';
+
 export type AnalysisStage = 
     | 'idle' 
     | 'ai-analysis' 
@@ -253,6 +263,8 @@ export interface CrawlerContextType {
     setSelectedPage: (p: any | null) => void;
     activeTab: InspectorTab;
     setActiveTab: (t: InspectorTab) => void;
+    wqaInspectorTab: WqaInspectorTab;
+    setWqaInspectorTab: (t: WqaInspectorTab) => void;
     inspectorCollapsed: boolean;
     setInspectorCollapsed: (c: boolean) => void;
     showAuditSidebar: boolean;
@@ -798,6 +810,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedPage, setSelectedPage] = useState<any | null>(null);
     const [activeTab, setActiveTab] = useState<InspectorTab>('general');
+    const [wqaInspectorTab, setWqaInspectorTab] = useState<WqaInspectorTab>('summary');
     const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
     const [showAuditSidebar, setShowAuditSidebar] = useState(false);
     const [activeAuditTab, setActiveAuditTab] = useState<AuditTab>('overview');
@@ -1958,6 +1971,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         // R2 fix: analysisPages is now derived via useDeferredValue — no manual reset needed
         setLogs([]);
         setSelectedPage(null);
+        setWqaInspectorTab('summary');
         setSelectedRows(new Set());
         setSiteType(null);
         setWqaState(DEFAULT_WQA_STATE);
@@ -4853,7 +4867,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
 
         customPresets, applyAuditMode, saveCustomPreset, loadCustomPreset,
         openCategories, setOpenCategories, searchQuery, setSearchQuery,
-        selectedPage, setSelectedPage, activeTab, setActiveTab, inspectorCollapsed, setInspectorCollapsed, showAuditSidebar, setShowAuditSidebar,
+        selectedPage, setSelectedPage, activeTab, setActiveTab, wqaInspectorTab, setWqaInspectorTab, inspectorCollapsed, setInspectorCollapsed, showAuditSidebar, setShowAuditSidebar,
         activeAuditTab, setActiveAuditTab, showSettings, setShowSettings, activeMacro, setActiveMacro,
         sortConfig, setSortConfig, showColumnPicker, setShowColumnPicker, visibleColumns, setVisibleColumns,
         viewMode, setViewMode, showAiInsights, setShowAiInsights, showAiChat, setShowAiChat, graphDimensions, setGraphDimensions,

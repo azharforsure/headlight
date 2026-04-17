@@ -1,7 +1,8 @@
 import React from 'react';
 import { ListTodo } from 'lucide-react';
 import { useSeoCrawler } from '../../../contexts/SeoCrawlerContext';
-import { SEO_ISSUES_TAXONOMY, getPageIssues } from '../IssueTaxonomy';
+export { getPageIssues } from '../IssueTaxonomy';
+import { SEO_ISSUES_TAXONOMY } from '../IssueTaxonomy';
 
 export const EMPTY_VALUE = '—';
 
@@ -60,9 +61,9 @@ export const DataRow = ({ label, value, status, mono = false }: {
                     : 'text-white';
 
     return (
-        <div className="grid grid-cols-[140px_1fr] gap-x-3 text-[12px] py-1">
-            <span className="text-[#555] truncate">{label}</span>
-            <span className={`${mono ? 'font-mono' : ''} ${tone} break-all`}>{normalizeValue(value)}</span>
+        <div className="grid grid-cols-[120px_1fr] gap-x-3 text-[12px] py-1 min-w-0 overflow-hidden">
+            <span className="text-[#555] truncate min-w-0">{label}</span>
+            <span className={`${mono ? 'font-mono' : ''} ${tone} break-all min-w-0`}>{normalizeValue(value)}</span>
         </div>
     );
 };
@@ -111,7 +112,7 @@ export const MetricCard = ({ label, value, sub, color }: {
 );
 
 export const TruncatedUrl = ({ url }: { url: string }) => (
-    <span title={url} className="text-blue-400 truncate text-[11px] font-mono block max-w-[400px]">
+    <span title={url} className="text-blue-400 truncate text-[11px] font-mono block w-full">
         {url}
     </span>
 );

@@ -10,7 +10,7 @@ import InspectorShell from './inspector/InspectorShell';
 import FullDetailDrawer from './inspector/FullDetailDrawer';
 import ChartsView from './ChartsView';
 import WQADashboardView from './wqa/WQADashboardView';
-import WQAInspector from './wqa/WQAInspector';
+import { WqaInspectorShell } from './wqa/inspector';
 import WqaActiveFilterBar from './wqa/WqaActiveFilterBar';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
 import MobilePageCard from './MobilePageCard';
@@ -1266,25 +1266,9 @@ export default function AuditPane() {
             {isMapWorkspaceOpen && renderMapView(true)}
 
             {!isCompactLayout && (
-                wqaState.isActive ? (
+                isWqaMode ? (
                     selectedPage ? (
-                        <div style={{ height: detailsHeight }} className="border-t border-[#222] shrink-0">
-                            <WQAInspector
-                                page={selectedPage}
-                                industry={getEffectiveIndustry(wqaState)}
-                                language={getEffectiveLanguage(wqaState)}
-                                onClose={() => setSelectedPage(null)}
-                                onAssign={(url) => {
-                                    setCollabOverlayTarget({ type: 'task', id: url, title: `Page task: ${url}` });
-                                    setShowCollabOverlay(true);
-                                }}
-                                onComment={(url) => {
-                                    setCollabOverlayTarget({ type: 'page', id: url, title: selectedPage?.title || url });
-                                    setShowCollabOverlay(true);
-                                }}
-                                onOpenExternal={(url) => window.open(url, '_blank', 'noopener,noreferrer')}
-                            />
-                        </div>
+                        <WqaInspectorShell />
                     ) : null
                 ) : (
                     <InspectorShell />
