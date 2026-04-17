@@ -18,6 +18,7 @@ export interface WqaFilterState {
   pageCategory:    string;
   technicalAction: string;
   contentAction:   string;
+  actionType:      string;
   priorityLevel:   PriorityLevel;
   valueTier:       ValueTier;
   trafficStatus:   TrafficStatus;
@@ -33,6 +34,7 @@ export const DEFAULT_WQA_FILTER: WqaFilterState = {
   pageCategory:    'all',
   technicalAction: 'all',
   contentAction:   'all',
+  actionType:      'all',
   priorityLevel:   0,
   valueTier:       'all',
   trafficStatus:   'all',
@@ -90,8 +92,8 @@ export function deriveSearchStatus(page: any): SearchStatus {
   const impr = toNum(page.gscImpressions);
   if (impr === 0 && pos === 0) return 'none';
   if (pos > 0  && pos <= 3)  return 'top3';
+  if (pos >= 4 && pos <= 20 && impr > 100) return 'striking';
   if (pos > 3  && pos <= 10) return 'page1';
-  if (pos > 10 && pos <= 20 && impr > 100) return 'striking';
   return 'weak';
 }
 
@@ -152,7 +154,7 @@ export function filterWqaPages(pages: any[], filter: WqaFilterState): any[] {
     if (filter.pageCategory    !== 'all' && p.pageCategory    !== filter.pageCategory)    return false;
     if (filter.technicalAction !== 'all' && p.technicalAction !== filter.technicalAction) return false;
     if (filter.contentAction   !== 'all' && p.contentAction   !== filter.contentAction)   return false;
-    if (filter.action !== 'all' && p.technicalAction !== filter.action && p.contentAction !== filter.action) return false;
+    if (filter.actionType !== 'all' && p.technicalAction !== filter.actionType && p.contentAction !== filter.actionType) return false;
 
     if (filter.priorityLevel > 0 && derivePriorityBucket(p) !== filter.priorityLevel) return false;
     if (filter.valueTier     !== 'all' && deriveValueTier(p)     !== filter.valueTier)     return false;
@@ -224,7 +226,7 @@ export function isWqaFilterActive(filter: WqaFilterState): boolean {
     filter.pageCategory    !== DEFAULT_WQA_FILTER.pageCategory    ||
     filter.technicalAction !== DEFAULT_WQA_FILTER.technicalAction ||
     filter.contentAction   !== DEFAULT_WQA_FILTER.contentAction   ||
-    filter.action          !== DEFAULT_WQA_FILTER.action          ||
+    filter.actionType      !== DEFAULT_WQA_FILTER.actionType      ||
     filter.priorityLevel   !== DEFAULT_WQA_FILTER.priorityLevel   ||
     filter.valueTier       !== DEFAULT_WQA_FILTER.valueTier       ||
     filter.trafficStatus   !== DEFAULT_WQA_FILTER.trafficStatus   ||

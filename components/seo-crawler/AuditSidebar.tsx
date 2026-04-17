@@ -242,7 +242,7 @@ export default function AuditSidebar({ embedded = false }: AuditSidebarProps) {
                         void compareSessions(id1, id2);
                     }}
                     onFilterByAction={(action) => {
-                        setWqaFilter(prev => ({ ...prev, action: action }));
+                        setWqaFilter(prev => ({ ...prev, actionType: action }));
                     }}
                     onNavigateToPriorities={() => {
                         setWqaState((prev) => ({ ...prev, viewMode: 'actions' }));
@@ -299,7 +299,7 @@ export default function AuditSidebar({ embedded = false }: AuditSidebarProps) {
                 ) : (
                     <>
                         {/* OVERVIEW TAB */}
-                        {(activeAuditTab === 'overview' || activeAuditTab === 'wqa_quality') && (
+                        {activeAuditTab === 'overview' && (
                     <OverviewTab
                         pages={pages}
                         isCrawling={isCrawling}
@@ -313,7 +313,7 @@ export default function AuditSidebar({ embedded = false }: AuditSidebarProps) {
                 )}
 
                 {/* ISSUES TAB */}
-                {(activeAuditTab === 'issues' || activeAuditTab === 'wqa_search') && (
+                {activeAuditTab === 'issues' && (
                     <div className="space-y-6 animate-in fade-in duration-200">
                         <div className="flex items-center justify-between text-[11px] text-[#888] bg-[#1a1a1a] p-2 rounded border border-[#222]">
                             <span>All Issues</span>
