@@ -1,12 +1,15 @@
 import React from 'react';
+import SparkBar from './SparkBar';
 
 export default function ImpactBar({
-    value, max, color = '#F5364E', height = 6,
-}: { value: number; max: number; color?: string; height?: number }) {
-    const pct = max > 0 ? Math.min(100, (value / max) * 100) : 0;
+    value, max, color = '#22c55e',
+}: { value: number; max: number; color?: string }) {
     return (
-        <div className="w-full rounded-full overflow-hidden bg-[#1a1a1a]" style={{ height }}>
-            <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: color }} />
+        <div className="flex items-center gap-2">
+            <SparkBar value={value} max={max} color={color} height={5} />
+            <span className="text-[10px] font-mono text-[#999] shrink-0 w-[52px] text-right">
+                {Math.round(value).toLocaleString()}
+            </span>
         </div>
     );
 }

@@ -5,7 +5,7 @@ import CrawlerSubHeader from '../components/seo-crawler/CrawlerSubHeader';
 import SiteExplorer from '../components/seo-crawler/SiteExplorer';
 import WqaLeftSidebar from '../components/seo-crawler/wqa/WqaLeftSidebar';
 import AuditViewRouter from '../components/seo-crawler/AuditViewRouter';
-import WqaViewRouter from '../components/seo-crawler/wqa/views/WqaViewRouter';
+import WqaMainCanvas from '../components/seo-crawler/wqa/WqaMainCanvas';
 
 import AuditSidebar from '../components/seo-crawler/AuditSidebar';
 import WqaSidebarRouter from '../components/seo-crawler/wqa/sidebar/WqaSidebarRouter';
@@ -145,7 +145,7 @@ function SeoCrawlerLayout() {
                     </PanelErrorBoundary>
                 )}
                 <PanelErrorBoundary name="Audit View" fallback={<div className="m-3 rounded border border-[#2b2b2f] bg-[#111] p-3 text-[12px] text-[#999]">Audit view failed to load.</div>}>
-                    {isWqaMode ? <WqaViewRouter /> : <AuditViewRouter />}
+                    {isWqaMode ? <WqaMainCanvas /> : <AuditViewRouter />}
                 </PanelErrorBoundary>
 
                 {!isCompactLayout && (

@@ -1080,6 +1080,8 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
                 isActive: true,
                 viewMode: prev.viewMode || 'grid',
             }));
+            // Force global viewMode to grid for WQA consistency
+            setViewMode('grid');
             return;
         }
 

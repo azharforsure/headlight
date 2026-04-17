@@ -1,10 +1,17 @@
-import React, { useMemo, useState, lazy, Suspense } from 'react';
-import { ChevronDown, ChevronRight, Folder, FileText as FileIcon } from 'lucide-react';
+import React, { useMemo, useRef, useState, lazy, Suspense } from 'react';
+import { ChevronDown, ChevronRight, Folder, FileText as FileIcon, Search as SearchIcon, Box, Square } from 'lucide-react';
 import { useSeoCrawler } from '../../../../contexts/SeoCrawlerContext';
+import ViewHeader     from './shared/ViewHeader';
 import EmptyViewState from './shared/EmptyViewState';
 
-// ForceGraph3D is already used elsewhere in MainDataView; lazy-import to keep bundle lean.
+const ForceGraph2D = lazy(() => import('react-force-graph-2d'));
 const ForceGraph3D = lazy(() => import('react-force-graph-3d'));
+
+const ACTION_COLOR: Record<string, string> = {
+    'Fix Errors':'#ef4444','Protect High-Value Page':'#eab308','Rewrite Title & Description':'#3b82f6',
+    'Push to Page One':'#a855f7','Add Internal Links':'#f97316','Fix Technical Issues':'#ef4444',
+    'Improve Content':'#3b82f6','Reduce Bounce Rate':'#eab308','Merge or Remove':'#9ca3af','Monitor':'#22c55e',
+};
 
 type TreeNode = {
     name: string;
@@ -13,12 +20,6 @@ type TreeNode = {
     children: Map<string, TreeNode>;
     count: number;
     actionCount: number;
-};
-
-const ACTION_COLOR: Record<string, string> = {
-    'Fix Errors':'#ef4444','Protect High-Value Page':'#eab308','Rewrite Title & Description':'#3b82f6',
-    'Push to Page One':'#a855f7','Add Internal Links':'#f97316','Fix Technical Issues':'#ef4444',
-    'Improve Content':'#3b82f6','Reduce Bounce Rate':'#eab308','Merge or Remove':'#9ca3af','Monitor':'#22c55e',
 };
 
 function buildTree(pages: any[]): TreeNode {
@@ -47,19 +48,42 @@ function buildTree(pages: any[]): TreeNode {
     return root;
 }
 
-function TreeRow({ node, depth, setSelected }: { node: TreeNode; depth: number; setSelected: (p: any) => void }) {
+function TreeRow({
+    node, depth, search, selectedUrl, onSelect,
+}: {
+    node: TreeNode;
+    depth: number;
+    search: string;
+    selectedUrl?: string;
+    onSelect: (page: any) => void;
+}) {
     const [open, setOpen] = useState(depth < 1);
     const hasKids = node.children.size > 0;
     const isLeaf  = !!node.page && !hasKids;
     const actionRatio = node.count > 0 ? node.actionCount / node.count : 0;
-    const heatColor = actionRatio > 0.5 ? 'bg-red-500/15' : actionRatio > 0.2 ? 'bg-orange-500/15' : actionRatio > 0 ? 'bg-yellow-500/10' : 'bg-transparent';
+    const heatColor =
+        actionRatio > 0.5 ? 'bg-red-500/15'
+      : actionRatio > 0.2 ? 'bg-orange-500/10'
+      : actionRatio > 0   ? 'bg-yellow-500/5'
+                          : 'bg-transparent';
+    const selected = selectedUrl && node.page?.url === selectedUrl;
+    const matches = !search || node.name.toLowerCase().includes(search.toLowerCase());
+
+    if (search && !matches) {
+        // show only if any descendant matches — recurse and prune
+        const renderedChildren = [...node.children.values()]
+            .map((c) => <TreeRow key={c.path} node={c} depth={depth + 1} search={search} selectedUrl={selectedUrl} onSelect={onSelect} />)
+            .filter(Boolean);
+        if (renderedChildren.length === 0) return null;
+        return <div>{renderedChildren}</div>;
+    }
 
     return (
         <div>
             <div
-                onClick={() => { if (hasKids) setOpen(!open); if (node.page) setSelected(node.page); }}
-                className={`flex items-center gap-1.5 py-1 px-2 rounded hover:bg-[#111] cursor-pointer ${heatColor}`}
-                style={{ paddingLeft: 6 + depth * 12 }}
+                onClick={() => { if (hasKids) setOpen(!open); if (node.page) onSelect(node.page); }}
+                className={`flex items-center gap-1.5 py-1 px-2 rounded cursor-pointer ${heatColor} ${selected ? 'bg-[#F5364E]/15 ring-1 ring-[#F5364E]/40' : 'hover:bg-[#111]'}`}
+                style={{ paddingLeft: 8 + depth * 10 }}
             >
                 {hasKids
                     ? (open ? <ChevronDown size={10} className="text-[#666]" /> : <ChevronRight size={10} className="text-[#666]" />)
@@ -75,7 +99,16 @@ function TreeRow({ node, depth, setSelected }: { node: TreeNode; depth: number; 
                 <div>
                     {[...node.children.values()]
                         .sort((a, b) => b.count - a.count)
-                        .map((c) => <TreeRow key={c.path} node={c} depth={depth + 1} setSelected={setSelected} />)}
+                        .map((c) => (
+                            <TreeRow
+                                key={c.path}
+                                node={c}
+                                depth={depth + 1}
+                                search={search}
+                                selectedUrl={selectedUrl}
+                                onSelect={onSelect}
+                            />
+                        ))}
                 </div>
             )}
         </div>
@@ -83,7 +116,13 @@ function TreeRow({ node, depth, setSelected }: { node: TreeNode; depth: number; 
 }
 
 export default function WqaStructureView() {
-    const { filteredWqaPagesExport, graphData, setSelectedPage, fgRef } = useSeoCrawler() as any;
+    const ctx = useSeoCrawler() as any;
+    const { filteredWqaPagesExport = [], graphData, setSelectedPage, selectedPage } = ctx;
+    const fg2dRef = useRef<any>(null);
+    const fg3dRef = useRef<any>(null);
+
+    const [mode3D, setMode3D] = useState(false);
+    const [search, setSearch] = useState('');
 
     const tree = useMemo(() => buildTree(filteredWqaPagesExport), [filteredWqaPagesExport]);
 
@@ -92,56 +131,113 @@ export default function WqaStructureView() {
         return (graphData?.nodes || []).map((n: any) => {
             const page: any = index.get(n.fullUrl || n.id);
             const action = page?.recommendedAction || 'Monitor';
-            return { ...n, color: ACTION_COLOR[action] || '#666', action, val: Math.max(1, Math.log2(n.inlinks + 2)) };
+            return {
+                ...n,
+                color: ACTION_COLOR[action] || '#666',
+                action,
+                val: Math.max(1, Math.log2((n.inlinks || 0) + 2)),
+            };
         });
     }, [graphData, filteredWqaPagesExport]);
 
+    const handleNodeClick = (n: any) => {
+        const page = filteredWqaPagesExport.find((p: any) => p.url === (n.fullUrl || n.id));
+        if (page) setSelectedPage(page);
+    };
+
     if (filteredWqaPagesExport.length === 0) {
-        return <EmptyViewState title="Nothing to visualize yet" subtitle="Run a crawl to see the site tree and force graph." />;
+        return <EmptyViewState title="Nothing to visualize yet" subtitle="Run a crawl to see the site tree and link graph." />;
     }
 
     return (
-        <div className="flex-1 flex bg-[#070707] overflow-hidden">
-            {/* Left: URL tree */}
-            <aside className="w-[320px] shrink-0 border-r border-[#1a1a1a] flex flex-col">
-                <div className="h-[34px] px-3 flex items-center border-b border-[#1a1a1a] shrink-0">
-                    <span className="text-[10px] text-[#666] uppercase tracking-widest font-bold">URL Tree · heat = action density</span>
-                </div>
-                <div className="flex-1 overflow-y-auto custom-scrollbar py-1">
-                    <TreeRow node={tree} depth={0} setSelected={setSelectedPage} />
-                </div>
-            </aside>
-
-            {/* Right: graph */}
-            <div className="flex-1 relative">
-                <div className="absolute top-3 left-3 z-10 bg-[#0a0a0a]/90 border border-[#222] rounded-lg px-3 py-2 text-[10px]">
-                    <div className="text-[#666] uppercase tracking-widest mb-1">Node color = recommended action</div>
-                    <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
-                        {Object.entries(ACTION_COLOR).map(([a, c]) => (
-                            <div key={a} className="flex items-center gap-1.5">
-                                <span className="w-2 h-2 rounded-full" style={{ background: c }} />
-                                <span className="text-[#aaa]">{a}</span>
-                            </div>
-                        ))}
+        <div className="flex-1 flex flex-col bg-[#070707] overflow-hidden">
+            <div className="h-[40px] px-4 border-b border-[#111] bg-[#080808] flex items-center justify-between shrink-0">
+                <span className="text-[11px] text-[#555] uppercase tracking-widest font-bold">Structure</span>
+                <div className="flex items-center gap-2">
+                    <div className="relative">
+                        <SearchIcon size={10} className="absolute left-2 top-1/2 -translate-y-1/2 text-[#555]" />
+                        <input
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
+                            placeholder="Filter paths"
+                            className="h-[24px] pl-7 pr-2 w-[140px] text-[10px] bg-[#0a0a0a] border border-[#1e1e1e] rounded text-[#ddd] placeholder-[#555] focus:outline-none focus:border-[#F5364E]"
+                        />
+                    </div>
+                    <div className="flex items-center bg-[#0a0a0a] border border-[#1e1e1e] rounded p-0.5">
+                        <button
+                            onClick={() => setMode3D(false)}
+                            className={`h-[20px] px-1.5 text-[9px] rounded flex items-center gap-1 ${!mode3D ? 'bg-[#1a1a1a] text-white' : 'text-[#555] hover:text-[#ccc]'}`}
+                        >
+                            <Square size={8} /> 2D
+                        </button>
+                        <button
+                            onClick={() => setMode3D(true)}
+                            className={`h-[20px] px-1.5 text-[9px] rounded flex items-center gap-1 ${mode3D ? 'bg-[#1a1a1a] text-white' : 'text-[#555] hover:text-[#ccc]'}`}
+                        >
+                            <Box size={8} /> 3D
+                        </button>
                     </div>
                 </div>
+            </div>
 
-                <Suspense fallback={<div className="flex-1 flex items-center justify-center text-[#444] text-[11px]">Loading 3D Engine...</div>}>
-                    <ForceGraph3D
-                        ref={fgRef}
-                        graphData={{ nodes: coloredNodes, links: graphData?.links || [] }}
-                        backgroundColor="#070707"
-                        nodeLabel={(n: any) => `${n.title || n.name}\n${n.fullUrl || n.id}\nAction: ${n.action}`}
-                        nodeColor={(n: any) => n.color}
-                        nodeVal={(n: any) => n.val}
-                        linkColor={() => 'rgba(255,255,255,0.08)'}
-                        linkWidth={0.6}
-                        onNodeClick={(n: any) => {
-                            const page = filteredWqaPagesExport.find((p: any) => p.url === (n.fullUrl || n.id));
-                            if (page) setSelectedPage(page);
-                        }}
-                    />
-                </Suspense>
+            <div className="flex-1 flex overflow-hidden min-h-0">
+                <aside className="w-[320px] shrink-0 border-r border-[#1a1a1a] flex flex-col bg-[#080808]">
+                    <div className="h-[30px] px-3 flex items-center border-b border-[#1a1a1a] shrink-0">
+                        <span className="text-[9px] text-[#666] uppercase tracking-widest font-bold">URL tree</span>
+                    </div>
+                    <div className="flex-1 overflow-y-auto custom-scrollbar py-1">
+                        <TreeRow
+                            node={tree}
+                            depth={0}
+                            search={search}
+                            selectedUrl={selectedPage?.url}
+                            onSelect={setSelectedPage}
+                        />
+                    </div>
+                </aside>
+
+                <div className="flex-1 relative min-h-0">
+                    <div className="absolute top-3 left-3 z-10 bg-[#0a0a0a]/90 backdrop-blur border border-[#1e1e1e] rounded-lg px-3 py-2 text-[10px] max-w-[240px]">
+                        <div className="text-[#666] uppercase tracking-widest mb-1.5">Action legend</div>
+                        <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
+                            {Object.entries(ACTION_COLOR).map(([a, c]) => (
+                                <div key={a} className="flex items-center gap-1.5">
+                                    <span className="w-2 h-2 rounded-full shrink-0" style={{ background: c }} />
+                                    <span className="text-[#aaa] truncate">{a}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    <Suspense fallback={<div className="h-full flex items-center justify-center text-[#444] text-[11px]">Loading graph…</div>}>
+                        {mode3D ? (
+                            <ForceGraph3D
+                                ref={fg3dRef}
+                                graphData={{ nodes: coloredNodes, links: graphData?.links || [] }}
+                                backgroundColor="#070707"
+                                nodeLabel={(n: any) => `${n.title || n.name || n.id}\n${n.fullUrl || n.id}\nAction: ${n.action}`}
+                                nodeColor={(n: any) => n.color}
+                                nodeVal={(n: any) => n.val}
+                                linkColor={() => 'rgba(255,255,255,0.08)'}
+                                linkWidth={0.6}
+                                onNodeClick={handleNodeClick}
+                            />
+                        ) : (
+                            <ForceGraph2D
+                                ref={fg2dRef}
+                                graphData={{ nodes: coloredNodes, links: graphData?.links || [] }}
+                                backgroundColor="#070707"
+                                nodeLabel={(n: any) => `${n.title || n.name || n.id}\n${n.fullUrl || n.id}\nAction: ${n.action}`}
+                                nodeColor={(n: any) => n.color}
+                                nodeVal={(n: any) => n.val}
+                                linkColor={() => 'rgba(255,255,255,0.10)'}
+                                linkWidth={0.6}
+                                cooldownTicks={100}
+                                onNodeClick={handleNodeClick}
+                            />
+                        )}
+                    </Suspense>
+                </div>
             </div>
         </div>
     );

@@ -1,37 +1,44 @@
 import React from 'react';
 
-type Tone = 'neutral' | 'good' | 'warn' | 'bad' | 'info';
+type Tone = 'good' | 'warn' | 'bad' | 'info' | 'neutral';
+
+const TONE_COLOR: Record<Tone, string> = {
+    good:    '#22c55e',
+    warn:    '#f59e0b',
+    bad:     '#ef4444',
+    info:    '#3b82f6',
+    neutral: '#ffffff',
+};
 
 export default function MetricTile({
-    label, value, sub, tone = 'neutral', onClick, icon,
+    label, value, sub, tone = 'neutral', icon, onClick,
 }: {
     label: string;
-    value: React.ReactNode;
-    sub?: React.ReactNode;
+    value: string | number;
+    sub?: string;
     tone?: Tone;
-    onClick?: () => void;
     icon?: React.ReactNode;
+    onClick?: () => void;
 }) {
-    const toneClass = {
-        neutral: 'text-white',
-        good:    'text-green-400',
-        warn:    'text-orange-400',
-        bad:     'text-red-400',
-        info:    'text-blue-400',
-    }[tone];
-
-    const Comp = onClick ? 'button' : 'div';
+    const color = TONE_COLOR[tone];
+    const clickable = typeof onClick === 'function';
     return (
-        <Comp
+        <button
+            type="button"
             onClick={onClick}
-            className={`w-full text-left bg-[#0a0a0a] border border-[#222] rounded-lg p-3 transition-colors ${onClick ? 'hover:border-[#333] hover:bg-[#111] cursor-pointer' : ''}`}
+            disabled={!clickable}
+            className={`text-left w-full bg-[#0a0a0a] border border-[#1e1e1e] rounded-lg px-3 py-2.5 transition-colors ${
+                clickable ? 'hover:border-[#333] hover:bg-[#111] cursor-pointer' : 'cursor-default'
+            }`}
         >
-            <div className="flex items-center gap-1.5 text-[10px] text-[#666] uppercase tracking-widest">
+            <div className="flex items-center gap-1.5 text-[#666] text-[10px] uppercase tracking-widest font-semibold mb-1">
                 {icon}
-                {label}
+                <span className="truncate">{label}</span>
             </div>
-            <div className={`text-[22px] font-black mt-1 leading-tight ${toneClass}`}>{value}</div>
-            {sub && <div className="text-[10px] text-[#777] mt-1">{sub}</div>}
-        </Comp>
+            <div className="text-[20px] font-black leading-none mb-1" style={{ color }}>
+                {value}
+            </div>
+            {sub && <div className="text-[10px] text-[#666] truncate">{sub}</div>}
+        </button>
     );
 }

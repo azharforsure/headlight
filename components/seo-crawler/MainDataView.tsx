@@ -20,6 +20,7 @@ import BulkActionsBar from './BulkActionsBar';
 import { SkeletonTable } from './Skeletons';
 import { computeWqaActionGroups, computeWqaSiteStats } from '../../services/WqaSidebarData';
 import { getEffectiveIndustry, getEffectiveLanguage } from '../../services/WebsiteQualityModeTypes';
+import TierBadge from './wqa/views/shared/TierBadge';
 const WqaFilterSidebar = lazy(() => import('./wqa/WqaFilterSidebar'));
 
 
@@ -1105,6 +1106,8 @@ export default function AuditPane() {
                                 const color = score > 80 ? 'text-green-400' : score > 50 ? 'text-orange-400' : 'text-red-400';
                                 displayElement = <span className={`font-black ${color}`}>{score === 0 ? '-' : score}</span>;
                                 cellClass = 'text-center';
+                            } else if (col.key === 'pageValueTier' && rawVal) {
+                                displayElement = <TierBadge tier={String(rawVal)} />;
                             } else if (typeof rawVal === 'boolean') { 
                                 displayElement = rawVal ? 'Yes' : 'No'; 
                             } else if (!rawVal && rawVal !== 0) { 
@@ -1151,7 +1154,7 @@ export default function AuditPane() {
                  ) : viewMode === 'map' ? (
                     renderMapView(false)
                  ) : viewMode === 'charts' ? (
-                     <ChartsView />
+                      <ChartsView />
                  ) : isCrawling && filteredPages.length === 0 ? (
                     <div className="p-4">
                         <SkeletonTable rows={12} />
@@ -1288,3 +1291,4 @@ export default function AuditPane() {
         </main>
     );
 }
+
