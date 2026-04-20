@@ -52,7 +52,8 @@ const CHECK_CATEGORY_TO_TREE_IDS: Record<CheckCategory, string[]> = {
     saas: ['content', 'ai-insights'],
     healthcare: ['healthcare'],
     finance: ['content', 'ai-insights'],
-    education: ['content']
+    education: ['content'],
+    citations: ['local']
 };
 
 export function getActiveChecks(state: AuditFilterState): CheckDefinition[] {
