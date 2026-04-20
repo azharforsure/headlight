@@ -1,51 +1,56 @@
-
-
 # Headlight
 
-## Local setup
+All-in-one SEO + marketing platform with a browser-scale crawler, AI agents, and a full growth workbench — built to handle millions of pages on free infrastructure.
 
-Prerequisites: Node.js
+## Architecture
 
-1. Install dependencies with `npm install`.
-2. Add app env vars in `.env.local`.
-3. Run the app with `npm run dev`.
+Monorepo managed with pnpm workspaces + Turborepo. Everything is TypeScript.
 
-Required client env vars:
-- `GEMINI_API_KEY`
-- `VITE_CLERK_PUBLISHABLE_KEY`
-- `VITE_TURSO_DATABASE_URL`
-- `VITE_TURSO_AUTH_TOKEN`
-- `VITE_GHOST_BRIDGE_URL` or `VITE_APP_BRIDGE_URL`
+- apps/web — React app shell (workspace / business / project views + crawler route)
+- apps/marketing — Public site, docs, changelog (Astro)
+- apps/server — Node crawler engine (HF Spaces)
+- apps/workers/* — Cloudflare Workers (bridge · crawl-queue · mcp-server · edge-fetch · scheduler)
+- packages/types — Metric catalog, actions, modes, entities
+- packages/db — Schema + migrations (Turso + D1 + Dexie parity)
+- packages/storage — Multi-tier storage router
+- packages/fingerprint · packages/metrics · packages/compute
+- packages/crawl · packages/offload · packages/ai
+- packages/actions · packages/agents · packages/pulse · packages/mcp
+- packages/ui · packages/charts · packages/modes · packages/chrome · packages/inspector · packages/views
+- packages/auth · packages/billing · packages/i18n · packages/flags · packages/telemetry · packages/share
+- packages/config · packages/testing · packages/utils — shared tooling (Wave 1)
 
-## Worker setup
+See docs/architecture.md for the full map.
 
-The Cloudflare Worker now handles:
-- crawler HTML bridge
-- `POST /api/billing/checkout`
-- `POST /api/billing/portal`
-- `POST /api/webhooks/stripe`
-- `GET /api/health`
+## Requirements
 
-Set Worker secrets before deploy:
-- `STRIPE_SECRET_KEY`
-- `STRIPE_WEBHOOK_SECRET`
-- `CLERK_SECRET_KEY`
-- `STRIPE_TRIAL_DAYS` optional
+- Node >= 20.11.0 (see .nvmrc)
+- pnpm >= 9.12.0 (via corepack enable)
 
-Deploy with:
-- `npm run deploy:bridge`
+## Quick start
 
-## Clerk setup
+    corepack enable
+    pnpm install
+    pnpm build
+    pnpm dev
 
-1. Create a Clerk application.
-2. Enable Email/Password and any social providers you want.
-3. Add your local origin, for example `http://localhost:5173`.
-4. Add your production domain before release.
-5. Put the publishable key in `.env.local` as `VITE_CLERK_PUBLISHABLE_KEY`.
-6. Keep the Clerk secret key server-side only for Workers or backend routes.
+## Scripts
 
-## Production notes
+- pnpm dev — every app/package in watch mode
+- pnpm build — build every workspace
+- pnpm lint — lint every workspace
+- pnpm typecheck — type-check every workspace
+- pnpm test — run every workspace's tests
+- pnpm format — format with Prettier
 
-- Billing routes now require a valid Clerk bearer token from the signed-in app session.
-- Stripe webhooks should point to `/api/webhooks/stripe`.
-- Stripe subscription events update Clerk private metadata so the app can read `subscription_status` and `stripe_customer_id`.
+## Contributing
+
+See CONTRIBUTING.md and CODE_OF_CONDUCT.md.
+
+## Security
+
+Report vulnerabilities per SECURITY.md.
+
+## License
+
+See LICENSE.

@@ -1,0 +1,33 @@
+name: Preview Deploy
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  preview-web:
+    name: Preview · apps/web
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - id: build
+        run: |
+          if [ -d apps/web ]; then
+            pnpm -F @headlight/web build
+            echo "built=true" >> "$GITHUB_OUTPUT"
+          fi
+        continue-on-error: true
+      - if: ${{ steps.build.outputs.built == 'true' }}
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy apps/web/dist --project-name=headlight-web --branch=pr-${{ github.event.number }}

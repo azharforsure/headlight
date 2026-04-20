@@ -1,0 +1,16 @@
+* @Headlight-Inc/core
+
+/packages/types/    @Headlight-Inc/core @Headlight-Inc/types
+/packages/storage/  @Headlight-Inc/core @Headlight-Inc/platform
+/packages/config/   @Headlight-Inc/core
+/packages/testing/  @Headlight-Inc/core
+/packages/utils/    @Headlight-Inc/core
+
+/apps/workers/      @Headlight-Inc/core @Headlight-Inc/platform
+/apps/server/       @Headlight-Inc/core @Headlight-Inc/platform
+/apps/web/          @Headlight-Inc/core @Headlight-Inc/web
+/apps/marketing/    @Headlight-Inc/web
+
+/docs/              @Headlight-Inc/core
+/.github/           @Headlight-Inc/core
+/infra/             @Headlight-Inc/core @Headlight-Inc/platform
