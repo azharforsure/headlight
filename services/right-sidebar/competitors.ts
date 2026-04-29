@@ -1,45 +1,39 @@
+import { CompOverviewTab, CompGapTab, CompWinsTab, CompLossesTab, CompAnchorsTab } from '../../components/seo-crawler/right-sidebar/modes/competitors'
 import type { RsDataDeps, RsModeBundle } from './types'
-import { OverviewTab } from '../../components/seo-crawler/right-sidebar/modes/competitors/OverviewTab'
-import { GapsTab } from '../../components/seo-crawler/right-sidebar/modes/competitors/GapsTab'
-import { WinsTab } from '../../components/seo-crawler/right-sidebar/modes/competitors/WinsTab'
-import { LossesTab } from '../../components/seo-crawler/right-sidebar/modes/competitors/LossesTab'
-import { BacklinkOverlapTab } from '../../components/seo-crawler/right-sidebar/modes/competitors/BacklinkOverlapTab'
 
 export interface CompetitorsStats {
-	trackedCompetitors: Array<{ domain: string; visibility: number; deltaPct: number }>
-	visibilityIndex: number
-	visibilityDelta30d: number
-	sharedKeywords: number
-	gapKeywords: Array<{ keyword: string; volume: number; competitorRank: number; ourRank?: number }>
-	wins: Array<{ keyword: string; deltaPositions: number; volume: number }>
-	losses: Array<{ keyword: string; deltaPositions: number; volume: number }>
-	backlinkOverlap: Array<{ domain: string; sharedDomains: number; uniqueToCompetitor: number }>
-	topOpportunityDomains: Array<{ domain: string; potential: number }>
+	overallScore: number | null
+	competitors: { domain: string; overlapPct: number | null; visibility: number | null }[] | null
+	gap:    { keywords: number | null; theirs: number | null; mine: number | null }
+	wins:   { rankUp: number | null; topGainers: { keyword: string; delta: number }[] | null }
+	losses: { rankDown: number | null; topLosers: { keyword: string; delta: number }[] | null }
+	anchors:{ shared: number | null; topAnchors: { text: string; count: number }[] | null }
+	connections: { serp: boolean }
 }
 
-export function computeCompetitorsStats({ pages }: RsDataDeps): CompetitorsStats {
-	const comp = (pages[0] as any)?.competitiveSnapshot
+export function computeCompetitorsStats(deps: RsDataDeps): CompetitorsStats {
+	const serp = deps.integrationConnections?.['serp']?.status === 'connected'
 	return {
-		trackedCompetitors: comp?.competitors ?? [],
-		visibilityIndex: comp?.visibilityIndex ?? 0,
-		visibilityDelta30d: comp?.visibilityDelta30d ?? 0,
-		sharedKeywords: comp?.sharedKeywords ?? 0,
-		gapKeywords: (comp?.gapKeywords ?? []).slice(0, 6),
-		wins: (comp?.wins ?? []).slice(0, 5),
-		losses: (comp?.losses ?? []).slice(0, 5),
-		backlinkOverlap: comp?.backlinkOverlap ?? [],
-		topOpportunityDomains: comp?.opportunityDomains ?? [],
+		overallScore: null,
+		competitors: serp ? [] : null,
+		gap:    { keywords: null, theirs: null, mine: null },
+		wins:   { rankUp: null, topGainers: null },
+		losses: { rankDown: null, topLosers: null },
+		anchors:{ shared: null, topAnchors: null },
+		connections: { serp },
 	}
 }
 
 export const competitorsBundle: RsModeBundle<CompetitorsStats> = {
-	modeId: 'competitors',
+	mode: 'competitors',
+	accent: 'red',
+	defaultTabId: 'comp_overview',
+	tabs: [
+		{ id: 'comp_overview', label: 'Overview', Component: CompOverviewTab },
+		{ id: 'comp_gap',      label: 'Gap',      Component: CompGapTab },
+		{ id: 'comp_wins',     label: 'Wins',     Component: CompWinsTab },
+		{ id: 'comp_losses',   label: 'Losses',   Component: CompLossesTab },
+		{ id: 'comp_anchors',  label: 'Anchors',  Component: CompAnchorsTab },
+	],
 	computeStats: computeCompetitorsStats,
-	tabs: {
-		comp_overview: OverviewTab,
-		comp_gaps: GapsTab,
-		comp_wins: WinsTab,
-		comp_losses: LossesTab,
-		comp_backlinks: BacklinkOverlapTab,
-	},
 }

@@ -1,0 +1,5 @@
+export { CommerceOverviewTab } from './OverviewTab'
+export { CommerceInventoryTab } from './InventoryTab'
+export { CommerceSchemaTab } from './SchemaTab'
+export { CommerceFeedTab } from './FeedTab'
+export { CommerceFunnelTab } from './FunnelTab'

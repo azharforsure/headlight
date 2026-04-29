@@ -17,7 +17,7 @@ import { TableVirtuoso } from 'react-virtuoso';
 import ColumnHeaderContextMenu from './ColumnHeaderContextMenu';
 import BulkActionsBar from './BulkActionsBar';
 import { SkeletonTable } from './Skeletons';
-import { computeWqaActionGroups, computeWqaSiteStats } from '../../services/right-sidebar/wqa/index';
+import { computeWqaActionGroups, computeWqaSiteStats } from '../../services/right-sidebar/wqa';
 import { getEffectiveIndustry, getEffectiveLanguage } from '../../services/WebsiteQualityModeTypes';
 import TierBadge from './wqa/views/shared/TierBadge';
 const WqaFilterSidebar = lazy(() => import('./wqa/WqaFilterSidebar'));

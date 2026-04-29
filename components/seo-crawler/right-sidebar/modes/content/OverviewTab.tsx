@@ -1,43 +1,30 @@
-import * as React from 'react'
-import { SectionTitle, Card, Gauge, StatTile, Row, Bar } from '../../shared/primitives'
-import { MiniRadar, MiniBar } from '../../shared/charts'
-import { fmtInt } from '../../shared/format'
-import type { RsTabProps } from '@/services/right-sidebar/types'
-import type { ContentStats } from '@/services/right-sidebar/content'
+import React from 'react'
+import { Card, SectionTitle, KpiHeader, StatTile, Chip, ProgressBar } from '../../shared'
+import type { RsTabProps } from '../../../../../services/right-sidebar/types'
+import type { ContentStats } from '../../../../../services/right-sidebar/content'
 
-export function OverviewTab({ stats }: RsTabProps<ContentStats>) {
-	const qualityData = [
-		{ name: 'High', value: stats.quality.high, tone: '#22c55e' },
-		{ name: 'Med', value: stats.quality.medium, tone: '#3b82f6' },
-		{ name: 'Low', value: stats.quality.low, tone: '#ef4444' },
-	]
-
+export function ContentOverviewTab({ stats }: RsTabProps<ContentStats>) {
 	return (
-		<div className="space-y-4">
-			<SectionTitle>Content Quality</SectionTitle>
+		<div className="space-y-3">
+			<KpiHeader score={stats.overallScore} label="Content health" chips={[
+				<Chip key="total" tone="info">{stats.coverage.total} pages</Chip>,
+				<Chip key="words" tone={stats.quality.avgWords > 600 ? 'good' : 'warn'}>avg {stats.quality.avgWords}w</Chip>,
+			]} />
 			<Card>
-				<div className="flex items-center gap-4">
-					<Gauge value={stats.overallScore} size={80} />
-					<div className="flex-1">
-						<div className="text-[11px] text-neutral-400">Content analysis covers semantics, intent, and readability.</div>
-					</div>
-				</div>
-				<div className="mt-4">
-					<MiniRadar data={stats.radar} />
-				</div>
+				<SectionTitle>Coverage</SectionTitle>
+				<div className="text-[10px] text-[#888] mb-1">Title</div>
+				<ProgressBar value={stats.coverage.withTitle} max={stats.coverage.total || 1} />
+				<div className="text-[10px] text-[#888] mt-2 mb-1">Description</div>
+				<ProgressBar value={stats.coverage.withDesc} max={stats.coverage.total || 1} />
+				<div className="text-[10px] text-[#888] mt-2 mb-1">H1</div>
+				<ProgressBar value={stats.coverage.withH1} max={stats.coverage.total || 1} />
 			</Card>
-
-			<SectionTitle>Quality mix</SectionTitle>
-			<Card>
-				<MiniBar data={qualityData} />
-			</Card>
-
-			<SectionTitle>Top Keywords</SectionTitle>
-			<Card>
-				{stats.keywords.top.map((k) => (
-					<Row key={k.label} label={k.label} value={fmtInt(k.value)} />
-				))}
-			</Card>
+			<div className="grid grid-cols-2 gap-2">
+				<StatTile label="Thin pages" value={stats.quality.thin} tone={stats.quality.thin ? 'warn' : 'good'} />
+				<StatTile label="Long-form pages" value={stats.quality.long} />
+				<StatTile label="Dup titles" value={stats.dup.titles} tone={stats.dup.titles ? 'warn' : 'good'} />
+				<StatTile label="Images w/o alt" value={stats.images.withoutAlt} tone={stats.images.withoutAlt ? 'warn' : 'good'} />
+			</div>
 		</div>
 	)
 }

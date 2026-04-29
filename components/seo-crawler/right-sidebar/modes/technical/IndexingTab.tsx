@@ -1,44 +1,24 @@
-import * as React from 'react'
-import { SectionTitle, Card, Row, Bar } from '../../shared/primitives'
-import { StackedBar } from '../../shared/charts'
-import { fmtInt, fmtPct } from '../../shared/format'
-import type { RsTabProps } from '@/services/right-sidebar/types'
-import type { TechnicalStats } from '@/services/right-sidebar/technical'
+import React from 'react'
+import { Card, SectionTitle, Row, ProgressBar } from '../../shared'
+import type { RsTabProps } from '../../../../../services/right-sidebar/types'
+import type { TechnicalStats } from '../../../../../services/right-sidebar/technical'
 
-export function IndexingTab({ stats }: RsTabProps<TechnicalStats>) {
-	const parts = [
-		{ label: 'Indexed', value: stats.indexability.indexed, color: '#22c55e' },
-		{ label: 'Blocked', value: stats.indexability.blocked, color: '#ef4444' },
-		{ label: 'Noindex', value: stats.indexability.noindex, color: '#f59e0b' },
-		{ label: 'Canon.', value: stats.indexability.canonicalized, color: '#3b82f6' },
-	]
-
+export function TechIndexingTab({ stats }: RsTabProps<TechnicalStats>) {
+	const i = stats.indexing
 	return (
-		<div className="space-y-4">
-			<SectionTitle>Indexability status</SectionTitle>
+		<div className="space-y-3">
 			<Card>
-				<StackedBar parts={parts} />
+				<SectionTitle>Indexable coverage</SectionTitle>
+				<ProgressBar value={i.indexable} max={i.total || 1} />
+				<div className="text-[10px] text-[#888] mt-1">{i.indexable} / {i.total} pages indexable</div>
 			</Card>
-
-			<SectionTitle>Sitemap coverage</SectionTitle>
 			<Card>
-				<Row label="Urls in sitemap" value={fmtInt(stats.indexability.indexed)} />
-				<div className="mt-2">
-					<Bar value={85} tone="good" />
-				</div>
-				<div className="mt-2 text-[10px] text-neutral-500">
-					Sitemap: sitemap.xml · Last parsed 2h ago
-				</div>
-			</Card>
-
-			<SectionTitle>Robots.txt</SectionTitle>
-			<Card>
-				<div className="text-[10px] text-neutral-400 font-mono bg-neutral-950 p-2 rounded border border-neutral-900">
-					User-agent: *<br/>
-					Allow: /<br/>
-					Disallow: /admin/<br/>
-					Sitemap: https://example.com/sitemap.xml
-				</div>
+				<SectionTitle>Issues</SectionTitle>
+				<Row label="Noindex" value={i.noindex} tone={i.noindex ? 'warn' : 'good'} />
+				<Row label="Canonical conflicts" value={i.canonicalConflict} tone={i.canonicalConflict ? 'warn' : 'good'} />
+				<Row label="In sitemap" value={i.inSitemap} />
+				<Row label="Sitemap-only (uncrawled)" value={i.sitemapOnly} tone={i.sitemapOnly ? 'warn' : 'good'} />
+				<Row label="Orphan pages" value={i.orphans} tone={i.orphans ? 'warn' : 'good'} />
 			</Card>
 		</div>
 	)

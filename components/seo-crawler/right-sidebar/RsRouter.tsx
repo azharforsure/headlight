@@ -1,30 +1,50 @@
-import * as React from 'react'
+import React from 'react'
 import { useSeoCrawler } from '../../../contexts/SeoCrawlerContext'
-import { getMode } from '@headlight/modes'
-import { rsRegistry } from '../../../services/right-sidebar/registry'
-import { RsEmpty } from './shared/empty'
+import { getBundle } from '../../../services/right-sidebar/registry'
+import { RsEmpty } from './RsEmpty'
+import { RsError } from './RsError'
+import type { RsDataDeps } from '../../../services/right-sidebar/types'
 
 export function RsRouter() {
-  const { mode, rsTab, pages, wqaState, wqaFilter, domain } = useSeoCrawler()
-  const desc = getMode(mode)
-  const bundle = rsRegistry[mode]
+	const {
+		mode, rsTab,
+		pages, industry, domain, filters,
+		integrationConnections, wqaState, wqaFilter,
+	} = useSeoCrawler()
 
-  const industry = wqaState?.industryOverride ?? wqaState?.detectedIndustry ?? 'general'
+	const bundle = getBundle(mode)
 
-  const deps = React.useMemo(
-    () => ({ pages, industry, filters: wqaFilter ?? {}, domain }),
-    [pages, industry, wqaFilter, domain],
-  )
-  const stats = React.useMemo(
-    () => (bundle ? bundle.computeStats(deps as any) : null),
-    [bundle, deps],
-  )
+	const deps: RsDataDeps = React.useMemo(() => ({
+		pages, industry, domain,
+		filters: filters ?? {},
+		integrationConnections: integrationConnections ?? {},
+		wqaState: wqaState ?? {},
+		wqaFilter,
+	}), [pages, industry, domain, filters, integrationConnections, wqaState, wqaFilter])
 
-  if (!desc || !bundle) return <RsEmpty message="No insights for this mode yet." />
+	const stats = React.useMemo(() => {
+		if (!bundle) return null
+		try { return bundle.computeStats(deps) }
+		catch (e) { console.error('[RsRouter] computeStats threw', e); return undefined }
+	}, [
+		bundle, deps.pages, deps.industry, deps.domain,
+		deps.filters, deps.integrationConnections, deps.wqaState, deps.wqaFilter,
+	])
 
-  const tabId = rsTab[mode] ?? desc.rsTabs[0]?.id
-  const Tab = bundle.tabs[tabId]
-  if (!Tab || !stats) return <RsEmpty message="Tab unavailable." />
+	if (!bundle) {
+		return <RsEmpty title="This mode has no right-sidebar bundle yet" hint="It will appear here after the next landing." />
+	}
+	if (pages.length === 0) {
+		return <RsEmpty title="No pages crawled" hint="Run a crawl to populate this panel." />
+	}
+	if (stats === undefined) {
+		return <RsError message="Stats compute failed. Check the console for details." />
+	}
 
-  return <Tab deps={deps as any} stats={stats as any} />
+	const activeId = rsTab[mode] ?? bundle.defaultTabId
+	const tab = bundle.tabs.find(t => t.id === activeId) ?? bundle.tabs[0]
+	if (!tab) return null
+
+	const Tab = tab.Component
+	return <Tab deps={deps} stats={stats} />
 }

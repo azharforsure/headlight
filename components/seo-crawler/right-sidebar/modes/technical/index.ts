@@ -1,0 +1,5 @@
+export { TechOverviewTab } from './OverviewTab'
+export { TechIndexingTab } from './IndexingTab'
+export { TechSpeedTab } from './SpeedTab'
+export { TechSecurityTab } from './SecurityTab'
+export { TechCrawlTab } from './CrawlTab'

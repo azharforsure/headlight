@@ -1,0 +1,5 @@
+export { AiOverviewTab } from './OverviewTab'
+export { AiEntitiesTab } from './EntitiesTab'
+export { AiInsightsTab } from './InsightsTab'
+export { AiSchemaTab } from './SchemaTab'
+export { AiChatTab } from './ChatTab'

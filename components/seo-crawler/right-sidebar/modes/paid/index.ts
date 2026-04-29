@@ -1,0 +1,5 @@
+export { PaidOverviewTab } from './OverviewTab'
+export { PaidSpendTab } from './SpendTab'
+export { PaidQualityTab } from './QualityTab'
+export { PaidLandingTab } from './LandingTab'
+export { PaidMatchTab } from './MatchTab'

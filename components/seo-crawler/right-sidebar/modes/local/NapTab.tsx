@@ -1,23 +1,30 @@
-import * as React from 'react'
-import { Card, SectionTitle, Row, Chip } from '../../shared/primitives'
-import { fmtInt } from '../../shared/format'
-import type { RsTabProps } from '@/services/right-sidebar/types'
-import type { LocalStats } from '@/services/right-sidebar/local'
+import React from 'react'
+import { Card, SectionTitle, Row, ProgressBar } from '../../shared'
+import type { RsTabProps } from '../../../../../services/right-sidebar/types'
+import type { LocalStats } from '../../../../../services/right-sidebar/local'
 
-export function NapTab({ stats }: RsTabProps<LocalStats>) {
+export function LocalNapTab({ stats }: RsTabProps<LocalStats>) {
+	const n = stats.nap
+	const rows = [
+		{ label: 'LocalBusiness/Restaurant/Store', value: n.withLocalBusiness },
+		{ label: 'Postal address',                 value: n.withPostalAddress },
+		{ label: 'Phone',                          value: n.withPhone },
+		{ label: 'Geo (lat/lng)',                  value: n.withGeo },
+	]
 	return (
-		<div className="space-y-4">
-			<SectionTitle>Mismatches by field</SectionTitle>
+		<div className="space-y-3">
 			<Card>
-				{stats.napMismatches.length === 0 ? (
-					<div className="text-[11px] italic text-neutral-500">All tracked sources match</div>
-				) : stats.napMismatches.map(m => (
-					<Row
-						key={m.field}
-						label={<span className="flex items-center gap-2"><Chip tone="warn">{m.field}</Chip>{m.sources.join(', ')}</span>}
-						value={fmtInt(m.count)}
-					/>
+				<SectionTitle>NAP coverage</SectionTitle>
+				{rows.map(r => (
+					<div key={r.label} className="mb-2">
+						<div className="text-[10px] text-[#888] mb-1">{r.label}</div>
+						<ProgressBar value={r.value} max={n.total || 1} />
+					</div>
 				))}
+			</Card>
+			<Card>
+				<SectionTitle>Consistency</SectionTitle>
+				<Row label="Distinct phone variants on site" value={n.mismatchSuspect} tone={n.mismatchSuspect > 1 ? 'warn' : 'good'} />
 			</Card>
 		</div>
 	)

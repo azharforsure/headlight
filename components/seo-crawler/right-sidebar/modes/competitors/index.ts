@@ -1,0 +1,5 @@
+export { CompOverviewTab } from './OverviewTab'
+export { CompGapTab } from './GapTab'
+export { CompWinsTab } from './WinsTab'
+export { CompLossesTab } from './LossesTab'
+export { CompAnchorsTab } from './AnchorsTab'

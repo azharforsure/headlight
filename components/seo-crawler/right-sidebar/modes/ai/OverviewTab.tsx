@@ -1,21 +1,21 @@
-import * as React from 'react'
-import { Card, SectionTitle, Gauge, Row, Chip } from '../../shared/primitives'
-import { fmtPct } from '../../shared/format'
-import type { RsTabProps } from '@/services/right-sidebar/types'
-import type { AiStats } from '@/services/right-sidebar/ai'
+import React from 'react'
+import { KpiHeader, Chip, StatTile } from '../../shared'
+import type { RsTabProps } from '../../../../../services/right-sidebar/types'
+import type { AiStats } from '../../../../../services/right-sidebar/ai'
 
-export function OverviewTab({ stats }: RsTabProps<AiStats>) {
+export function AiOverviewTab({ stats }: RsTabProps<AiStats>) {
 	return (
-		<div className="space-y-4">
-			<SectionTitle>AI readiness</SectionTitle>
-			<Card><Gauge value={stats.aiReadinessScore} label="Composite score" /></Card>
-
-			<SectionTitle>Signals</SectionTitle>
-			<Card>
-				<Row label="llms.txt" value={<Chip tone={stats.llmTxtPresent ? 'good' : 'warn'}>{stats.llmTxtPresent ? 'present' : 'missing'}</Chip>} />
-				<Row label="Clean markup" value={fmtPct(stats.cleanMarkupRate)} />
-				<Row label="Schema coverage" value={fmtPct(stats.schemaCoverage)} />
-			</Card>
+		<div className="space-y-3">
+			<KpiHeader score={stats.overallScore} label="AI readiness" chips={[
+				<Chip key="insights" tone="info">{stats.insights.count} AI insights</Chip>,
+				<Chip key="entities" tone="info">{stats.entities.total} entities</Chip>,
+			]} />
+			<div className="grid grid-cols-2 gap-2">
+				<StatTile label="Schema coverage" value={`${stats.schema.covered}/${stats.schema.total}`} />
+				<StatTile label="Main language" value={stats.language || '—'} />
+				<StatTile label="Readability" value={stats.readabilityScore == null ? '—' : stats.readabilityScore} />
+				<StatTile label="Sentiment" value={stats.sentiment || '—'} />
+			</div>
 		</div>
 	)
 }

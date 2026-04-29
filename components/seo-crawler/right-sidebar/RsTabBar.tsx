@@ -1,37 +1,32 @@
-import * as React from 'react'
+import React from 'react'
 import { useSeoCrawler } from '../../../contexts/SeoCrawlerContext'
-import { getMode } from '@headlight/modes'
+import { getBundle } from '../../../services/right-sidebar/registry'
 
 export function RsTabBar() {
 	const { mode, rsTab, setRsTab } = useSeoCrawler()
-	const desc = getMode(mode)
-	if (!desc) return null
-	const active = rsTab[mode] ?? desc.rsTabs[0]?.id
+	const bundle = getBundle(mode)
+	if (!bundle) return null
+
+	const activeId = rsTab[mode] ?? bundle.defaultTabId
 
 	return (
-		<nav
-			role="tablist"
-			className="flex h-9 items-stretch border-b border-[#161616] overflow-x-auto no-scrollbar"
-		>
-			{desc.rsTabs.map((t) => {
-				const isActive = t.id === active
+		<div className="h-[32px] border-b border-[#1a1a1a] flex items-stretch bg-[#0d0d0d] shrink-0 overflow-x-auto custom-scrollbar-hidden">
+			{bundle.tabs.map((tab) => {
+				const isActive = tab.id === activeId
 				return (
 					<button
-						key={t.id}
-						role="tab"
-						aria-selected={isActive}
-						onClick={() => setRsTab(mode, t.id)}
-						className={`relative flex-shrink-0 px-3 text-[11px] font-medium transition-colors ${
-							isActive ? 'text-neutral-100' : 'text-neutral-500 hover:text-neutral-300'
+						key={tab.id}
+						onClick={() => setRsTab(mode, tab.id)}
+						className={`px-3 text-[11px] font-medium border-r border-[#1a1a1a] whitespace-nowrap transition-colors border-t-2 ${
+							isActive
+								? 'bg-[#111] text-white border-t-[#F5364E]'
+								: 'bg-transparent text-[#888] hover:text-[#ccc] hover:bg-[#111] border-t-transparent'
 						}`}
 					>
-						{t.label}
-						{isActive && (
-							<span className="absolute inset-x-2 top-0 h-[2px] rounded-b bg-[#F5364E]" />
-						)}
+						{tab.label}
 					</button>
 				)
 			})}
-		</nav>
+		</div>
 	)
 }

@@ -1,23 +1,27 @@
-import * as React from 'react'
-import { Card, SectionTitle, Row, Chip } from '../../shared/primitives'
-import { fmtInt } from '../../shared/format'
-import type { RsTabProps } from '@/services/right-sidebar/types'
-import type { CompetitorsStats } from '@/services/right-sidebar/competitors'
+import React from 'react'
+import { RsEmpty } from '../../RsEmpty'
+import { Card, SectionTitle, StatTile, Row } from '../../shared'
+import type { RsTabProps } from '../../../../../services/right-sidebar/types'
+import type { CompetitorsStats } from '../../../../../services/right-sidebar/competitors'
+import { useSeoCrawler } from '../../../../../contexts/SeoCrawlerContext'
 
-export function LossesTab({ stats }: RsTabProps<CompetitorsStats>) {
+export function CompLossesTab({ stats }: RsTabProps<CompetitorsStats>) {
+	const { openIntegrationsModal } = useSeoCrawler() as any
+	if (!stats.connections.serp) return <RsEmpty
+		title="Losses tracking needs SERP"
+		hint="See which keywords competitors recently outranked you for."
+		cta={ { label: 'Connect SERP', onClick: () => openIntegrationsModal?.('serp') } }
+	/>
 	return (
-		<div className="space-y-4">
-			<SectionTitle>Recent losses</SectionTitle>
+		<div className="space-y-3">
+			<div className="grid grid-cols-2 gap-2">
+				<StatTile label="Ranked down" value={stats.losses.rankDown ?? '—'} />
+			</div>
 			<Card>
-				{stats.losses.length === 0 ? (
-					<div className="text-[11px] italic text-neutral-500">No losses this period</div>
-				) : stats.losses.map(l => (
-					<Row
-						key={l.keyword}
-						label={l.keyword}
-						value={<span className="flex items-center gap-2"><Chip tone="bad">{l.deltaPositions}</Chip>{fmtInt(l.volume)}</span>}
-					/>
-				))}
+				<SectionTitle>Top losers</SectionTitle>
+				{(!stats.losses.topLosers || stats.losses.topLosers.length === 0)
+					? <div className="text-[11px] text-[#666]">No losers detected.</div>
+					: stats.losses.topLosers.map(l => <Row key={l.keyword} label={l.keyword} value={`-${l.delta}`} tone="bad" />)}
 			</Card>
 		</div>
 	)

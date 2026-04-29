@@ -1,48 +1,22 @@
-import * as React from 'react'
-import { SectionTitle, Card, Row, Bar, StatTile } from '../../shared/primitives'
-import { MiniDonut } from '../../shared/charts'
-import { fmtInt, fmtPct } from '../../shared/format'
-import type { RsTabProps } from '@/services/right-sidebar/types'
-import type { TechnicalStats } from '@/services/right-sidebar/technical'
+import React from 'react'
+import { Card, SectionTitle, Row, ProgressBar } from '../../shared'
+import type { RsTabProps } from '../../../../../services/right-sidebar/types'
+import type { TechnicalStats } from '../../../../../services/right-sidebar/technical'
 
-export function SecurityTab({ stats }: RsTabProps<TechnicalStats>) {
-	const securityParts = [
-		{ name: 'HTTPS', value: stats.security.https, color: '#22c55e' },
-		{ name: 'HTTP', value: stats.security.http, color: '#ef4444' },
-	]
-
+export function TechSecurityTab({ stats }: RsTabProps<TechnicalStats>) {
+	const s = stats.security
 	return (
-		<div className="space-y-4">
-			<SectionTitle>Protocol distribution</SectionTitle>
+		<div className="space-y-3">
 			<Card>
-				<div className="flex items-center gap-4">
-					<MiniDonut data={securityParts} />
-					<div className="flex-1 space-y-1">
-						<div className="flex items-center justify-between">
-							<span className="text-[10px] text-neutral-400">HTTPS</span>
-							<span className="text-[10px] text-white font-mono">{fmtInt(stats.security.https)}</span>
-						</div>
-						<div className="flex items-center justify-between">
-							<span className="text-[10px] text-neutral-400">HTTP</span>
-							<span className="text-[10px] text-red-400 font-mono">{fmtInt(stats.security.http)}</span>
-						</div>
-					</div>
-				</div>
+				<SectionTitle>HTTPS</SectionTitle>
+				<ProgressBar value={s.https} max={stats.indexing.total || 1} />
+				<div className="text-[10px] text-[#888] mt-1">{s.https} / {stats.indexing.total}</div>
 			</Card>
-
-			<SectionTitle>Security headers</SectionTitle>
 			<Card>
-				<Row label="HSTS enabled" value={stats.security.hsts ? 'YES' : 'NO'} tone={stats.security.hsts ? 'good' : 'warn'} />
-				<Row label="X-Content-Type" value="YES" tone="good" />
-				<Row label="X-Frame-Options" value="NO" tone="bad" />
-				<Row label="Content-Security-Policy" value="NO" tone="bad" />
-			</Card>
-
-			<SectionTitle>SSL / Certificate</SectionTitle>
-			<Card>
-				<Row label="Issuer" value="Let's Encrypt" />
-				<Row label="Expiry" value="82 days" tone="good" />
-				<Row label="Protocol" value="TLS 1.3" tone="good" />
+				<SectionTitle>Risks</SectionTitle>
+				<Row label="Mixed content" value={s.mixedContent} tone={s.mixedContent ? 'bad' : 'good'} />
+				<Row label="Missing/weak HSTS" value={s.weakHsts} tone={s.weakHsts ? 'warn' : 'good'} />
+				<Row label="HTTP redirects" value={s.httpRedirects} tone={s.httpRedirects ? 'warn' : 'good'} />
 			</Card>
 		</div>
 	)

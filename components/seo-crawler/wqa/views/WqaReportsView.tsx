@@ -6,7 +6,7 @@ import {
     Treemap,
 } from 'recharts';
 import { useSeoCrawler } from '../../../../contexts/SeoCrawlerContext';
-import { computeWqaSiteStats, computeWqaActionGroups } from '../../../../services/right-sidebar/wqa/index';
+import { computeWqaSiteStats, computeWqaActionGroups } from '../../../../services/right-sidebar/wqa';
 import { computeWqaFacets } from '../../../../services/WqaFilterEngine';
 import { formatCat } from '../wqaUtils';
 import { EmptyViewState } from './shared';

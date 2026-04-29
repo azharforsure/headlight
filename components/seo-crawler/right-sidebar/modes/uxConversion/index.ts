@@ -1,0 +1,5 @@
+export { UxOverviewTab } from './OverviewTab'
+export { UxVitalsTab } from './VitalsTab'
+export { UxConversionTab } from './ConversionTab'
+export { UxA11yTab } from './A11yTab'
+export { UxFrictionTab } from './FrictionTab'

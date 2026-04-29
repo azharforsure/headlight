@@ -1,0 +1,5 @@
+export { FaOverviewTab } from './OverviewTab'
+export { FaIssuesTab } from './IssuesTab'
+export { FaScoresTab } from './ScoresTab'
+export { FaCrawlTab } from './CrawlTab'
+export { FaIntegrationsTab } from './IntegrationsTab'

@@ -5,7 +5,7 @@
  * Weights derived from AXIS_EFFECT table (Content, Tech, Authority).
  */
 import { AssignedAction } from '@headlight/actions';
-import { computeWqaSiteStats, computeWqaActionGroups, deriveWqaScore } from './right-sidebar/wqa/index';
+import { computeWqaSiteStats, computeWqaActionGroups, deriveWqaScore } from './right-sidebar/wqa';
 
 export interface ForecastResult {
   currentScore: number;

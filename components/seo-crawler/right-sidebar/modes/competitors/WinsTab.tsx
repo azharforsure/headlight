@@ -1,23 +1,27 @@
-import * as React from 'react'
-import { Card, SectionTitle, Row, Chip } from '../../shared/primitives'
-import { fmtInt } from '../../shared/format'
-import type { RsTabProps } from '@/services/right-sidebar/types'
-import type { CompetitorsStats } from '@/services/right-sidebar/competitors'
+import React from 'react'
+import { RsEmpty } from '../../RsEmpty'
+import { Card, SectionTitle, StatTile, Row } from '../../shared'
+import type { RsTabProps } from '../../../../../services/right-sidebar/types'
+import type { CompetitorsStats } from '../../../../../services/right-sidebar/competitors'
+import { useSeoCrawler } from '../../../../../contexts/SeoCrawlerContext'
 
-export function WinsTab({ stats }: RsTabProps<CompetitorsStats>) {
+export function CompWinsTab({ stats }: RsTabProps<CompetitorsStats>) {
+	const { openIntegrationsModal } = useSeoCrawler() as any
+	if (!stats.connections.serp) return <RsEmpty
+		title="Wins tracking needs SERP"
+		hint="See which keywords you recently outranked competitors for."
+		cta={ { label: 'Connect SERP', onClick: () => openIntegrationsModal?.('serp') } }
+	/>
 	return (
-		<div className="space-y-4">
-			<SectionTitle>Recent wins</SectionTitle>
+		<div className="space-y-3">
+			<div className="grid grid-cols-2 gap-2">
+				<StatTile label="Ranked up" value={stats.wins.rankUp ?? '—'} />
+			</div>
 			<Card>
-				{stats.wins.length === 0 ? (
-					<div className="text-[11px] italic text-neutral-500">No wins this period</div>
-				) : stats.wins.map(w => (
-					<Row
-						key={w.keyword}
-						label={w.keyword}
-						value={<span className="flex items-center gap-2"><Chip tone="good">+{w.deltaPositions}</Chip>{fmtInt(w.volume)}</span>}
-					/>
-				))}
+				<SectionTitle>Top gainers</SectionTitle>
+				{(!stats.wins.topGainers || stats.wins.topGainers.length === 0)
+					? <div className="text-[11px] text-[#666]">No gainers detected.</div>
+					: stats.wins.topGainers.map(g => <Row key={g.keyword} label={g.keyword} value={`+${g.delta}`} tone="good" />)}
 			</Card>
 		</div>
 	)

@@ -1,23 +1,18 @@
-import * as React from 'react'
-import { Card, SectionTitle, StatTile } from '../../shared/primitives'
-import { fmtInt, fmtPct } from '../../shared/format'
-import type { RsTabProps } from '@/services/right-sidebar/types'
-import type { LocalStats } from '@/services/right-sidebar/local'
+import React from 'react'
+import { Card, SectionTitle, StatTile, Row } from '../../shared'
+import type { RsTabProps } from '../../../../../services/right-sidebar/types'
+import type { LocalStats } from '../../../../../services/right-sidebar/local'
 
-const gridStyle = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }
-
-export function ReviewsTab({ stats }: RsTabProps<LocalStats>) {
+export function LocalReviewsTab({ stats }: RsTabProps<LocalStats>) {
 	return (
-		<div className="space-y-4">
-			<SectionTitle>Reviews</SectionTitle>
+		<div className="space-y-3">
+			<div className="grid grid-cols-2 gap-2">
+				<StatTile label="On-site reviews" value={stats.reviews.onSite} />
+				<StatTile label="Pages w/ AggregateRating" value={stats.reviews.aggregateRatingPages} />
+			</div>
 			<Card>
-				<div style={gridStyle}>
-					<StatTile label="Total" value={fmtInt(stats.reviews.total)} />
-					<StatTile label="Avg rating" value={stats.reviews.avgRating.toFixed(2)} tone={stats.reviews.avgRating >= 4.3 ? 'good' : 'warn'} />
-					<StatTile label="Last 30d" value={fmtInt(stats.reviews.last30)} />
-					<StatTile label="Response rate" value={fmtPct(stats.reviews.responseRate)} tone={stats.reviews.responseRate >= 0.8 ? 'good' : 'warn'} />
-					<StatTile label="Neg unanswered" value={fmtInt(stats.reviews.negativeUnanswered)} tone={stats.reviews.negativeUnanswered ? 'bad' : 'good'} />
-				</div>
+				<SectionTitle>Notes</SectionTitle>
+				<Row label="Aggregate rating exposure" value={`${stats.reviews.aggregateRatingPages} pages—improves SERP rich results`} />
 			</Card>
 		</div>
 	)

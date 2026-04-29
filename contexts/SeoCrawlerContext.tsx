@@ -87,7 +87,7 @@ import {
 import { computeShareOfVoice, computeThreatScores } from '../services/CompetitorDiscoveryService';
 import { detectSiteType, type DetectedIndustry, type SiteTypeResult } from '../services/SiteTypeDetector';
 import { DEFAULT_WQA_STATE, getEffectiveIndustry, getEffectiveLanguage, type WebsiteQualityState, type WqaViewMode } from '../services/WebsiteQualityModeTypes';
-import { computeWqaActionGroups, computeWqaSiteStats, deriveWqaScore, transformActionsToGroups } from '../services/right-sidebar/wqa/index';
+import { computeWqaStats } from '../services/right-sidebar/wqa';
 import { FingerprintHandle } from '../services/FingerprintHandle';
 // getPageIssues now imported from UnifiedIssueTaxonomy above
 
@@ -235,21 +235,10 @@ export interface AnalysisRuntime {
     label: string;
 }
 
-export type FaSidebarTab =
-    | 'fa_overview'
-    | 'fa_issues'
-    | 'fa_scores'
-    | 'fa_crawl'
-    | 'fa_integrations';
 
-export type CompSidebarTab =
-    | 'comp_overview'
-    | 'comp_gaps'
-    | 'comp_threats'
-    | 'comp_brief'
-    | 'comp_trends';
 
-export type WqaSidebarTab = 'wqa_overview' | 'wqa_actions' | 'wqa_search' | 'wqa_content' | 'wqa_tech';
+
+
 
 type RobotsTxtState = {
     raw: string;
@@ -320,13 +309,7 @@ export interface CrawlerContextType {
     showAuditSidebar: boolean;
     setShowAuditSidebar: (s: boolean) => void;
 
-    // Right sidebar — Full Audit
-    faSidebarTab: FaSidebarTab;
-    setFaSidebarTab: (t: FaSidebarTab) => void;
 
-    // Right sidebar — Competitors (kept for CompSidebarRouter compatibility)
-    compSidebarTab: CompSidebarTab;
-    setCompSidebarTab: (t: CompSidebarTab) => void;
     showSettings: boolean;
     setShowSettings: (s: boolean) => void;
     activeMacro: string | null;
@@ -377,6 +360,7 @@ export interface CrawlerContextType {
     setIsDraggingDetails: (d: boolean) => void;
     rsTab: Partial<Record<Mode, string>>;
     setRsTab: (mode: Mode, tabId: string) => void;
+    lastCrawlAt: number | null;
     showAutoFixModal: boolean;
     setShowAutoFixModal: (s: boolean) => void;
     autoFixItems: any[];
@@ -541,6 +525,7 @@ export interface CrawlerContextType {
     wqaFilter: WqaFilterState;
     setWqaFilter: React.Dispatch<React.SetStateAction<WqaFilterState>>;
     wqaFacets: WqaFacets;
+    openIntegrationsModal: (provider?: string) => void;
 }
 
 
@@ -982,9 +967,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
     const [wqaInspectorTab, setWqaInspectorTab] = useState<WqaInspectorTab>('summary');
     const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
     const [showAuditSidebar, setShowAuditSidebar] = useState(true);
-    const [faSidebarTab, setFaSidebarTab] = useState<FaSidebarTab>('fa_overview');
-    const [compSidebarTab, setCompSidebarTab] = useState<CompSidebarTab>('comp_overview');
-    const [wqaSidebarTab, setWqaSidebarTab] = useState<WqaSidebarTab>('wqa_overview');
+
     const [showSettings, setShowSettings] = useState(false);
     const [activeMacro, setActiveMacro] = useState<string | null>(null);
     const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>(null);
@@ -1009,6 +992,21 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
     const setRsTab = useCallback((mode: Mode, tabId: string) => {
         setRsTabState(prev => ({ ...prev, [mode]: tabId }));
     }, []);
+
+    const [crawlHistory, setCrawlHistory] = useState<CrawlSession[]>([]);
+    const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+    const [compareSessionId, setCompareSessionId] = useState<string | null>(null);
+    const [compareSession, setCompareSession] = useState<CrawlSession | null>(null);
+    const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+
+    const lastCrawlAt = useMemo(() => {
+        if (currentSessionId && crawlHistory.length > 0) {
+            const session = crawlHistory.find(s => s.id === currentSessionId);
+            return session?.completedAt || session?.startedAt || null;
+        }
+        return null;
+    }, [currentSessionId, crawlHistory]);
+
     const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
     const [showAutoFixModal, setShowAutoFixModal] = useState(false);
     const [autoFixItems, setAutoFixItems] = useState<any[]>([]);
@@ -1020,13 +1018,9 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         serverErrors: 0, nonIndexable: 0, missingHreflang: 0, poorLCP: 0,
         mixedContent: 0, multipleH1s: 0, duplicateTitles: 0, totalIssues: 0
     });
-    const [crawlHistory, setCrawlHistory] = useState<CrawlSession[]>([]);
-    const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
-    const [compareSessionId, setCompareSessionId] = useState<string | null>(null);
     const [diffResult, setDiffResult] = useState<any | null>(null);
     const [showComparisonView, setShowComparisonView] = useState(false);
     const [showExportDialog, setShowExportDialog] = useState(false);
-    const [isLoadingHistory, setIsLoadingHistory] = useState(false);
     const [detectedGscSite, setDetectedGscSite] = useState<string | null>(null);
     const [detectedGa4Property, setDetectedGa4Property] = useState<string | null>(null);
     const [tier4Results, setTier4Results] = useState<Map<string, any[]>>(new Map());
@@ -1170,8 +1164,6 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
     }, [mode, pageFilter.mode]);
 
     const activeViewType = useMemo(() => {
-        if (['comp_overview', 'comp_gaps', 'comp_threats', 'comp_brief', 'comp_trends'].includes(compSidebarTab)) return 'competitor_matrix';
-
         switch (mode) {
             case 'competitors':
                 return 'competitor_matrix';
@@ -1182,7 +1174,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
             default:
                 return 'grid';
         }
-    }, [compSidebarTab, mode]);
+    }, [mode]);
 
     const activeSidebarSections = useMemo(() => {
         const legacyMode = MODE_TO_LEGACY_AUDIT_MODE[mode];
@@ -5052,6 +5044,14 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
       return getCompetitorSnapshots(activeProject.id, domain, 30);
     }, [activeProject?.id]);
 
+    const openIntegrationsModal = useCallback((provider?: string) => {
+        setSettingsTab('integrations');
+        if (provider) {
+            // Logic to pre-select provider if needed, for now just open the tab
+        }
+        setShowSettings(true);
+    }, []);
+
     const value = useMemo(() => ({
         crawlingMode, setCrawlingMode, urlInput, setUrlInput, listUrls, setListUrls, showListModal, setShowListModal,
         isCrawling, setIsCrawling, pages: pagesWithDerivedSignals, analysisPages, logs, setLogs, crawlStartTime, setCrawlStartTime,
@@ -5073,6 +5073,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         rsTab, setRsTab,
         gridScrollOffset, setGridScrollOffset, isDraggingLeftSidebar, setIsDraggingLeftSidebar, isDraggingSidebar, setIsDraggingSidebar,
         isDraggingDetails, setIsDraggingDetails, 
+        lastCrawlAt,
         showAutoFixModal, setShowAutoFixModal, autoFixItems, setAutoFixItems,
         isFixing, setIsFixing, autoFixProgress, setAutoFixProgress, stats, setStats, columns, config, setConfig, settingsTab, setSettingsTab,
         theme, setTheme, integrationConnections, integrationsLoading, integrationsSource, saveIntegrationConnection, removeIntegrationConnection, wsRef, addLog, handleStartPause,
@@ -5119,10 +5120,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         // WQA Intelligence
         wqaFilter, setWqaFilter, wqaFacets,
         pageFilter, setPageFilter, toggleSelection, setSelection, clearSelection, sidebarState, setSidebarState, toggleSection, setSidebarQuery,
-        // Right sidebar — Full Audit
-        faSidebarTab, setFaSidebarTab,
-        // Right sidebar — Competitors
-        compSidebarTab, setCompSidebarTab,
+        openIntegrationsModal,
         // Foundation (Part 3.1)
         foundationMetrics, foundationActions, foundationHydrated,
         foundationMetricsMap, foundationActionsMap, crawlerFoundationEnabled,
@@ -5139,7 +5137,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         customPresets,
         searchQuery,
         selectedPage, activeTab, inspectorCollapsed, showAuditSidebar,
-        faSidebarTab, compSidebarTab, showSettings, activeMacro,
+        showSettings, activeMacro,
         sortConfig, showColumnPicker, visibleColumns,
         viewMode, showAiInsights, showAiChat, graphDimensions,
         

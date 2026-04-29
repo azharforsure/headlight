@@ -1,102 +1,93 @@
+import { countWhere, isIndexable, isHttpOk, pct, score100, isHeavy } from './_helpers'
+import { TechOverviewTab, TechIndexingTab, TechSpeedTab, TechSecurityTab, TechCrawlTab } from '../../components/seo-crawler/right-sidebar/modes/technical'
 import type { RsDataDeps, RsModeBundle } from './types'
-import { OverviewTab } from '../../components/seo-crawler/right-sidebar/modes/technical/OverviewTab'
-import { IndexingTab } from '../../components/seo-crawler/right-sidebar/modes/technical/IndexingTab'
-import { PerformanceTab } from '../../components/seo-crawler/right-sidebar/modes/technical/PerformanceTab'
-import { SecurityTab } from '../../components/seo-crawler/right-sidebar/modes/technical/SecurityTab'
-import { CrawlabilityTab } from '../../components/seo-crawler/right-sidebar/modes/technical/CrawlabilityTab'
 
 export interface TechnicalStats {
 	overallScore: number
-	totalPages: number
-	htmlPages: number
-	radar: Array<{ axis: string; value: number }>
-	indexability: {
-		indexed: number
-		blocked: number
-		noindex: number
-		canonicalized: number
+	indexing: {
+		indexable: number; total: number;
+		noindex: number; canonicalConflict: number;
+		inSitemap: number; sitemapOnly: number; orphans: number
 	}
-	performance: {
-		good: number
-		needsImpr: number
-		poor: number
-		avgLcp: number
-		avgFid: number
-		avgCls: number
-	}
-	security: {
-		https: number
-		http: number
-		hsts: number
-		missingHeaders: number
-	}
-	crawlability: {
-		depthDistribution: Array<{ name: string; value: number }>
-		avgDepth: number
-		internalLinks: number
-		brokenLinks: number
-	}
+	speed: { avgMs: number | null; slow: number; very: number; medMs: number | null }
+	security: { https: number; mixedContent: number; weakHsts: number; httpRedirects: number }
+	crawl: { ok: number; redirect: number; client: number; server: number; depthAvg: number | null; depthMax: number | null }
+	sizes: { heavyPages: number; avgBytes: number | null }
 }
 
-export function computeTechnicalStats(pages: any[]): TechnicalStats {
-	const total = pages.length || 1
-	const html = pages.filter(p => p.contentType?.includes('html'))
-	const htmlCount = html.length || 1
+export function computeTechnicalStats(deps: RsDataDeps): TechnicalStats {
+	const pages = deps.pages
+	const n = pages.length
 
-	const stats: TechnicalStats = {
-		overallScore: 82, // Mock for now
-		totalPages: pages.length,
-		htmlPages: html.length,
-		radar: [
-			{ axis: 'Index', value: 85 },
-			{ axis: 'Speed', value: 72 },
-			{ axis: 'Security', value: 95 },
-			{ axis: 'Crawl', value: 80 },
-			{ axis: 'Schema', value: 65 },
-		],
-		indexability: {
-			indexed: pages.filter(p => p.indexabilityStatus === 'Indexable').length,
-			blocked: pages.filter(p => p.indexabilityStatus === 'Blocked').length,
-			noindex: pages.filter(p => p.indexabilityStatus === 'Noindex').length,
-			canonicalized: pages.filter(p => p.indexabilityStatus === 'Canonicalized').length,
-		},
-		performance: {
-			good: html.filter(p => p.speedScore === 'Good').length,
-			needsImpr: html.filter(p => p.speedScore === 'Needs Improvement').length,
-			poor: html.filter(p => p.speedScore === 'Poor').length,
-			avgLcp: 1.8,
-			avgFid: 45,
-			avgCls: 0.08,
-		},
-		security: {
-			https: pages.filter(p => p.url.startsWith('https')).length,
-			http: pages.filter(p => p.url.startsWith('http:')).length,
-			hsts: pages.filter(p => p.hsts).length,
-			missingHeaders: html.filter(p => !p.hasSecurityHeaders).length,
-		},
-		crawlability: {
-			depthDistribution: [
-				{ name: '1-2', value: pages.filter(p => p.crawlDepth <= 2).length },
-				{ name: '3-5', value: pages.filter(p => p.crawlDepth > 2 && p.crawlDepth <= 5).length },
-				{ name: '6+', value: pages.filter(p => p.crawlDepth > 5).length },
-			],
-			avgDepth: pages.reduce((s, p) => s + (p.crawlDepth || 0), 0) / total,
-			internalLinks: pages.reduce((s, p) => s + (p.inlinks?.length || 0), 0),
-			brokenLinks: pages.reduce((s, p) => s + (p.outlinks?.filter((l: any) => l.isBroken)?.length || 0), 0),
+	let ok = 0, redir = 0, c4 = 0, c5 = 0
+	let idx = 0, noidx = 0, canonConf = 0, inSm = 0, smOnly = 0, orphans = 0
+	let https = 0, mixed = 0, weakHsts = 0, httpRedirects = 0
+	let respSum = 0, respCount = 0, slow = 0, very = 0
+	let bytesSum = 0, bytesCount = 0, heavy = 0
+	let depthSum = 0, depthCount = 0, depthMax = 0
+	const respValues: number[] = []
+
+	for (const p of pages) {
+		const sc = p.statusCode ?? 0
+		if (sc >= 200 && sc < 300) ok++
+		else if (sc >= 300 && sc < 400) redir++
+		else if (sc >= 400 && sc < 500) c4++
+		else if (sc >= 500) c5++
+
+		if (isIndexable(p)) idx++
+		if (p.metaRobots?.includes('noindex')) noidx++
+		if (p.canonical && p.canonical !== p.url) canonConf++
+		if (p.inSitemap) inSm++
+		if (p.inSitemap && (p.crawlDepth ?? Infinity) === Infinity) smOnly++
+		if ((p.inboundInternalLinks ?? 0) === 0 && (p.crawlDepth ?? 0) > 0) orphans++
+
+		if ((p.url || '').startsWith('https://')) https++
+		if (p['hasMixedContent']) mixed++
+		if (p['hasHsts'] === false) weakHsts++
+		if (sc >= 300 && sc < 400 && (p.url || '').startsWith('http://')) httpRedirects++
+
+		if (p.loadTime) {
+			respSum += p.loadTime; respCount++; respValues.push(p.loadTime)
+			if (p.loadTime > 2500) slow++
+			if (p.loadTime > 5000) very++
+		}
+		if (p.transferredBytes) { bytesSum += p.transferredBytes; bytesCount++ }
+		if (isHeavy(p)) heavy++
+		if (p.crawlDepth != null) {
+			depthSum += p.crawlDepth; depthCount++
+			if (p.crawlDepth > depthMax) depthMax = p.crawlDepth
 		}
 	}
+	respValues.sort((a, b) => a - b)
+	const medMs = respValues.length ? respValues[Math.floor(respValues.length / 2)] : null
 
-	return stats
+	const overallScore = score100([
+		{ weight: 2, value: pct(ok, n) },
+		{ weight: 2, value: pct(idx, n) },
+		{ weight: 1, value: pct(https, n) },
+		{ weight: 1, value: 100 - pct(heavy, n) },
+	])
+
+	return {
+		overallScore,
+		indexing: { indexable: idx, total: n, noindex: noidx, canonicalConflict: canonConf, inSitemap: inSm, sitemapOnly: smOnly, orphans },
+		speed: { avgMs: respCount ? Math.round(respSum / respCount) : null, slow, very, medMs },
+		security: { https, mixedContent: mixed, weakHsts, httpRedirects },
+		crawl: { ok, redirect: redir, client: c4, server: c5, depthAvg: depthCount ? +(depthSum / depthCount).toFixed(1) : null, depthMax: depthCount ? depthMax : null },
+		sizes: { heavyPages: heavy, avgBytes: bytesCount ? Math.round(bytesSum / bytesCount) : null },
+	}
 }
 
 export const technicalBundle: RsModeBundle<TechnicalStats> = {
-	modeId: 'technical',
-	computeStats: ({ pages }: RsDataDeps) => computeTechnicalStats(pages as any[]),
-	tabs: {
-		tech_overview: OverviewTab,
-		tech_indexing: IndexingTab,
-		tech_performance: PerformanceTab,
-		tech_security: SecurityTab,
-		tech_crawl: CrawlabilityTab,
-	},
+	mode: 'technical',
+	accent: 'blue',
+	defaultTabId: 'tech_overview',
+	tabs: [
+		{ id: 'tech_overview', label: 'Overview', Component: TechOverviewTab },
+		{ id: 'tech_indexing', label: 'Indexing', Component: TechIndexingTab },
+		{ id: 'tech_speed',    label: 'Speed',    Component: TechSpeedTab },
+		{ id: 'tech_security', label: 'Security', Component: TechSecurityTab },
+		{ id: 'tech_crawl',    label: 'Crawl',    Component: TechCrawlTab },
+	],
+	computeStats: computeTechnicalStats,
 }
