@@ -1,6 +1,6 @@
 import React from 'react'
 import { Card, Row, SourceChip, ago } from '@/components/seo-crawler/right-sidebar/shared'
-import { RsPartial as Partial } from '@/components/seo-crawler/right-sidebar/RsPartial'
+import { RsPartial as Partial } from '@/components/seo-crawler/right-sidebar/shared'
 import type { RsTabProps } from '@/services/right-sidebar/types'
 import type { ContentStats } from '@/services/right-sidebar/content'
 

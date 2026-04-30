@@ -1,6 +1,6 @@
 import React from 'react'
 import { Card, Row, Bar, SourceChip, FreshnessChip } from '@/components/seo-crawler/right-sidebar/shared'
-import { RsPartial } from '@/components/seo-crawler/right-sidebar/RsPartial'
+import { RsPartial } from '@/components/seo-crawler/right-sidebar/shared'
 import type { RsTabProps } from '@/services/right-sidebar/types'
 import type { SocialBrandStats } from '@/services/right-sidebar/socialBrand'
 

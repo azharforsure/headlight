@@ -44,3 +44,17 @@ export function percentile(xs: number[], p: number): number {
 
 export const fmtInt = (n: number) => Number.isFinite(n) ? Math.round(n).toLocaleString() : '—'
 export const fmtPct = (n: number, digits = 0) => `${(n).toFixed(digits)}%`
+
+export function histogram(values: number[], thresholds: number[]): number[] {
+  // returns counts per bucket. thresholds = [t0, t1, ..., tN] → buckets [t0,t1), [t1,t2), ... [tN-1, tN]
+  const buckets = new Array(Math.max(0, thresholds.length - 1)).fill(0)
+  for (const v of values) {
+    for (let i = 0; i < buckets.length; i++) {
+      const lo = thresholds[i]
+      const hi = thresholds[i + 1]
+      const inRange = i === buckets.length - 1 ? v >= lo && v <= hi : v >= lo && v < hi
+      if (inRange) { buckets[i] += 1; break }
+    }
+  }
+  return buckets
+}
