@@ -1,16 +1,20 @@
 import React from 'react'
-import { Chip } from '../Chip'
-import type { RsSourceTier, RsSource } from './types'
 
-const TIER_TONE: Record<RsSourceTier, 'good' | 'info' | 'warn' | 'bad' | 'neutral'> = {
-  authoritative: 'good',
-  'free-api':    'info',
-  scrape:        'neutral',
-  ai:            'info',
-  est:           'warn',
-  default:       'bad',
-}
-
-export function SourceChip({ source }: { source: RsSource }) {
-  return <Chip tone={TIER_TONE[source.tier]} dense>{source.name}</Chip>
+export function SourceChip({ 
+  sources, className 
+}: { 
+  sources: string[]
+  className?: string 
+}) {
+  if (!sources || sources.length === 0) return null
+  
+  return (
+    <div className={`flex flex-wrap gap-1 mt-3 pt-2 border-t border-white/5 ${className ?? ''}`}>
+      {sources.map(s => (
+        <span key={s} className="text-[9px] uppercase tracking-wider text-[#666] font-medium">
+          ● {s}
+        </span>
+      ))}
+    </div>
+  )
 }

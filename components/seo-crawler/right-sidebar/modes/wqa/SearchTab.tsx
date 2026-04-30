@@ -1,66 +1,125 @@
-import React from 'react'
-import { Card, Row, MiniBar, Sparkline, KpiTile } from '@/components/seo-crawler/right-sidebar/shared'
-import type { RsTabProps } from '@/services/right-sidebar/types'
-import type { WqaStats } from '@/services/right-sidebar/wqa'
+import {
+  Card, SectionTitle, Row, Sparkline, SourceChip, fmtNum, fmtPct, fmtDelta,
+} from '../../shared'
+import type { RsTabProps } from '../../../../../services/right-sidebar/types'
+import type { WqaStats } from '../../../../../services/right-sidebar/wqa'
 
-export function WqaSearchTab({ stats }: RsTabProps<WqaStats>) {
+export function WqaSearchTab({ deps, stats }: RsTabProps<WqaStats>) {
   const s = stats.search
+  const gscOn  = !!deps.integrationConnections?.googleSearchConsole
+  const bingOn = !!deps.integrationConnections?.bingWebmaster
+  const sources = [
+    gscOn  && 'Google Search Console',
+    bingOn && 'Bing Webmaster',
+  ].filter(Boolean) as string[]
+
   return (
     <div className="flex flex-col gap-3">
-      <div className="grid grid-cols-2 gap-2">
-        <KpiTile label="Clicks" value={s.clicks28d.toLocaleString()} trend={s.clicks28dDelta} />
-        <KpiTile label="Impr." value={s.impr28d.toLocaleString()} trend={s.impr28dDelta} />
-      </div>
-
-      <Card title="Traffic trend (28d)">
-        <div className="h-16">
-          <Sparkline data={s.clicksSeries} />
-        </div>
-        <div className="flex justify-between text-[9px] text-[#555] mt-1 uppercase font-mono">
-          <span>28d ago</span>
-          <span>Today</span>
+      <Card>
+        <SectionTitle>Source · Range</SectionTitle>
+        <div className="flex flex-wrap gap-1">
+          {sources.length === 0
+            ? <span className="text-xs text-muted">No search source connected</span>
+            : sources.map(src => (
+                <span key={src} className="text-[11px] px-1.5 py-0.5 rounded chip-info">{src}</span>
+              ))}
+          <span className="text-[11px] px-1.5 py-0.5 rounded chip-neutral">28d</span>
         </div>
       </Card>
 
-      <Card title="Keyword buckets">
-        <MiniBar
-          data={[
-            { label: 'Top 3',      value: s.keywordBuckets.top3,      tone: 'good' },
-            { label: 'Top 10',     value: s.keywordBuckets.top10,     tone: 'good' },
-            { label: 'Striking',   value: s.keywordBuckets.striking,  tone: 'warn' },
-            { label: 'Tail (21+)', value: s.keywordBuckets.tail,      tone: 'neutral' },
-            { label: 'Unranked',   value: s.keywordBuckets.notRanking,tone: 'bad' },
-          ]}
-        />
+      <Card>
+        <SectionTitle>Clicks</SectionTitle>
+        <div className="flex items-center justify-between gap-2">
+          <span className="tabular-nums text-lg">{fmtNum(s.clicks28d)}</span>
+          <span className="text-xs">{fmtDelta(s.clicks28dDelta, 'pct')}</span>
+        </div>
+        <Sparkline data={s.clicksSeries} height={28} />
+        <SourceChip sources={sources} />
       </Card>
 
-      <Card title="Lost pages (Top 6)">
-        <div className="flex flex-col gap-1.5">
-          {s.lostPages.length > 0 ? s.lostPages.map(p => (
-            <div key={p.url} className="text-[10px] text-red-400 font-mono truncate">{p.url}</div>
-          )) : (
-            <div className="text-[10px] text-[#555] italic">No high-value losses detected</div>
-          )}
+      <Card>
+        <SectionTitle>Impressions</SectionTitle>
+        <div className="flex items-center justify-between gap-2">
+          <span className="tabular-nums text-lg">{fmtNum(s.impr28d)}</span>
+          <span className="text-xs">{fmtDelta(s.impr28dDelta, 'pct')}</span>
         </div>
+        <Sparkline data={s.imprSeries} height={28} />
+        <SourceChip sources={sources} />
       </Card>
 
-      <Card title="CTR vs Benchmark">
-        <div className="space-y-3">
-          {s.ctrVsBenchmark.map(b => (
-            <div key={b.pos} className="space-y-1">
-              <div className="flex justify-between text-[10px] uppercase text-[#666]">
-                <span>Position {b.pos}</span>
-                <span className={b.us >= b.benchmark ? 'text-green-400' : 'text-red-400'}>
-                  {(b.us * 100).toFixed(1)}% vs {(b.benchmark * 100).toFixed(1)}%
-                </span>
-              </div>
-              <div className="h-1.5 bg-[#111] rounded-full overflow-hidden flex">
-                <div className="h-full bg-blue-500/50" style={ { width: `${b.benchmark * 100}%` } } />
-                <div className="h-full bg-violet-500 absolute" style={ { width: `${b.us * 100}%` } } />
-              </div>
-            </div>
-          ))}
+      <Card>
+        <SectionTitle>CTR</SectionTitle>
+        <div className="flex items-center justify-between gap-2">
+          <span className="tabular-nums text-lg">{fmtPct(s.ctr28d)}</span>
+          <span className="text-xs">{fmtDelta(s.ctr28dDelta, 'pp')}</span>
         </div>
+        <Sparkline data={s.ctrSeries} height={28} />
+        <SourceChip sources={sources} />
+      </Card>
+
+      <Card>
+        <SectionTitle>Avg position</SectionTitle>
+        <div className="flex items-center justify-between gap-2">
+          <span className="tabular-nums text-lg">{s.pos28d.toFixed(1)}</span>
+          <span className="text-xs">{fmtDelta(-s.pos28dDelta, 'abs')}</span>
+        </div>
+        <Sparkline data={s.posSeries} height={28} invert />
+        <SourceChip sources={sources} />
+      </Card>
+
+      <Card>
+        <SectionTitle>Keyword buckets</SectionTitle>
+        <Row label="Ranking"          value={fmtNum(s.keywordBuckets.ranking)} />
+        <Row label="Top 3"            value={fmtNum(s.keywordBuckets.top3)}  tone="good" />
+        <Row label="Top 10"           value={fmtNum(s.keywordBuckets.top10)} />
+        <Row label="Striking (11–20)" value={fmtNum(s.keywordBuckets.striking)} tone="warn" />
+        <Row label="Tail (21–50)"     value={fmtNum(s.keywordBuckets.tail)} />
+        <Row label="Not ranking"      value={fmtNum(s.keywordBuckets.notRanking)} tone="muted" />
+        <SourceChip sources={sources} />
+      </Card>
+
+      <Card>
+        <SectionTitle>CTR vs benchmark</SectionTitle>
+        {s.ctrVsBenchmark.map(r => {
+          const tone = r.us < r.benchmark * 0.6 ? 'bad'
+                     : r.us < r.benchmark        ? 'warn'
+                     : 'good'
+          return (
+            <Row
+              key={r.pos}
+              label={`Pos ${r.pos}`}
+              value={`${fmtPct(r.us)} vs ${fmtPct(r.benchmark)}`}
+              tone={tone}
+            />
+          )
+        })}
+        <SourceChip sources={sources} />
+      </Card>
+
+      <Card>
+        <SectionTitle>Movers (28d)</SectionTitle>
+        {s.movers.length === 0
+          ? <Row label="No movement detected" value="—" tone="muted" />
+          : s.movers.map(m => (
+              <Row
+                key={m.url}
+                label={m.url}
+                value={`${m.direction === 'up' ? '▲' : '▼'} ${fmtNum(Math.abs(m.delta))}`}
+                tone={m.direction === 'up' ? 'good' : 'bad'}
+                truncate
+              />
+            ))}
+        <SourceChip sources={sources} />
+      </Card>
+
+      <Card>
+        <SectionTitle>Lost pages</SectionTitle>
+        {s.lostPages.length === 0
+          ? <Row label="None dropped from top 50" value="—" tone="muted" />
+          : s.lostPages.map(p => (
+              <Row key={p.url} label={p.url} value="—" tone="bad" truncate />
+            ))}
+        <SourceChip sources={sources} />
       </Card>
     </div>
   )

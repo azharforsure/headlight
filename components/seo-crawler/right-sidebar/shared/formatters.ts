@@ -1,3 +1,33 @@
+export function fmtNum(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n)) return '—'
+  if (n >= 10000) return (n / 1000).toFixed(1) + 'k'
+  return new Intl.NumberFormat().format(n)
+}
+
+export function fmtPct(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n)) return '—'
+  const v = n * 100
+  if (v === 0) return '0%'
+  if (v < 10) return v.toFixed(1) + '%'
+  return Math.round(v) + '%'
+}
+
+export function fmtMs(ms: number | null | undefined): string {
+  if (ms == null || !Number.isFinite(ms)) return '—'
+  if (ms < 1000) return `${Math.round(ms)}ms`
+  return `${(ms / 1000).toFixed(2)}s`
+}
+
+export function fmtDelta(n: number | null | undefined, mode: 'pct' | 'pp' | 'abs'): string {
+  if (n == null || !Number.isFinite(n)) return '—'
+  const prefix = n > 0 ? '▲' : n < 0 ? '▼' : ''
+  const abs = Math.abs(n)
+  
+  if (mode === 'pct') return `${prefix} ${fmtPct(abs / 100)}`
+  if (mode === 'pp')  return `${prefix} ${abs.toFixed(1)}pt`
+  return `${prefix} ${fmtNum(abs)}`
+}
+
 export function ago(ts: number): string {
   const s = Math.max(0, Math.floor((Date.now() - ts) / 1000))
   if (s < 60)         return `${s}s ago`
