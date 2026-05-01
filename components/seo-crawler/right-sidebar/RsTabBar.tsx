@@ -1,5 +1,5 @@
 import React from 'react'
-import { useSeoCrawler } from '../../../contexts/SeoCrawlerContext'
+import { useSeoCrawler } from '@/contexts/SeoCrawlerContext'
 import { getRsTabsFor } from './registry'
 
 export function RsTabBar() {

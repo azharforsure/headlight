@@ -8,7 +8,7 @@ const MOCK_PAGES = [
     { isHtmlPage: true, wordCount: 500 },
 ]
 
-vi.mock('../../../../contexts/SeoCrawlerContext', () => ({
+vi.mock('@/contexts/SeoCrawlerContext', () => ({
     useSeoCrawler: () => ({ 
         pages: MOCK_PAGES, 
         crawlHistory: [], 

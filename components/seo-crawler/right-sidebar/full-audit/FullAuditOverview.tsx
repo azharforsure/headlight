@@ -1,98 +1,85 @@
 import React from 'react'
-import { Section, KpiTile, ScoreGauge, Card, Distribution, RowItem, fmtNum, compactNum } from '../_shared'
-import { useFullAuditRollups } from './_selectors'
-import { useSeoCrawler } from '../../../../contexts/SeoCrawlerContext'
-import { AlertTriangle, ChevronRight } from 'lucide-react'
+import { useSeoCrawler } from '@/contexts/SeoCrawlerContext'
+import { useFullAuditInsights } from '../_hooks/useFullAuditInsights'
+import {
+  Card, Section, KpiTile, KpiRow, MetricRow, BarStack, 
+  RingGauge, AlertRow, EmptyState,
+  fmtNum, fmtPct, scoreToTone, compactNum,
+} from '../_shared'
+import { useDrill } from '../_shared/drill'
 
 export function FullAuditOverview() {
-    const r = useFullAuditRollups()
-    const { setActiveMacro } = useSeoCrawler()
+  const { pages } = useSeoCrawler()
+  const s = useFullAuditInsights()
+  const drill = useDrill()
 
-    const topAlerts = [
-        r.issues.error > 0 && {
-            label: `${r.issues.error} blocking errors`,
-            tone: 'bad' as const,
-            onClick: () => setActiveMacro('errors'),
-        },
-        r.orphans > 0 && {
-            label: `${r.orphans} orphan pages (0 inlinks)`,
-            tone: 'warn' as const,
-            onClick: () => setActiveMacro('orphans'),
-        },
-        r.stale > 0 && {
-            label: `${r.stale} pages older than 1 year`,
-            tone: 'warn' as const,
-            onClick: () => setActiveMacro('stale'),
-        },
-    ].filter(Boolean) as Array<{ label: string; tone: 'bad' | 'warn'; onClick: () => void }>
+  if (!pages?.length) {
+    return <EmptyState title="No crawl data yet" hint="Start a crawl to see this tab." />
+  }
 
-    return (
-        <>
-            <Section title="Site health" dense>
-                <Card padded>
-                    <ScoreGauge score={r.overallScore} label="Overall" delta={null} />
-                    <div className="mt-2 grid grid-cols-3 gap-2 text-[10px] text-[#888]">
-                        <div>
-                            <div className="text-[#666] uppercase tracking-widest text-[9px]">Indexable</div>
-                            <div className="text-white font-mono">{fmtNum(r.indexable)}/{fmtNum(r.total)}</div>
-                        </div>
-                        <div>
-                            <div className="text-[#666] uppercase tracking-widest text-[9px]">CWV pass</div>
-                            <div className="text-white font-mono">{fmtNum(r.cwvGood)}</div>
-                        </div>
-                        <div>
-                            <div className="text-[#666] uppercase tracking-widest text-[9px]">Errors</div>
-                            <div className="text-red-400 font-mono">{fmtNum(r.issues.error)}</div>
-                        </div>
-                    </div>
-                </Card>
-            </Section>
+  return (
+    <div className="space-y-3 p-3">
+      {/* HERO */}
+      <Card>
+        <Section title="Snapshot" dense>
+          <div className="flex items-center gap-4 py-1">
+            <RingGauge value={s.score} label="Score" size={80} />
+            <div className="flex-1">
+              <KpiRow>
+                <KpiTile label="Pages" value={compactNum(s.total)} />
+                <KpiTile label="HTTPS" value={fmtPct(s.tech.httpsCoverage)} tone={scoreToTone(s.tech.httpsCoverage)} />
+                <KpiTile label="Indexable" value={fmtPct(s.tech.indexable)} tone={scoreToTone(s.tech.indexable)} />
+              </KpiRow>
+            </div>
+          </div>
+        </Section>
+      </Card>
 
-            <Section title="Snapshot">
-                <div className="grid grid-cols-2 gap-2">
-                    <KpiTile label="Pages" value={compactNum(r.total)} />
-                    <KpiTile label="Errors" value={compactNum(r.issues.error)} sub="errors" />
-                    <KpiTile label="Warnings" value={compactNum(r.issues.warning)} sub="warnings" />
-                    <KpiTile label="GSC clicks" value={compactNum(r.gscClicks)} />
-                    <KpiTile label="GA4 sessions" value={compactNum(r.ga4Sessions)} />
-                    <KpiTile label="Conversions" value={compactNum(r.ga4Conv)} />
-                </div>
-            </Section>
+      {/* STATUS MIX */}
+      <Card>
+        <Section title="Status Mix" dense>
+          <BarStack segments={[
+            { value: s.issues.errors, tone: 'bad', label: 'Errors' },
+            { value: s.issues.warnings, tone: 'warn', label: 'Warnings' },
+            { value: s.issues.notices, tone: 'info', label: 'Notices' },
+            { value: s.total - (s.issues.errors + s.issues.warnings + s.issues.notices), tone: 'good', label: 'Healthy' }
+          ]} />
+        </Section>
+      </Card>
 
-            <Section title="Status mix">
-                <Card>
-                    <Distribution
-                        rows={[
-                            { label: '200 OK', value: r.status.ok, tone: 'good' },
-                            { label: '3xx', value: r.status.redirect, tone: 'warn' },
-                            { label: '4xx', value: r.status.client, tone: 'bad' },
-                            { label: '5xx', value: r.status.server, tone: 'bad' },
-                        ]}
-                    />
-                </Card>
-            </Section>
+      {/* BREAKDOWN */}
+      <Card>
+        <Section title="Pillar Scores" dense>
+          <MetricRow label="Technical" value={s.tech.cwvPass + '%'} tone={scoreToTone(s.tech.cwvPass)} />
+          <MetricRow label="Content" value={fmtPct(s.tech.indexable)} tone={scoreToTone(s.tech.indexable)} />
+          <MetricRow label="Links" value={s.links.refDomains} tone="info" />
+          <MetricRow label="Search" value={compactNum(s.search.clicksTotal)} tone="good" />
+          <MetricRow label="AI" value={s.ai.llmsTxt ? 'Present' : 'Missing'} tone={s.ai.llmsTxt ? 'good' : 'warn'} />
+        </Section>
+      </Card>
 
-            <Section title="Top alerts">
-                {topAlerts.length === 0 ? (
-                    <Card><div className="text-[11px] text-[#888]">Nothing critical right now.</div></Card>
-                ) : (
-                    <Card padded={false}>
-                        {topAlerts.map((a, i) => (
-                            <RowItem
-                                key={i}
-                                onClick={a.onClick}
-                                title={
-                                    <span className="flex items-center gap-2">
-                                        <AlertTriangle size={11} className={a.tone === 'bad' ? 'text-red-400' : 'text-orange-400'} />
-                                        {a.label}
-                                    </span>
-                                }
-                                badge={<ChevronRight size={12} className="text-[#666]" />}
-                            />
-                        ))}
-                    </Card>
-                )}
-            </Section>
-        </>
-    )
+      {/* ALERTS */}
+      <Card>
+        <Section title="Top Alerts" dense>
+          {s.issues.errors > 0 && (
+            <AlertRow alert={{ id: 'e', tone: 'bad', title: 'Critical errors found', count: s.issues.errors }} 
+                      onClick={() => drill.toCategory('status', 'All Errors')} />
+          )}
+          {s.links.broken > 0 && (
+            <AlertRow alert={{ id: 'b', tone: 'bad', title: 'Broken internal links', count: s.links.broken }} 
+                      onClick={() => drill.toCategory('links', 'Broken Links')} />
+          )}
+          {s.issues.warnings > 0 && (
+            <AlertRow alert={{ id: 'w', tone: 'warn', title: 'Warnings to review', count: s.issues.warnings }} 
+                      onClick={() => drill.toCategory('indexability', 'All Warnings')} />
+          )}
+          {s.tech.cwvPass < 50 && (
+            <AlertRow alert={{ id: 'p', tone: 'warn', title: 'Poor Core Web Vitals coverage' }} 
+                      onClick={() => drill.toCategory('performance', 'Core Web Vitals')} />
+          )}
+        </Section>
+      </Card>
+    </div>
+  )
 }
+

@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/react'
 import React from 'react'
 import { WqaOverview } from '../wqa/WqaOverview'
 import { WqaSearch } from '../wqa/WqaSearch'
-import { SeoCrawlerProvider } from '../../../../contexts/SeoCrawlerContext'
+import { SeoCrawlerProvider } from '@/contexts/SeoCrawlerContext'
 
 const wrap = (children: React.ReactNode, pages: any[] = []) => (
     // @ts-ignore - initialState might be mock-only

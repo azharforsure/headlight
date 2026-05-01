@@ -290,6 +290,8 @@ export interface CrawlerContextType {
     connected: IntegrationId[];
     capabilities: Capability[];
     activeCheckIds: Set<string>;
+    setActiveCategories: (cats: { group: string; sub: string }[]) => void;
+    scrollGridIntoView: () => void;
 
     filteredIssuePages: Array<{ category: string; issues: any[] }>;
     activeViewType: 'grid' | 'competitor_matrix' | 'ai_view' | 'geo_view' | 'opportunity_view' | 'visual_heat_map';
@@ -2329,6 +2331,21 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
             console.error('Failed to clear last crawler session pointer:', error);
         }
     }, [isCrawling, closeCrawlerSocket, config.threads, scopedDraftStorageKey, scopedLastSessionStorageKey]);
+
+    const setActiveCategories = useCallback((cats: { group: string; sub: string }[]) => {
+        // Implementation: trigger the search query logic for categories
+        if (cats.length > 0) {
+            const { group, sub } = cats[0];
+            setSearchQuery(`@${group}:${sub}`);
+        }
+    }, []);
+
+    const scrollGridIntoView = useCallback(() => {
+        const grid = document.getElementById('headlight-grid-container');
+        if (grid) {
+            grid.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    }, []);
 
 
 
@@ -5126,8 +5143,12 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
             setSettingsTab(section);
             setShowSettings(true);
         },
+        setActiveCategories,
+        scrollGridIntoView,
     }), [
         getTimelineData,
+        setActiveCategories,
+        scrollGridIntoView,
         // Reactive state values only (setters are stable React identity)
         crawlingMode, urlInput, listUrls, showListModal,
         isCrawling, pagesWithDerivedSignals, analysisPages, logs, crawlStartTime,

@@ -1,55 +1,60 @@
-// components/seo-crawler/right-sidebar/technical/TechnicalIndexing.tsx
-import React, { useMemo } from 'react'
-import { Eye } from 'lucide-react'
-import { useSeoCrawler } from '../../../../contexts/SeoCrawlerContext'
-import { Card, Section } from '../primitives'
-import { MetricRow, EmptyState, fmtNum, safePct, scoreToTone } from '../_shared'
-import { RsBar } from '../parts'
-import { computeTechSummary } from './selectors'
+import React from 'react'
+import { useSeoCrawler } from '@/contexts/SeoCrawlerContext'
+import { useTechnicalInsights } from '../_hooks/useTechnicalInsights'
+import { useDrill } from '../_shared/drill'
+import {
+  Card, Section, KpiRow, KpiTile, MetricRow, Donut,
+  TopList, AlertRow, EmptyState,
+  fmtPct,
+} from '../_shared'
 
 export function TechnicalIndexing() {
   const { pages } = useSeoCrawler()
-  const s = useMemo(() => computeTechSummary(pages || []), [pages])
-  if (!pages?.length) return <EmptyState title="No crawl data yet" icon={<Eye size={20} />} />
+  const s = useTechnicalInsights()
+  const drill = useDrill()
 
-  const indexablePct = safePct(s.indexability.indexable, s.html)
+  if (!pages?.length) return <EmptyState title="No crawl data yet" />
+
+  const notInSitemap = pages.filter(p => p.inSitemap === false && p.statusCode === 200 && p.isHtmlPage)
 
   return (
-    <>
-      <Card>
-        <Section title="Indexability" dense>
-          <RsBar tone="good" value={s.indexability.indexable} total={s.html} label="Indexable HTML" />
-          <RsBar tone="warn" value={s.indexability.noindex} total={s.html} label="Noindex" />
-          <RsBar tone="bad" value={s.indexability.blockedRobots} total={s.html} label="Blocked by robots" />
-          <RsBar tone="warn" value={s.indexability.canonicalDifferent} total={s.html} label="Canonical to other URL" />
-          <div className="mt-2"><MetricRow label="Indexable share" value={`${indexablePct.toFixed(1)}%`} tone={scoreToTone(indexablePct)} /></div>
-        </Section>
-      </Card>
+    <div className="space-y-3 p-3">
+      <Card><Section title="Indexing KPIs" dense>
+        <KpiRow>
+          <KpiTile label="Indexable" value={s.indexability.indexable} tone="good" />
+          <KpiTile label="Noindex" value={s.indexability.noindex} tone="warn" />
+          <KpiTile label="Orphans" value={s.indexability.orphan} tone="warn" />
+        </KpiRow>
+      </Section></Card>
 
-      <Card>
-        <Section title="Canonical tags" dense>
-          <MetricRow label="Self-canonical" value={fmtNum(s.indexability.canonicalSelf)} tone="good" />
-          <MetricRow label="Different canonical" value={fmtNum(s.indexability.canonicalDifferent)} tone={s.indexability.canonicalDifferent ? 'info' : 'good'} />
-          <MetricRow label="Missing canonical" value={fmtNum(s.indexability.canonicalMissing)} tone={s.indexability.canonicalMissing ? 'warn' : 'good'} />
-        </Section>
-      </Card>
-
-      <Card>
-        <Section title="Sitemap parity" dense>
-          <MetricRow label="In sitemap & crawled" value={fmtNum(s.indexability.inSitemap)} tone="good" />
-          <MetricRow label="Indexable, not in sitemap" value={fmtNum(s.indexability.missingFromSitemap)} tone={s.indexability.missingFromSitemap ? 'warn' : 'good'} />
-          <MetricRow label="Orphan pages" value={fmtNum(s.indexability.orphan)} tone={s.indexability.orphan ? 'warn' : 'good'} />
-        </Section>
-      </Card>
-
-      <Card>
-        <Section title="Indexing score" dense>
-          <MetricRow label="Score" value={Math.round(s.scores.index || 0)} tone={scoreToTone(s.scores.index)} />
-          <div className="text-[10px] text-[#666] px-2">
-            Indexable share, canonical coverage, and noindex penalty.
+      <Card><Section title="Sitemap Parity" dense>
+        <div className="flex items-center gap-6 py-2">
+          <Donut segments={[
+            { value: pages.filter(p => p.inSitemap).length, tone: 'good', label: 'In Sitemap' },
+            { value: notInSitemap.length, tone: 'warn', label: 'Missing' },
+          ]} />
+          <div className="flex-1 space-y-1">
+            <MetricRow label="In Sitemap" value={pages.filter(p => p.inSitemap).length} />
+            <MetricRow label="Missing from Sitemap" value={notInSitemap.length} tone="warn" />
           </div>
-        </Section>
-      </Card>
-    </>
+        </div>
+      </Section></Card>
+
+      <Card><Section title="Top Indexable (Not in Sitemap)" dense>
+        <TopList items={notInSitemap.slice(0, 5).map(p => ({
+          id: p.url,
+          primary: p.title || p.url,
+          tail: 'Missing',
+          onClick: () => drill.toPage(p)
+        }))} />
+      </Section></Card>
+
+      <Card><Section title="Indexing Alerts" dense>
+        {s.indexability.canonMismatch > 0 && (
+          <AlertRow alert={{ id: 'c', tone: 'warn', title: 'Canonical mismatches', count: s.indexability.canonMismatch }} 
+                    onClick={() => drill.toCategory('indexability', 'Canonical Mismatch')} />
+        )}
+      </Section></Card>
+    </div>
   )
 }

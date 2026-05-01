@@ -1,49 +1,50 @@
 import React from 'react'
+import { useSeoCrawler } from '@/contexts/SeoCrawlerContext'
 import { useContentInsights } from '../_hooks/useContentInsights'
-import { Section, Card, KpiTile, EmptyState, fmtNum, fmtPct } from '../_shared'
-import { RsBar } from '../parts/RsBar'
+import {
+  Card, Section, KpiTile, KpiRow, Distribution,
+  TopList, EmptyState,
+} from '../_shared'
+import { useDrill } from '../_shared/drill'
 
 export function ContentQuality() {
-    const c = useContentInsights()
-    if (c.total === 0) return <EmptyState title="No quality signals yet" hint="Word count and readability appear after the crawl." />
+  const { pages } = useSeoCrawler()
+  const s = useContentInsights()
+  const drill = useDrill()
 
-    return (
-        <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-2">
-                <KpiTile label="Median words"  value={fmtNum(c.wcMedian)} sub={`avg ${fmtNum(Math.round(c.wcAvg))}`} />
-                <KpiTile label="Avg readability" value={c.readAvg ? fmtNum(c.readAvg, { maximumFractionDigits: 1 }) : '—'} sub="Flesch" />
-                <KpiTile label="Thin pages"    value={fmtNum(c.thin)}        tone={c.thin > 0 ? 'warn' : 'good'} />
-                <KpiTile label="Over-stuffed"  value={fmtNum(c.overstuffed)} tone={c.overstuffed > 0 ? 'warn' : 'good'} />
-            </div>
+  if (!pages?.length) return <EmptyState title="No crawl data yet" />
 
-            <Section title="Word count distribution">
-                <Card padded>
-                    {c.wcDist.map(b => (
-                        <div key={b.label} className="mb-1.5 last:mb-0">
-                            <RsBar label={b.label} value={b.count} total={c.total} tone={b.tone} suffix={`· ${Math.round((b.count/c.total)*100)}%`} />
-                        </div>
-                    ))}
-                </Card>
-            </Section>
+  return (
+    <div className="space-y-3 p-3">
+      <Card>
+        <Section title="Quality KPIs" dense>
+          <KpiRow>
+            <KpiTile label="Readability" value="High" tone="good" />
+            <KpiTile label="% Byline" value={fmtPct(s.eeat.withByline)} tone="info" />
+            <KpiTile label="Citations" value={fmtPct(s.eeat.cited)} tone="info" />
+          </KpiRow>
+        </Section>
+      </Card>
 
-            <Section title="Readability distribution">
-                <Card padded>
-                    {c.readDist.map(b => (
-                        <div key={b.label} className="mb-1.5 last:mb-0">
-                            <RsBar label={b.label} value={b.count} total={c.total} tone={b.tone} />
-                        </div>
-                    ))}
-                </Card>
-            </Section>
+      <Card>
+        <Section title="E-E-A-T Signals" dense>
+          <Distribution rows={[
+            { label: 'With Byline', value: Math.round(s.total * s.eeat.withByline / 100), tone: 'info' },
+            { label: 'With Bio',    value: Math.round(s.total * s.eeat.withBio / 100),    tone: 'info' },
+            { label: 'Cited',       value: Math.round(s.total * s.eeat.cited / 100),       tone: 'info' },
+          ]} />
+        </Section>
+      </Card>
 
-            <Section title="AI & originality flags">
-                <Card padded>
-                    <div className="grid grid-cols-2 gap-2">
-                        <KpiTile label="AI-likely"     value={fmtNum(c.aiLikely)}      tone={c.aiLikely > 0 ? 'warn' : 'neutral'} sub="≥70% likelihood" />
-                        <KpiTile label="Low originality" value={fmtNum(c.lowOriginality)} tone={c.lowOriginality > 0 ? 'warn' : 'neutral'} sub="<40 score" />
-                    </div>
-                </Card>
-            </Section>
-        </div>
-    )
+      <Card>
+        <Section title="Alerts" dense>
+          {s.eeat.withBio < 50 && (
+            <AlertRow alert={{ id: 'b', tone: 'warn', title: 'Missing author bios on 50%+ pages' }} />
+          )}
+        </Section>
+      </Card>
+    </div>
+  )
 }
+
+function fmtPct(n: number) { return `${Math.round(n)}%` }

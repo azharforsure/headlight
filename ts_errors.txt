@@ -1,0 +1,266 @@
+apps/server/src/boot.ts(1,10): error TS2305: Module '"../../../packages/metrics/src/catalog"' has no exported member 'initCatalog'.
+apps/web/e2e/right-sidebar.spec.ts(1,30): error TS2307: Cannot find module '@playwright/test' or its corresponding type declarations.
+components/dashboard/CompetitiveScoreWidget.tsx(51,22): error TS2365: Operator '>' cannot be applied to types 'string | number' and 'number'.
+components/dashboard/CompetitiveScoreWidget.tsx(52,25): error TS2362: The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+components/dashboard/CompetitiveScoreWidget.tsx(52,48): error TS2363: The right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+components/NotificationBell.tsx(18,21): error TS2551: Property 'setActiveAuditTab' does not exist on type 'CrawlerContextType'. Did you mean 'setActiveTab'?
+components/seo-crawler/CollaborationOverlay.tsx(152,17): error TS2304: Cannot find name 'isCloudSyncEnabled'.
+components/seo-crawler/CollaborationOverlay.tsx(166,35): error TS2552: Cannot find name 'createTask'. Did you mean 'createSubtask'?
+components/seo-crawler/ComparisonView.tsx(64,9): error TS2339: Property 'activeProject' does not exist on type 'CrawlerContextType'.
+components/seo-crawler/CrawlerHeader.tsx(84,18): error TS2304: Cannot find name 'INDUSTRY_FILTERS'.
+components/seo-crawler/left-sidebar/hooks/useFacetCounts.ts(6,37): error TS2339: Property 'rootHostname' does not exist on type 'CrawlerContextType'.
+components/seo-crawler/left-sidebar/hooks/useSidebarKeyboard.ts(4,15): error TS2724: '"./useFacetCounts"' has no exported member named 'FacetCounts'. Did you mean 'useFacetCounts'?
+components/seo-crawler/left-sidebar/SidebarSection.tsx(37,39): error TS2339: Property 'hidden' does not exist on type '{ value: string; label: string; count: number; }'.
+components/seo-crawler/left-sidebar/SidebarSection.tsx(37,50): error TS2339: Property 'hidden' does not exist on type '{ value: string; label: string; count: number; }'.
+components/seo-crawler/MainDataView.tsx(95,9): error TS2339: Property 'filteredWqaPagesExport' does not exist on type 'CrawlerContextType'.
+components/seo-crawler/right-sidebar/__tests__/wqa.test.tsx(1,38): error TS2307: Cannot find module 'vitest' or its corresponding type declarations.
+components/seo-crawler/right-sidebar/__tests__/wqa.test.tsx(2,32): error TS2307: Cannot find module '@testing-library/react' or its corresponding type declarations.
+components/seo-crawler/right-sidebar/_hooks/useContentInsights.test.ts(1,42): error TS2307: Cannot find module 'vitest' or its corresponding type declarations.
+components/seo-crawler/right-sidebar/_hooks/useContentInsights.test.ts(2,28): error TS2307: Cannot find module '@testing-library/react' or its corresponding type declarations.
+components/seo-crawler/right-sidebar/_shared/Distribution.tsx(1,10): error TS2305: Module '"./bars"' has no exported member 'Bar'.
+components/seo-crawler/right-sidebar/_shared/drill.ts(1,31): error TS2307: Cannot find module '../../../contexts/SeoCrawlerContext' or its corresponding type declarations.
+components/seo-crawler/right-sidebar/_shared/index.ts(12,1): error TS2308: Module './format' has already exported a member named 'scoreToTone'. Consider explicitly re-exporting to resolve the ambiguity.
+components/seo-crawler/right-sidebar/_shared/index.ts(12,1): error TS2308: Module './types' has already exported a member named 'Tone'. Consider explicitly re-exporting to resolve the ambiguity.
+components/seo-crawler/right-sidebar/_shared/metric-row.tsx(4,10): error TS2305: Module '"./format"' has no exported member 'cls'.
+components/seo-crawler/right-sidebar/content/ContentEeat.tsx(11,65): error TS2339: Property 'bylines' does not exist on type '{ withByline: number; withBio: number; cited: number; }'.
+components/seo-crawler/right-sidebar/content/ContentEeat.tsx(12,65): error TS2339: Property 'bios' does not exist on type '{ withByline: number; withBio: number; cited: number; }'.
+components/seo-crawler/right-sidebar/content/ContentEeat.tsx(13,68): error TS2339: Property 'citations' does not exist on type '{ withByline: number; withBio: number; cited: number; }'.
+components/seo-crawler/right-sidebar/content/ContentEeat.tsx(14,70): error TS2339: Property 'updated' does not exist on type '{ withByline: number; withBio: number; cited: number; }'.
+components/seo-crawler/right-sidebar/content/ContentEeat.tsx(20,23): error TS2322: Type '{ children: Element[]; padded: true; }' is not assignable to type 'IntrinsicAttributes & { children: ReactNode; className?: string; }'.
+  Property 'padded' does not exist on type 'IntrinsicAttributes & { children: ReactNode; className?: string; }'.
+components/seo-crawler/right-sidebar/content/ContentEeat.tsx(36,62): error TS2339: Property 'avgScore' does not exist on type '{ withByline: number; withBio: number; cited: number; }'.
+components/seo-crawler/right-sidebar/content/ContentEeat.tsx(36,87): error TS2339: Property 'avgScore' does not exist on type '{ withByline: number; withBio: number; cited: number; }'.
+components/seo-crawler/right-sidebar/content/ContentEeat.tsx(37,79): error TS2339: Property 'author' does not exist on type '{ article: number; product: number; faq: number; howto: number; breadcrumb: number; }'.
+components/seo-crawler/right-sidebar/content/ContentEeat.tsx(37,90): error TS2554: Expected 1-2 arguments, but got 3.
+components/seo-crawler/right-sidebar/content/ContentEeat.tsx(37,117): error TS2339: Property 'author' does not exist on type '{ article: number; product: number; faq: number; howto: number; breadcrumb: number; }'.
+components/seo-crawler/right-sidebar/content/ContentEeat.tsx(41,23): error TS2322: Type '{ children: Element[]; padded: true; }' is not assignable to type 'IntrinsicAttributes & { children: ReactNode; className?: string; }'.
+  Property 'padded' does not exist on type 'IntrinsicAttributes & { children: ReactNode; className?: string; }'.
+components/seo-crawler/right-sidebar/full-audit/FullAuditHistory.tsx(8,18): error TS2339: Property 'sessionHistory' does not exist on type 'CrawlerContextType'.
+components/seo-crawler/right-sidebar/full-audit/FullAuditSearch.tsx(12,18): error TS2339: Property 'sessionHistory' does not exist on type 'CrawlerContextType'.
+components/seo-crawler/right-sidebar/primitives/index.ts(11,50): error TS2769: No overload matches this call.
+  The last overload gave the following error.
+    Argument of type '{ className: string; }' is not assignable to parameter of type 'Attributes & { children: ReactNode; className?: string; }'.
+      Property 'children' is missing in type '{ className: string; }' but required in type '{ children: ReactNode; className?: string; }'.
+components/seo-crawler/right-sidebar/primitives/index.ts(12,38): error TS2769: No overload matches this call.
+  The last overload gave the following error.
+    Argument of type '{ className: string; }' is not assignable to parameter of type 'Attributes & { children: ReactNode; className?: string; }'.
+      Property 'children' is missing in type '{ className: string; }' but required in type '{ children: ReactNode; className?: string; }'.
+components/seo-crawler/right-sidebar/primitives/index.ts(13,38): error TS2769: No overload matches this call.
+  The last overload gave the following error.
+    Argument of type '{ title: string; dense: true; }' is not assignable to parameter of type 'Attributes & { title?: ReactNode; action?: ReactNode; dense?: boolean; children: ReactNode; }'.
+      Property 'children' is missing in type '{ title: string; dense: true; }' but required in type '{ title?: ReactNode; action?: ReactNode; dense?: boolean; children: ReactNode; }'.
+components/seo-crawler/right-sidebar/wqa/WqaHistory.tsx(9,18): error TS2339: Property 'sessionHistory' does not exist on type 'CrawlerContextType'.
+components/seo-crawler/right-sidebar/wqa/WqaOverview.tsx(40,43): error TS2339: Property 'quality' does not exist on type '{ total: number; qOverall: number; qPrev: number; qBins: any[]; pillars: { content: number; search: number; tech: number; engagement: number; authority: number; eeat: number; }; clicks: number; clicksPrev: number; ... 33 more ...; sessionId: string; } | { ...; }'.
+  Property 'quality' does not exist on type '{ total: number; qOverall: number; qPrev: number; qBins: any[]; pillars: { content: number; search: number; tech: number; engagement: number; authority: number; eeat: number; }; clicks: number; clicksPrev: number; ... 33 more ...; sessionId: string; }'.
+components/seo-crawler/right-sidebar/wqa/WqaOverview.tsx(41,47): error TS2339: Property 'quality' does not exist on type '{ total: number; qOverall: number; qPrev: number; qBins: any[]; pillars: { content: number; search: number; tech: number; engagement: number; authority: number; eeat: number; }; clicks: number; clicksPrev: number; ... 33 more ...; sessionId: string; } | { ...; }'.
+  Property 'quality' does not exist on type '{ total: number; qOverall: number; qPrev: number; qBins: any[]; pillars: { content: number; search: number; tech: number; engagement: number; authority: number; eeat: number; }; clicks: number; clicksPrev: number; ... 33 more ...; sessionId: string; }'.
+components/seo-crawler/right-sidebar/wqa/WqaOverview.tsx(42,42): error TS2339: Property 'quality' does not exist on type '{ total: number; qOverall: number; qPrev: number; qBins: any[]; pillars: { content: number; search: number; tech: number; engagement: number; authority: number; eeat: number; }; clicks: number; clicksPrev: number; ... 33 more ...; sessionId: string; } | { ...; }'.
+  Property 'quality' does not exist on type '{ total: number; qOverall: number; qPrev: number; qBins: any[]; pillars: { content: number; search: number; tech: number; engagement: number; authority: number; eeat: number; }; clicks: number; clicksPrev: number; ... 33 more ...; sessionId: string; }'.
+components/seo-crawler/right-sidebar/wqa/WqaQuality.tsx(6,35): error TS2305: Module '"../_shared"' has no exported member 'ScoreBreakdown'.
+components/seo-crawler/right-sidebar/wqa/WqaQuality.tsx(6,51): error TS2305: Module '"../_shared"' has no exported member 'BulletGauge'.
+components/seo-crawler/right-sidebar/wqa/WqaQuality.tsx(27,55): error TS2339: Property 'quality' does not exist on type '{ total: number; qOverall: number; qPrev: number; qBins: any[]; pillars: { content: number; search: number; tech: number; engagement: number; authority: number; eeat: number; }; clicks: number; clicksPrev: number; ... 33 more ...; sessionId: string; } | { ...; }'.
+  Property 'quality' does not exist on type '{ total: number; qOverall: number; qPrev: number; qBins: any[]; pillars: { content: number; search: number; tech: number; engagement: number; authority: number; eeat: number; }; clicks: number; clicksPrev: number; ... 33 more ...; sessionId: string; }'.
+components/seo-crawler/right-sidebar/wqa/WqaQuality.tsx(28,51): error TS2339: Property 'quality' does not exist on type '{ total: number; qOverall: number; qPrev: number; qBins: any[]; pillars: { content: number; search: number; tech: number; engagement: number; authority: number; eeat: number; }; clicks: number; clicksPrev: number; ... 33 more ...; sessionId: string; } | { ...; }'.
+  Property 'quality' does not exist on type '{ total: number; qOverall: number; qPrev: number; qBins: any[]; pillars: { content: number; search: number; tech: number; engagement: number; authority: number; eeat: number; }; clicks: number; clicksPrev: number; ... 33 more ...; sessionId: string; }'.
+components/seo-crawler/right-sidebar/wqa/WqaQuality.tsx(29,54): error TS2339: Property 'quality' does not exist on type '{ total: number; qOverall: number; qPrev: number; qBins: any[]; pillars: { content: number; search: number; tech: number; engagement: number; authority: number; eeat: number; }; clicks: number; clicksPrev: number; ... 33 more ...; sessionId: string; } | { ...; }'.
+  Property 'quality' does not exist on type '{ total: number; qOverall: number; qPrev: number; qBins: any[]; pillars: { content: number; search: number; tech: number; engagement: number; authority: number; eeat: number; }; clicks: number; clicksPrev: number; ... 33 more ...; sessionId: string; }'.
+components/seo-crawler/right-sidebar/wqa/WqaQuality.tsx(44,27): error TS2339: Property 'movers' does not exist on type '{ total: number; qOverall: number; qPrev: number; qBins: any[]; pillars: { content: number; search: number; tech: number; engagement: number; authority: number; eeat: number; }; clicks: number; clicksPrev: number; ... 33 more ...; sessionId: string; } | { ...; }'.
+  Property 'movers' does not exist on type '{ total: number; qOverall: number; qPrev: number; qBins: any[]; pillars: { content: number; search: number; tech: number; engagement: number; authority: number; eeat: number; }; clicks: number; clicksPrev: number; ... 33 more ...; sessionId: string; }'.
+components/seo-crawler/right-sidebar/wqa/WqaQuality.tsx(54,27): error TS2339: Property 'movers' does not exist on type '{ total: number; qOverall: number; qPrev: number; qBins: any[]; pillars: { content: number; search: number; tech: number; engagement: number; authority: number; eeat: number; }; clicks: number; clicksPrev: number; ... 33 more ...; sessionId: string; } | { ...; }'.
+  Property 'movers' does not exist on type '{ total: number; qOverall: number; qPrev: number; qBins: any[]; pillars: { content: number; search: number; tech: number; engagement: number; authority: number; eeat: number; }; clicks: number; clicksPrev: number; ... 33 more ...; sessionId: string; }'.
+components/seo-crawler/right-sidebar/wqa/WqaSearch.tsx(11,18): error TS2339: Property 'sessionHistory' does not exist on type 'CrawlerContextType'.
+components/seo-crawler/views/competitor/AddCompetitorModal.tsx(12,67): error TS2339: Property 'ownProfile' does not exist on type 'CrawlerContextType'.
+components/seo-crawler/views/competitor/AddCompetitorModal.tsx(99,42): error TS2345: Argument of type '{ domain: string; source: string; confidence: string; }' is not assignable to parameter of type 'DiscoveredCompetitor'.
+  Type '{ domain: string; source: string; confidence: string; }' is missing the following properties from type 'DiscoveredCompetitor': url, name
+components/seo-crawler/wqa/charts/DepthFunnel.tsx(2,41): error TS2307: Cannot find module '../sidebar/tokens' or its corresponding type declarations.
+components/seo-crawler/wqa/inspector/tabs/QualityTab.tsx(24,24): error TS2322: Type '{ points: any; height: number; }' is not assignable to type 'IntrinsicAttributes & { values: number[]; height?: number; tone?: Tone; }'.
+  Property 'points' does not exist on type 'IntrinsicAttributes & { values: number[]; height?: number; tone?: Tone; }'.
+components/seo-crawler/wqa/inspector/tabs/SearchTab.tsx(160,18): error TS2322: Type '{ points: number[]; width: number; height: number; }' is not assignable to type 'IntrinsicAttributes & { values: number[]; height?: number; tone?: Tone; }'.
+  Property 'points' does not exist on type 'IntrinsicAttributes & { values: number[]; height?: number; tone?: Tone; }'.
+components/seo-crawler/wqa/inspector/tabs/SummaryTab.tsx(126,18): error TS2322: Type '{ points: number[]; width: number; height: number; }' is not assignable to type 'IntrinsicAttributes & { values: number[]; height?: number; tone?: Tone; }'.
+  Property 'points' does not exist on type 'IntrinsicAttributes & { values: number[]; height?: number; tone?: Tone; }'.
+components/seo-crawler/wqa/inspector/tabs/TechTab.tsx(122,86): error TS2322: Type '{ label: string; value: string; status: string; }' is not assignable to type 'IntrinsicAttributes & { label: string; value: ReactNode; sub?: string; color?: string; }'.
+  Property 'status' does not exist on type 'IntrinsicAttributes & { label: string; value: ReactNode; sub?: string; color?: string; }'.
+components/seo-crawler/wqa/inspector/WqaInspectorShell.tsx(61,5): error TS2339: Property 'inspectorCollapsed' does not exist on type 'CrawlerContextType'.
+components/seo-crawler/wqa/inspector/WqaInspectorShell.tsx(61,25): error TS2339: Property 'setInspectorCollapsed' does not exist on type 'CrawlerContextType'.
+components/seo-crawler/wqa/WqaFilterSidebar.tsx(22,7): error TS2353: Object literal may only specify known properties, and 'searchTerm' does not exist in type 'SetStateAction<WqaFilterState>'.
+components/seo-crawler/wqa/WqaFilterSidebar.tsx(49,30): error TS2339: Property 'searchTerm' does not exist on type 'WqaFilterState'.
+components/seo-crawler/wqa/WqaFilterSidebar.tsx(76,33): error TS2339: Property 'priorityLevel' does not exist on type 'WqaFilterState'.
+components/seo-crawler/wqa/WqaFilterSidebar.tsx(81,33): error TS2339: Property 'priorityLevel' does not exist on type 'WqaFilterState'.
+components/seo-crawler/wqa/WqaFilterSidebar.tsx(88,33): error TS2339: Property 'priorityLevel' does not exist on type 'WqaFilterState'.
+components/seo-crawler/wqa/WqaFilterSidebar.tsx(95,33): error TS2339: Property 'priorityLevel' does not exist on type 'WqaFilterState'.
+components/seo-crawler/wqa/WqaFilterSidebar.tsx(112,33): error TS2339: Property 'pageCategory' does not exist on type 'WqaFilterState'.
+components/seo-crawler/wqa/WqaFilterSidebar.tsx(115,39): error TS2339: Property 'categories' does not exist on type 'WqaFacets'.
+components/seo-crawler/wqa/WqaFilterSidebar.tsx(119,35): error TS2339: Property 'pageCategory' does not exist on type 'WqaFilterState'.
+components/seo-crawler/wqa/WqaFilterSidebar.tsx(120,17): error TS2322: Type 'unknown' is not assignable to type 'number'.
+components/seo-crawler/wqa/WqaFilterSidebar.tsx(139,39): error TS2339: Property 'technicalActions' does not exist on type 'WqaFacets'.
+components/seo-crawler/wqa/WqaFilterSidebar.tsx(144,17): error TS2322: Type 'unknown' is not assignable to type 'number'.
+contexts/SeoCrawlerContext.tsx(88,31): error TS2305: Module '"../services/SiteTypeDetector"' has no exported member 'DetectedIndustry'.
+contexts/SeoCrawlerContext.tsx(823,25): error TS2345: Argument of type '"ahrefs"' is not assignable to parameter of type 'IntegrationId'.
+contexts/SeoCrawlerContext.tsx(839,13): error TS2367: This comparison appears to be unintentional because the types 'IntegrationId' and '"ahrefs"' have no overlap.
+contexts/SeoCrawlerContext.tsx(839,38): error TS2345: Argument of type '"ahrefs"' is not assignable to parameter of type 'Capability'.
+contexts/SeoCrawlerContext.tsx(854,5): error TS2322: Type '"full"' is not assignable to type '"competitors" | "local" | "ai" | "fullAudit" | "wqa" | "technical" | "content" | "linksAuthority" | "uxConversion" | "paid" | "commerce" | "socialBrand"'.
+contexts/SeoCrawlerContext.tsx(855,5): error TS2322: Type '"website_quality"' is not assignable to type '"competitors" | "local" | "ai" | "fullAudit" | "wqa" | "technical" | "content" | "linksAuthority" | "uxConversion" | "paid" | "commerce" | "socialBrand"'.
+contexts/SeoCrawlerContext.tsx(859,5): error TS2322: Type '"website_quality"' is not assignable to type '"competitors" | "local" | "ai" | "fullAudit" | "wqa" | "technical" | "content" | "linksAuthority" | "uxConversion" | "paid" | "commerce" | "socialBrand"'.
+contexts/SeoCrawlerContext.tsx(860,5): error TS2322: Type '"website_quality"' is not assignable to type '"competitors" | "local" | "ai" | "fullAudit" | "wqa" | "technical" | "content" | "linksAuthority" | "uxConversion" | "paid" | "commerce" | "socialBrand"'.
+contexts/SeoCrawlerContext.tsx(861,5): error TS2820: Type '"ecommerce"' is not assignable to type '"competitors" | "local" | "ai" | "fullAudit" | "wqa" | "technical" | "content" | "linksAuthority" | "uxConversion" | "paid" | "commerce" | "socialBrand"'. Did you mean '"commerce"'?
+contexts/SeoCrawlerContext.tsx(1276,15): error TS2345: Argument of type '() => () => boolean' is not assignable to parameter of type 'EffectCallback'.
+  Type '() => boolean' is not assignable to type 'void | Destructor'.
+    Type '() => boolean' is not assignable to type 'Destructor'.
+      Type 'boolean' is not assignable to type 'void | { [UNDEFINED_VOID_ONLY]: never; }'.
+contexts/SeoCrawlerContext.tsx(1312,22): error TS2304: Cannot find name 'WqaActionGroup'.
+contexts/SeoCrawlerContext.tsx(1340,21): error TS2345: Argument of type '(prev: WebsiteQualityState) => { isActive: true; detectedIndustry: "ecommerce" | "local" | "saas" | "blog" | "news" | "finance" | "education" | "healthcare" | ... 7 more ... | "general"; ... 16 more ...; languageOverride: string; }' is not assignable to parameter of type 'SetStateAction<WebsiteQualityState>'.
+  Type '(prev: WebsiteQualityState) => { isActive: true; detectedIndustry: "ecommerce" | "local" | "saas" | "blog" | "news" | "finance" | "education" | "healthcare" | ... 7 more ... | "general"; ... 16 more ...; languageOverride: string; }' is not assignable to type '(prevState: WebsiteQualityState) => WebsiteQualityState'.
+    Call signature return types '{ isActive: true; detectedIndustry: "ecommerce" | "local" | "saas" | "blog" | "news" | "finance" | "education" | "healthcare" | "jobBoard" | "realEstate" | "restaurant" | "portfolio" | "media" | "government" | "nonprofit" | "general"; ... 16 more ...; languageOverride: string; }' and 'WebsiteQualityState' are incompatible.
+      The types of 'availableColumns' are incompatible between these types.
+        Type '{ key: string; label: string; width?: string; }[]' is not assignable to type 'string[]'.
+          Type '{ key: string; label: string; width?: string; }' is not assignable to type 'string'.
+contexts/SeoCrawlerContext.tsx(1381,21): error TS2345: Argument of type '(prev: WebsiteQualityState) => { industryOverride: any; siteStats: WqaSiteStats; actionGroups: WqaActionGroup[]; siteScore: number; ... 14 more ...; scoreDelta: number; }' is not assignable to parameter of type 'SetStateAction<WebsiteQualityState>'.
+  Type '(prev: WebsiteQualityState) => { industryOverride: any; siteStats: WqaSiteStats; actionGroups: WqaActionGroup[]; siteScore: number; ... 14 more ...; scoreDelta: number; }' is not assignable to type '(prevState: WebsiteQualityState) => WebsiteQualityState'.
+    Call signature return types '{ industryOverride: any; siteStats: WqaSiteStats; actionGroups: WqaActionGroup[]; siteScore: number; siteGrade: string; availableColumns: { key: string; label: string; width?: string; }[]; ... 12 more ...; scoreDelta: number; }' and 'WebsiteQualityState' are incompatible.
+      The types of 'availableColumns' are incompatible between these types.
+        Type '{ key: string; label: string; width?: string; }[]' is not assignable to type 'string[]'.
+          Type '{ key: string; label: string; width?: string; }' is not assignable to type 'string'.
+contexts/SeoCrawlerContext.tsx(1480,23): error TS2345: Argument of type '(prev: CrawlerConfig) => { industry: IndustryType; startUrls: string[]; mode: "list" | "single" | "sitemap" | "spider"; limit: string; maxDepth: string; threads: number; ... 84 more ...; _localStorageLimit?: number; }' is not assignable to parameter of type 'SetStateAction<CrawlerConfig>'.
+  Type '(prev: CrawlerConfig) => { industry: IndustryType; startUrls: string[]; mode: "list" | "single" | "sitemap" | "spider"; limit: string; maxDepth: string; threads: number; ... 84 more ...; _localStorageLimit?: number; }' is not assignable to type '(prevState: CrawlerConfig) => CrawlerConfig'.
+    Call signature return types '{ industry: IndustryType; startUrls: string[]; mode: "list" | "single" | "sitemap" | "spider"; limit: string; maxDepth: string; threads: number; crawlSpeed: "normal" | "slow" | "fast" | "turbo"; ... 83 more ...; _localStorageLimit?: number; }' and 'CrawlerConfig' are incompatible.
+      The types of 'industry' are incompatible between these types.
+        Type 'IndustryType' is not assignable to type 'IndustryFilter'.
+          Type '"elearning"' is not assignable to type 'IndustryFilter'.
+contexts/SeoCrawlerContext.tsx(1607,49): error TS2339: Property 'industry' does not exist on type 'SiteTypeResult'.
+contexts/SeoCrawlerContext.tsx(1615,40): error TS2339: Property 'industry' does not exist on type 'SiteTypeResult'.
+contexts/SeoCrawlerContext.tsx(1616,42): error TS2551: Property 'confidence' does not exist on type 'SiteTypeResult'. Did you mean 'cmsConfidence'?
+contexts/SeoCrawlerContext.tsx(1617,41): error TS2339: Property 'secondaryIndustry' does not exist on type 'SiteTypeResult'.
+contexts/SeoCrawlerContext.tsx(1618,43): error TS2339: Property 'secondaryConfidence' does not exist on type 'SiteTypeResult'.
+contexts/SeoCrawlerContext.tsx(1619,42): error TS2551: Property 'detectedIndustries' does not exist on type 'SiteTypeResult'. Did you mean 'detectedIndustry'?
+contexts/SeoCrawlerContext.tsx(1629,53): error TS2339: Property 'industry' does not exist on type 'SiteTypeResult'.
+contexts/SeoCrawlerContext.tsx(1630,62): error TS2551: Property 'confidence' does not exist on type 'SiteTypeResult'. Did you mean 'cmsConfidence'?
+contexts/SeoCrawlerContext.tsx(1636,66): error TS2551: Property 'confidence' does not exist on type 'SiteTypeResult'. Did you mean 'cmsConfidence'?
+contexts/SeoCrawlerContext.tsx(1892,17): error TS1117: An object literal cannot have multiple properties with the same name.
+contexts/SeoCrawlerContext.tsx(2525,9): error TS2552: Cannot find name 'setActiveAuditTab'. Did you mean 'setActiveTab'?
+contexts/SeoCrawlerContext.tsx(3176,15): error TS2739: Type '{ id: string; name: string; modes: ("competitors" | "local" | "ai" | "fullAudit" | "wqa" | "technical" | "content" | "linksAuthority" | "uxConversion" | "paid" | "commerce" | "socialBrand")[]; ... 4 more ...; createdAt: number; }' is missing the following properties from type 'CustomAuditPreset': enabledMetricKeys, disabledMetricKeys
+contexts/SeoCrawlerContext.tsx(3221,13): error TS2322: Type '"competitors" | "local" | "ai" | "fullAudit" | "wqa" | "technical" | "content" | "linksAuthority" | "uxConversion" | "paid" | "commerce" | "socialBrand" | "spider"' is not assignable to type '"competitors" | "local" | "ai" | "fullAudit" | "wqa" | "technical" | "content" | "linksAuthority" | "uxConversion" | "paid" | "commerce" | "socialBrand"'.
+  Type '"spider"' is not assignable to type '"competitors" | "local" | "ai" | "fullAudit" | "wqa" | "technical" | "content" | "linksAuthority" | "uxConversion" | "paid" | "commerce" | "socialBrand"'.
+contexts/SeoCrawlerContext.tsx(3998,40): error TS2339: Property 'metadata' does not exist on type 'CrawlSession'.
+contexts/SeoCrawlerContext.tsx(4423,36): error TS2339: Property 'bingSiteUrl' does not exist on type 'CrawlerConfig'.
+contexts/SeoCrawlerContext.tsx(4728,38): error TS2341: Property 'router' is private and only accessible within class 'AIAnalysisEngine'.
+contexts/SeoCrawlerContext.tsx(4848,53): error TS2341: Property 'router' is private and only accessible within class 'AIAnalysisEngine'.
+contexts/SeoCrawlerContext.tsx(4848,69): error TS2345: Argument of type '{ prompt: string; format: string; maxTokens?: number; }' is not assignable to parameter of type 'AIRequest'.
+  Property 'taskType' is missing in type '{ prompt: string; format: string; maxTokens?: number; }' but required in type 'AIRequest'.
+contexts/SeoCrawlerContext.tsx(4973,30): error TS2341: Property 'router' is private and only accessible within class 'AIAnalysisEngine'.
+contexts/SeoCrawlerContext.tsx(4973,46): error TS2345: Argument of type '{ prompt: string; format: string; maxTokens?: number; }' is not assignable to parameter of type 'AIRequest'.
+  Property 'taskType' is missing in type '{ prompt: string; format: string; maxTokens?: number; }' but required in type 'AIRequest'.
+contexts/SeoCrawlerContext.tsx(5099,9): error TS1117: An object literal cannot have multiple properties with the same name.
+contexts/SeoCrawlerContext.tsx(5126,28): error TS2345: Argument of type 'string' is not assignable to parameter of type 'SetStateAction<SettingsTabId>'.
+contexts/SeoCrawlerContext.tsx(5195,37): error TS2322: Type '{ crawlingMode: "list" | "sitemap" | "spider"; setCrawlingMode: React.Dispatch<React.SetStateAction<"list" | "sitemap" | "spider">>; urlInput: string; setUrlInput: React.Dispatch<...>; ... 236 more ...; openSettings: (section: string) => void; }' is not assignable to type 'CrawlerContextType'.
+  Types of property 'activeViewType' are incompatible.
+    Type 'string' is not assignable to type '"grid" | "competitor_matrix" | "ai_view" | "geo_view" | "opportunity_view" | "visual_heat_map"'.
+packages/actions/src/legacy-dispatch.ts(180,70): error TS2339: Property 'ctrGap' does not exist on type 'ActionFactors'.
+packages/actions/src/legacy-dispatch.ts(258,9): error TS2339: Property 'keywordHealth' does not exist on type 'ActionFactors'.
+packages/actions/src/legacy-dispatch.ts(265,25): error TS2339: Property 'readability' does not exist on type 'ActionFactors'.
+packages/ai/src/__tests__/fingerprint-prompts.spec.ts(1,49): error TS2307: Cannot find module 'vitest' or its corresponding type declarations.
+packages/fingerprint/src/detectors/industry/ai.ts(2,27): error TS2307: Cannot find module '@headlight/ai' or its corresponding type declarations.
+packages/fingerprint/src/detectors/industry/ai.ts(3,45): error TS2307: Cannot find module '@headlight/ai/prompts' or its corresponding type declarations.
+packages/fingerprint/src/detectors/industry/scrape.ts(3,32): error TS2307: Cannot find module '../../../../services/SiteTypeDetector' or its corresponding type declarations.
+packages/fingerprint/src/detectors/LanguageDetector.ts(2,10): error TS2305: Module '"@headlight/types"' has no exported member 'normalizeLanguage'.
+packages/fingerprint/src/detectors/LanguageDetector.ts(2,34): error TS2305: Module '"@headlight/types"' has no exported member 'LanguageCode'.
+packages/fingerprint/src/detectors/LanguageDetector.ts(30,11): error TS2339: Property 'default' does not exist on type 'typeof import("/Users/azharsharif/Documents/Work/Development/Headlight/headlight/node_modules/franc-min/index")'.
+packages/fingerprint/src/FingerprintProbe.ts(12,15): error TS2305: Module '"@headlight/types"' has no exported member 'LanguageCode'.
+packages/fingerprint/src/FingerprintProbe.ts(19,75): error TS2694: Namespace '"/Users/azharsharif/Documents/Work/Development/Headlight/headlight/packages/types/src/index"' has no exported member 'LanguageCode'.
+packages/fingerprint/src/FingerprintProbe.ts(20,64): error TS2694: Namespace '"/Users/azharsharif/Documents/Work/Development/Headlight/headlight/packages/types/src/index"' has no exported member 'LanguageCode'.
+packages/fingerprint/src/FingerprintProbe.ts(41,3): error TS2322: Type 'FpValue<string>' is not assignable to type 'FpValue<"ecommerce" | "local" | "saas" | "blog" | "news" | "finance" | "education" | "healthcare" | "jobBoard" | "realEstate" | "restaurant" | "portfolio" | "media" | "government" | "nonprofit" | "general">'.
+  Type 'string' is not assignable to type '"ecommerce" | "local" | "saas" | "blog" | "news" | "finance" | "education" | "healthcare" | "jobBoard" | "realEstate" | "restaurant" | "portfolio" | "media" | "government" | "nonprofit" | "general"'.
+packages/fingerprint/src/FingerprintProbe.ts(42,3): error TS2322: Type 'FpValue<string>' is not assignable to type 'FpValue<"medium" | "wordpress" | "woocommerce" | "shopify" | "wix" | "squarespace" | "hubspot-cms" | "ghost" | "substack" | "magento" | "webflow" | "framer" | "drupal" | "joomla" | ... 14 more ... | "custom">'.
+  Type 'string' is not assignable to type '"medium" | "wordpress" | "woocommerce" | "shopify" | "wix" | "squarespace" | "hubspot-cms" | "ghost" | "substack" | "magento" | "webflow" | "framer" | "drupal" | "joomla" | "bigcommerce" | ... 13 more ... | "custom"'.
+packages/fingerprint/src/scoring/readability.ts(2,10): error TS2305: Module '"@headlight/types"' has no exported member 'LANGUAGES'.
+packages/fingerprint/src/scoring/readability.ts(2,26): error TS2305: Module '"@headlight/types"' has no exported member 'LanguageCode'.
+packages/metrics/src/__tests__/registry.spec.ts(1,49): error TS2307: Cannot find module 'vitest' or its corresponding type declarations.
+packages/metrics/src/__tests__/registry.spec.ts(3,10): error TS2305: Module '"../catalog"' has no exported member 'initCatalog'.
+packages/metrics/src/defs/background/index.ts(1,32): error TS2307: Cannot find module '../../../types/src' or its corresponding type declarations.
+packages/metrics/src/defs/entity/index.ts(1,32): error TS2307: Cannot find module '../../../types/src' or its corresponding type declarations.
+packages/metrics/src/defs/keyword/index.ts(1,32): error TS2307: Cannot find module '../../../types/src' or its corresponding type declarations.
+packages/metrics/src/defs/link/index.ts(1,32): error TS2307: Cannot find module '../../../types/src' or its corresponding type declarations.
+packages/metrics/src/defs/page/index.ts(1,32): error TS2307: Cannot find module '../../../types/src' or its corresponding type declarations.
+packages/metrics/src/defs/site/index.ts(1,32): error TS2307: Cannot find module '../../../types/src' or its corresponding type declarations.
+packages/metrics/src/defs/universal/index.ts(1,32): error TS2307: Cannot find module '../../../types/src' or its corresponding type declarations.
+packages/metrics/src/visibility.ts(2,50): error TS2305: Module '"@headlight/types"' has no exported member 'LanguageCode'.
+packages/modes/src/definitions/competitors.ts(8,3): error TS2322: Type '({ pages }: { pages: readonly unknown[]; mode: Mode; }) => ({ id: string; label: string; meta: string; } | { id: string; label: string; meta: string; icon: string; action: "add"; } | { id: string; label: string; icon: string; action: "discover"; meta?: undefined; })[]' is not assignable to type '(ctx: { pages: readonly unknown[]; mode: Mode; }) => readonly SidebarListItem[]'.
+  Type '({ id: string; label: string; meta: string; } | { id: string; label: string; meta: string; icon: string; action: "add"; } | { id: string; label: string; icon: string; action: "discover"; meta?: undefined; })[]' is not assignable to type 'readonly SidebarListItem[]'.
+    Type '{ id: string; label: string; meta: string; } | { id: string; label: string; meta: string; icon: string; action: "add"; } | { id: string; label: string; icon: string; action: "discover"; meta?: undefined; }' is not assignable to type 'SidebarListItem'.
+      Type '{ id: string; label: string; icon: string; action: "discover"; meta?: undefined; }' is not assignable to type 'SidebarListItem'.
+        Types of property 'action' are incompatible.
+          Type '"discover"' is not assignable to type '"compare" | "add" | "newCrawl"'.
+packages/modes/src/definitions/competitors.ts(24,3): error TS2322: Type '({ pages }: { pages: readonly unknown[]; mode: Mode; }) => ({ id: string; label: string; meta: string; } | { id: string; label: string; icon: string; action: "new"; })[]' is not assignable to type '(ctx: { pages: readonly unknown[]; mode: Mode; }) => readonly SidebarListItem[]'.
+  Type '({ id: string; label: string; meta: string; } | { id: string; label: string; icon: string; action: "new"; })[]' is not assignable to type 'readonly SidebarListItem[]'.
+    Type '{ id: string; label: string; meta: string; } | { id: string; label: string; icon: string; action: "new"; }' is not assignable to type 'SidebarListItem'.
+      Type '{ id: string; label: string; icon: string; action: "new"; }' is not assignable to type 'SidebarListItem'.
+        Types of property 'action' are incompatible.
+          Type '"new"' is not assignable to type '"compare" | "add" | "newCrawl"'.
+packages/modes/src/definitions/local.ts(55,64): error TS2322: Type '"connect"' is not assignable to type '"compare" | "add" | "newCrawl"'.
+packages/modes/src/sidebar-types.ts(1,27): error TS2307: Cannot find module './modes' or its corresponding type declarations.
+packages/types/src/fingerprint.ts(3,15): error TS2305: Module '"./sources"' has no exported member 'FpValue'.
+services/adapters/WqaColumnAdapter.ts(2,25): error TS2305: Module '"@headlight/types"' has no exported member 'LanguageCode'.
+services/ai/AIRouter.ts(19,7): error TS2741: Property 'server' is missing in type '{ local: { rpm: number; rpd: number; tpd: number; }; cloudflare: { rpm: number; rpd: number; tpd: number; }; github: { rpm: number; rpd: number; tpd: number; }; gemini: { rpm: number; rpd: number; tpd: number; }; groq: { ...; }; huggingface: { ...; }; openai: { ...; }; anthropic: { ...; }; }' but required in type 'Record<AIProvider, { rpm: number; rpd: number; tpd: number; }>'.
+services/ai/AIRouter.ts(153,17): error TS2322: Type 'string | AIResponse' is not assignable to type 'string'.
+  Type 'AIResponse' is not assignable to type 'string'.
+services/AuditModeConfig.ts(26,5): error TS2353: Object literal may only specify known properties, and 'full' does not exist in type 'Record<"competitors" | "local" | "ai" | "fullAudit" | "wqa" | "technical" | "content" | "linksAuthority" | "uxConversion" | "paid" | "commerce" | "socialBrand", AuditModeConfig>'.
+services/AuditModeConfig.ts(210,3): error TS2322: Type '{ key: string; label: string; width?: string; }[]' is not assignable to type 'string[]'.
+  Type '{ key: string; label: string; width?: string; }' is not assignable to type 'string'.
+services/AuditModeConfig.ts(210,50): error TS2554: Expected 1 arguments, but got 3.
+services/AuditModeConfig.ts(214,64): error TS2554: Expected 1 arguments, but got 3.
+services/AuditModeConfig.ts(230,55): error TS2551: Property 'real_estate' does not exist on type 'Record<"ecommerce" | "local" | "saas" | "blog" | "news" | "finance" | "education" | "healthcare" | "jobBoard" | "realEstate" | "restaurant" | "portfolio" | "media" | "government" | "nonprofit" | "general" | "all", string>'. Did you mean 'realEstate'?
+services/AutoAssignmentService.ts(100,13): error TS2322: Type '"project_owner"' is not assignable to type 'AssignmentStrategy'.
+services/AutoAssignmentService.ts(110,13): error TS2322: Type '"project_owner"' is not assignable to type 'AssignmentStrategy'.
+services/AutoAssignmentService.ts(120,13): error TS2322: Type '"project_owner"' is not assignable to type 'AssignmentStrategy'.
+services/CheckRegistry.ts(57,128): error TS2820: Type '"ecommerce"' is not assignable to type '"competitors" | "local" | "ai" | "fullAudit" | "wqa" | "technical" | "content" | "linksAuthority" | "uxConversion" | "paid" | "commerce" | "socialBrand"'. Did you mean '"commerce"'?
+services/CheckRegistry.ts(67,143): error TS2820: Type '"ecommerce"' is not assignable to type '"competitors" | "local" | "ai" | "fullAudit" | "wqa" | "technical" | "content" | "linksAuthority" | "uxConversion" | "paid" | "commerce" | "socialBrand"'. Did you mean '"commerce"'?
+services/CheckRegistry.ts(83,135): error TS2820: Type '"ecommerce"' is not assignable to type '"competitors" | "local" | "ai" | "fullAudit" | "wqa" | "technical" | "content" | "linksAuthority" | "uxConversion" | "paid" | "commerce" | "socialBrand"'. Did you mean '"commerce"'?
+services/CheckRegistry.ts(169,127): error TS2820: Type '"ecommerce"' is not assignable to type '"competitors" | "local" | "ai" | "fullAudit" | "wqa" | "technical" | "content" | "linksAuthority" | "uxConversion" | "paid" | "commerce" | "socialBrand"'. Did you mean '"commerce"'?
+services/CheckRegistry.ts(190,133): error TS2820: Type '"ecommerce"' is not assignable to type '"competitors" | "local" | "ai" | "fullAudit" | "wqa" | "technical" | "content" | "linksAuthority" | "uxConversion" | "paid" | "commerce" | "socialBrand"'. Did you mean '"commerce"'?
+services/CheckRegistry.ts(227,127): error TS2820: Type '"ecommerce"' is not assignable to type '"competitors" | "local" | "ai" | "fullAudit" | "wqa" | "technical" | "content" | "linksAuthority" | "uxConversion" | "paid" | "commerce" | "socialBrand"'. Did you mean '"commerce"'?
+services/CheckRegistry.ts(233,124): error TS2820: Type '"ecommerce"' is not assignable to type '"competitors" | "local" | "ai" | "fullAudit" | "wqa" | "technical" | "content" | "linksAuthority" | "uxConversion" | "paid" | "commerce" | "socialBrand"'. Did you mean '"commerce"'?
+services/CheckRegistry.ts(234,134): error TS2820: Type '"ecommerce"' is not assignable to type '"competitors" | "local" | "ai" | "fullAudit" | "wqa" | "technical" | "content" | "linksAuthority" | "uxConversion" | "paid" | "commerce" | "socialBrand"'. Did you mean '"commerce"'?
+services/CheckRegistry.ts(252,122): error TS2820: Type '"ecommerce"' is not assignable to type '"competitors" | "local" | "ai" | "fullAudit" | "wqa" | "technical" | "content" | "linksAuthority" | "uxConversion" | "paid" | "commerce" | "socialBrand"'. Did you mean '"commerce"'?
+services/CheckRegistry.ts(254,121): error TS2820: Type '"ecommerce"' is not assignable to type '"competitors" | "local" | "ai" | "fullAudit" | "wqa" | "technical" | "content" | "linksAuthority" | "uxConversion" | "paid" | "commerce" | "socialBrand"'. Did you mean '"commerce"'?
+services/CheckRegistry.ts(262,119): error TS2820: Type '"ecommerce"' is not assignable to type '"competitors" | "local" | "ai" | "fullAudit" | "wqa" | "technical" | "content" | "linksAuthority" | "uxConversion" | "paid" | "commerce" | "socialBrand"'. Did you mean '"commerce"'?
+services/CheckRegistry.ts(263,117): error TS2820: Type '"ecommerce"' is not assignable to type '"competitors" | "local" | "ai" | "fullAudit" | "wqa" | "technical" | "content" | "linksAuthority" | "uxConversion" | "paid" | "commerce" | "socialBrand"'. Did you mean '"commerce"'?
+services/CheckRegistry.ts(264,108): error TS2820: Type '"ecommerce"' is not assignable to type '"competitors" | "local" | "ai" | "fullAudit" | "wqa" | "technical" | "content" | "linksAuthority" | "uxConversion" | "paid" | "commerce" | "socialBrand"'. Did you mean '"commerce"'?
+services/CheckRegistry.ts(265,123): error TS2820: Type '"ecommerce"' is not assignable to type '"competitors" | "local" | "ai" | "fullAudit" | "wqa" | "technical" | "content" | "linksAuthority" | "uxConversion" | "paid" | "commerce" | "socialBrand"'. Did you mean '"commerce"'?
+services/CrawlerDataUtils.ts(382,105): error TS2339: Property 'industry' does not exist on type 'SiteTypeResult'.
+services/CrawlerDataUtils.ts(442,36): error TS2345: Argument of type 'Set<unknown>' is not assignable to parameter of type 'Set<string>'.
+  Type 'unknown' is not assignable to type 'string'.
+services/CrawlPersistenceService.ts(600,50): error TS2339: Property 'analyze' does not exist on type 'AIAnalysisEngine'.
+services/CrawlPersistenceService.ts(644,58): error TS2339: Property 'analyze' does not exist on type 'AIAnalysisEngine'.
+services/ExportService.ts(482,7): error TS2339: Property 'metrics' does not exist on type 'CompetitorProfile'.
+services/ExportService.ts(483,7): error TS2339: Property 'metrics' does not exist on type 'CompetitorProfile'.
+services/ExportService.ts(484,7): error TS2339: Property 'metrics' does not exist on type 'CompetitorProfile'.
+services/ExportService.ts(485,7): error TS2339: Property 'metrics' does not exist on type 'CompetitorProfile'.
+services/ExportService.ts(486,8): error TS2339: Property 'metrics' does not exist on type 'CompetitorProfile'.
+services/ExportService.ts(518,48): error TS2339: Property 'marketPositioning' does not exist on type 'CompetitiveBrief'.
+services/ExportService.ts(531,19): error TS2339: Property 'threats' does not exist on type 'CompetitiveBrief'.
+services/ExportService.ts(549,11): error TS2551: Property 'recommendations' does not exist on type 'CompetitiveBrief'. Did you mean 'recommendedActions'?
+services/FingerprintHandle.ts(191,52): error TS2339: Property 'industry' does not exist on type 'Promise<SiteTypeResult>'.
+services/FingerprintHandle.ts(192,29): error TS2339: Property 'detectedCms' does not exist on type 'Promise<SiteTypeResult>'.
+services/FingerprintHandle.ts(192,65): error TS2339: Property 'detectedCms' does not exist on type 'Promise<SiteTypeResult>'.
+services/FingerprintHandle.ts(198,44): error TS2339: Property 'confidence' does not exist on type 'Promise<SiteTypeResult>'.
+services/FingerprintHandle.ts(199,70): error TS2339: Property 'confidence' does not exist on type 'Promise<SiteTypeResult>'.
+services/FingerprintHandle.ts(206,31): error TS2339: Property 'detectedLanguage' does not exist on type 'Promise<SiteTypeResult>'.
+services/FingerprintHandle.ts(206,60): error TS2339: Property 'detectedLanguage' does not exist on type 'Promise<SiteTypeResult>'.
+services/FingerprintHandle.ts(207,23): error TS2339: Property 'detectedLanguage' does not exist on type 'Promise<SiteTypeResult>'.
+services/FingerprintHandle.ts(208,28): error TS2339: Property 'detectedLanguages' does not exist on type 'Promise<SiteTypeResult>'.
+services/FingerprintHandle.ts(209,36): error TS2339: Property 'detectedLanguages' does not exist on type 'Promise<SiteTypeResult>'.
+services/FingerprintHandle.ts(290,22): error TS2322: Type '"fresh"' is not assignable to type 'SourceTag'.
+services/ForecastService.ts(87,33): error TS2345: Argument of type 'WqaActionGroup[]' is not assignable to parameter of type 'AssignedAction[]'.
+  Type 'WqaActionGroup' is missing the following properties from type 'AssignedAction': id, priority, estimatedImpact
+services/PostCrawlEnrichment.ts(353,80): error TS2552: Cannot find name 'session'. Did you mean 'sessionId'?
+services/SiteTypeDetector.ts(1,33): error TS2305: Module '"@headlight/types"' has no exported member 'LanguageCode'.
+services/UnifiedIssueTaxonomy.ts(363,14): error TS2322: Type '{ category: string; issues: { auditModes: ("competitors" | "local" | "ai" | "fullAudit" | "wqa" | "technical" | "content" | "linksAuthority" | "uxConversion" | "paid" | "commerce" | "socialBrand")[] | "full"[]; ... 7 more ...; condition: (p: any) => any; }[]; }[]' is not assignable to type 'UnifiedIssueGroup[]'.
+  Type '{ category: string; issues: { auditModes: ("competitors" | "local" | "ai" | "fullAudit" | "wqa" | "technical" | "content" | "linksAuthority" | "uxConversion" | "paid" | "commerce" | "socialBrand")[] | "full"[]; ... 7 more ...; condition: (p: any) => any; }[]; }' is not assignable to type 'UnifiedIssueGroup'.
+    Types of property 'issues' are incompatible.
+      Type '{ auditModes: ("competitors" | "local" | "ai" | "fullAudit" | "wqa" | "technical" | "content" | "linksAuthority" | "uxConversion" | "paid" | "commerce" | "socialBrand")[] | "full"[]; ... 7 more ...; condition: (p: any) => any; }[]' is not assignable to type 'UnifiedIssue[]'.
+        Type '{ auditModes: ("competitors" | "local" | "ai" | "fullAudit" | "wqa" | "technical" | "content" | "linksAuthority" | "uxConversion" | "paid" | "commerce" | "socialBrand")[] | "full"[]; ... 7 more ...; condition: (p: any) => any; }' is not assignable to type 'UnifiedIssue'.
+          Types of property 'type' are incompatible.
+            Type 'string' is not assignable to type '"warning" | "error" | "notice"'.
+services/UnifiedIssueTaxonomy.ts(385,39): error TS2345: Argument of type '"full"' is not assignable to parameter of type '"competitors" | "local" | "ai" | "fullAudit" | "wqa" | "technical" | "content" | "linksAuthority" | "uxConversion" | "paid" | "commerce" | "socialBrand"'.
+services/WebsiteQualityModeTypes.ts(1,15): error TS2305: Module '"./SiteTypeDetector"' has no exported member 'DetectedIndustry'.
+workers/sidebar-facets.worker.ts(7,53): error TS2353: Object literal may only specify known properties, and 'lsSections' does not exist in type 'FacetComputeContext'.

@@ -1,44 +1,46 @@
 import React from 'react'
+import { useSeoCrawler } from '@/contexts/SeoCrawlerContext'
 import { useWqaInsights } from '../_hooks/useWqaInsights'
-import { RsCard, RsSparkline, RsRow, RsList, RsEmpty, fmtNum } from '../parts'
+import {
+  Card, Section, Sparkline, TopList, EmptyState,
+} from '../_shared'
 
 export function WqaHistory() {
-    const w = useWqaInsights()
-    const sessions = (w.history || []).slice(-12).reverse()
+  const { pages, crawlHistory } = useSeoCrawler()
+  const s = useWqaInsights()
 
-    if (!w.history || w.history.length === 0) {
-        return <RsEmpty title="No history yet" hint="Sessions appear here after each crawl." />
-    }
+  if (!pages?.length) return <EmptyState title="No crawl data yet" />
 
-    return (
-        <div className="space-y-3">
-            <RsCard title="Q score trend">
-                <div className="flex items-center justify-between">
-                    <RsSparkline values={w.trend.length ? w.trend : [w.qOverall]} width={180} height={36} />
-                    <span className="text-[18px] font-bold tabular-nums text-white">{fmtNum(w.qOverall, { maximumFractionDigits: 1 })}</span>
-                </div>
-            </RsCard>
+  return (
+    <div className="space-y-3 p-3">
+      <Card>
+        <Section title="Quality Trend" dense>
+          <div className="h-[40px] px-1">
+            <Sparkline values={s.trend} height={40} tone="good" />
+          </div>
+        </Section>
+      </Card>
 
-            <RsCard title="Recent sessions">
-                <RsList
-                    items={sessions}
-                    empty="No sessions."
-                    render={(s: any) => (
-                        <RsRow
-                            label={new Date(s.completedAt || s.startedAt || Date.now()).toLocaleDateString()}
-                            value={`${fmtNum(s.summary?.pageCount ?? s.pageCount ?? 0)} pages`}
-                        />
-                    )}
-                />
-            </RsCard>
+      <Card>
+        <Section title="Search History" dense>
+          <div className="h-[40px] px-1">
+            <Sparkline values={[1200, 1250, 1180, 1300, 1400, 1350, 1450]} height={40} tone="info" />
+          </div>
+        </Section>
+      </Card>
 
-            <RsCard title="Action log" subtitle="Approved & dismissed actions">
-                <RsList
-                    items={[]}
-                    empty="No actions logged yet. Approve from the Actions tab to populate."
-                    render={() => null}
-                />
-            </RsCard>
-        </div>
-    )
+      <Card>
+        <Section title="Recent Scans" dense>
+          <TopList 
+            items={(crawlHistory || []).slice(0, 5).map((run: any) => ({
+              id: run.id,
+              primary: new Date(run.completedAt || run.startedAt).toLocaleDateString(),
+              tail: run.qScore || run.score || '—',
+              onClick: () => {}
+            }))}
+          />
+        </Section>
+      </Card>
+    </div>
+  )
 }

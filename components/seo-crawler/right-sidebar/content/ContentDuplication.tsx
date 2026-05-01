@@ -1,47 +1,54 @@
 import React from 'react'
+import { useSeoCrawler } from '@/contexts/SeoCrawlerContext'
 import { useContentInsights } from '../_hooks/useContentInsights'
-import { Section, Card, KpiTile, EmptyState, fmtNum, fmtPct, safePathname } from '../_shared'
-import { RsRow } from '../parts/RsRow'
-import { RowItem } from '../_shared/RowItem'
-import { useSeoCrawler } from '../../../../contexts/SeoCrawlerContext'
+import {
+  Card, Section, KpiTile, KpiRow, BarStack, 
+  TopList, EmptyState,
+} from '../_shared'
+import { useDrill } from '../_shared/drill'
 
 export function ContentDuplication() {
-    const c = useContentInsights()
-    const { setActivePage } = useSeoCrawler() as any
-    if (c.total === 0) return <EmptyState title="No duplication signals" hint="Run a crawl to detect duplicates." />
+  const { pages } = useSeoCrawler()
+  const s = useContentInsights()
+  const drill = useDrill()
 
-    return (
-        <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-2">
-                <KpiTile label="Duplicate sets" value={fmtNum(c.topDupeGroups.length)} />
-                <KpiTile label="Total dupes"    value={fmtNum(c.dupes)}      tone={c.dupes > 0 ? 'warn' : 'good'} />
-                <KpiTile label="Exact"          value={fmtNum(c.exactDupes)} tone={c.exactDupes > 0 ? 'bad' : 'good'} />
-                <KpiTile label="Near-dupes"     value={fmtNum(c.nearDupes)}  tone={c.nearDupes > 0 ? 'warn' : 'good'} />
-            </div>
+  if (!pages?.length) return <EmptyState title="No crawl data yet" />
 
-            <Section title="Signals">
-                <Card padded>
-                    <RsRow label="Cannibalising pairs" value={fmtNum(c.cannibal)} tone={c.cannibal > 0 ? 'warn' : 'good'} />
-                    <RsRow label="Cross-language dupes" value={fmtNum(c.crossLangDupes)} />
-                    <RsRow label="Boilerplate ratio" value={fmtPct(c.boilerplateRate, 1, 0)} tone={c.boilerplateRate > 30 ? 'warn' : 'good'} />
-                </Card>
-            </Section>
+  return (
+    <div className="space-y-3 p-3">
+      <Card>
+        <Section title="Duplicate KPI" dense>
+          <KpiRow>
+            <KpiTile label="Exact" value={s.dup.exact} tone="bad" />
+            <KpiTile label="Near"  value={s.dup.near} tone="warn" />
+            <KpiTile label="Cannibal" value={s.dup.cannibal} tone="bad" />
+          </KpiRow>
+        </Section>
+      </Card>
 
-            {c.topDupeGroups.length > 0 && (
-                <Section title="Top duplicate groups">
-                    <Card padded>
-                        {c.topDupeGroups.map(g => (
-                            <RowItem
-                                key={g.id}
-                                title={`Group ${g.id.slice(0, 8)}`}
-                                meta={g.sample ? safePathname(g.sample) : undefined}
-                                badge={<span className="text-[10px] font-mono tabular-nums text-[#f59e0b]">{g.count}</span>}
-                                onClick={() => g.sample && setActivePage?.(g.sample)}
-                            />
-                        ))}
-                    </Card>
-                </Section>
-            )}
-        </div>
-    )
+      <Card>
+        <Section title="Type Breakdown" dense>
+          <BarStack segments={[
+            { value: s.dup.exact,    tone: 'bad',  label: 'Exact' },
+            { value: s.dup.near,     tone: 'warn', label: 'Near' },
+            { value: s.dup.cannibal, tone: 'bad',  label: 'Cannibal' },
+          ]} />
+        </Section>
+      </Card>
+
+      <Card>
+        <Section title="Top Exact Duplicates" dense>
+          <TopList items={pages
+            .filter(p => p.duplicate === true)
+            .slice(0, 5)
+            .map(p => ({
+              id: p.url,
+              primary: p.url,
+              tail: 'Exact',
+              onClick: () => drill.toPage(p)
+            }))} />
+        </Section>
+      </Card>
+    </div>
+  )
 }

@@ -102,7 +102,7 @@ export default function StatusBar() {
                     className="flex items-center gap-1.5 hover:text-[#bbb] transition-colors"
                 >
                     <Terminal size={12} className="text-[#555]" />
-                    Logs
+                    Activity
                 </button>
 
                 <span className="text-[#333]">|</span>

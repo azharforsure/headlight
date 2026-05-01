@@ -1,5 +1,5 @@
 import React from 'react'
-import { useSeoCrawler } from '../../../contexts/SeoCrawlerContext'
+import { useSeoCrawler } from '@/contexts/SeoCrawlerContext'
 import { getRsTabsFor } from './registry'
 import { EmptyState } from './_shared'
 
@@ -20,7 +20,7 @@ export function RsRouter() {
     const tab = reg.tabs.find(t => t.id === activeId) ?? reg.tabs[0]
     const Component = tab.Component
     return (
-        <div className="p-3 space-y-3">
+        <div>
             <Component />
         </div>
     )

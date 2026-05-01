@@ -1,7 +1,6 @@
 import React from 'react'
 import { useContentInsights } from '../_hooks/useContentInsights'
-import { Section, Card, KpiTile, EmptyState, fmtNum, fmtPct } from '../_shared'
-import { RsBar } from '../parts/RsBar'
+import { Section, Card, KpiTile, EmptyState, fmtNum, fmtPct, RsBar } from '../_shared'
 
 export function ContentEeat() {
     const c = useContentInsights()

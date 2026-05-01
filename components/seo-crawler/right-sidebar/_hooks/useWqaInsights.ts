@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { useSeoCrawler } from '../../../../contexts/SeoCrawlerContext'
+import { useSeoCrawler } from '@/contexts/SeoCrawlerContext'
 
 type Page = any
 
@@ -146,6 +146,21 @@ function computeWqaInsights(pages: Page[], prev: Page[], history: any[], session
     // ── Categories ──────────────────────────────────────────
     const categories = countBy(pages, p => p.category || p.pageCategory || 'general')
 
+    const valueTier = {
+      high: pages.filter(p => num(p.businessValueScore) >= 70).length,
+      med:  pages.filter(p => num(p.businessValueScore) >= 40 && num(p.businessValueScore) < 70).length,
+      low:  pages.filter(p => num(p.businessValueScore) < 40).length,
+    }
+    const quality = {
+      high: pages.filter(p => num(p.qualityScore) >= 70).length,
+      med:  pages.filter(p => num(p.qualityScore) >= 40 && num(p.qualityScore) < 70).length,
+      low:  pages.filter(p => num(p.qualityScore) < 40).length,
+    }
+    const movers = {
+      up:   pages.filter(p => num(p.sessionsDeltaPct) > 5).slice(0, 8),
+      down: pages.filter(p => num(p.sessionsDeltaPct) < -5).slice(0, 8),
+    }
+
     // ── Actions ─────────────────────────────────────────────
     const actionBuckets = countBy(pages, p => p.recommendedAction || 'Monitor')
     const priorityCounts = {
@@ -190,6 +205,7 @@ function computeWqaInsights(pages: Page[], prev: Page[], history: any[], session
         wcDist, readability, freshAvg, stale, dupes, cannibal, eeat, schemaCoverage,
         status, indexable, noindex, blocked, canonMismatch, cwv, ttfb, orphans, deep,
         categories,
+        valueTier, quality, movers,
         actionBuckets, priorityCounts, topActions,
         alerts,
         trend,
@@ -213,6 +229,9 @@ const EMPTY_INSIGHTS = {
     cwv: { lcpGood: 0, lcpPoor: 0, clsGood: 0, clsPoor: 0, inpGood: 0, inpPoor: 0 },
     ttfb: 0, orphans: 0, deep: 0,
     categories: {} as Record<string, number>,
+    valueTier: { high: 0, med: 0, low: 0 },
+    quality: { high: 0, med: 0, low: 0 },
+    movers: { up: [] as any[], down: [] as any[] },
     actionBuckets: {} as Record<string, number>,
     priorityCounts: { high: 0, med: 0, low: 0 },
     topActions: [] as { title: string; count: number; priority: 'high' | 'med' | 'low'; forecast?: string }[],

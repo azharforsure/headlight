@@ -1,4 +1,4 @@
-// components/seo-crawler/right-sidebar/_shared/score.ts
+// components/seo-crawler/right-sidebar/_shared/scoring.ts
 export type Tone = 'good' | 'warn' | 'bad' | 'info' | 'neutral'
 
 export const TONE_BG: Record<Tone, string> = {
@@ -26,10 +26,11 @@ export const TONE_BORDER: Record<Tone, string> = {
 }
 
 // Map a 0..100 score to a tone bucket using fixed thresholds.
-export const scoreToTone = (score: number): Tone => {
+export const scoreToTone = (s: unknown): Tone => {
+  const score = Number(s)
   if (!Number.isFinite(score)) return 'neutral'
   if (score >= 80) return 'good'
-  if (score >= 60) return 'warn'
+  if (score >= 50) return 'warn'
   return 'bad'
 }
 

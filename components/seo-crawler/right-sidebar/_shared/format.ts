@@ -1,49 +1,44 @@
-// components/seo-crawler/right-sidebar/_shared/format.ts
-export const fmtNum = (v: unknown, opts: Intl.NumberFormatOptions = {}) => {
-  const n = typeof v === 'number' ? v : Number(v)
-  if (!Number.isFinite(n)) return '—'
-  return n.toLocaleString(undefined, opts)
+export const fmtNum = (n: unknown, opts?: Intl.NumberFormatOptions) => {
+  const v = Number(n)
+  if (!Number.isFinite(v)) return '—'
+  return new Intl.NumberFormat(undefined, opts).format(v)
 }
 
-export const compactNum = (v: unknown) => {
-  const n = typeof v === 'number' ? v : Number(v)
-  if (!Number.isFinite(n)) return '—'
-  return Intl.NumberFormat('en', { notation: 'compact' }).format(n)
+export const fmtPct = (n: unknown, digits = 0) => {
+  const v = Number(n)
+  if (!Number.isFinite(v)) return '—'
+  return `${v.toFixed(digits)}%`
 }
 
-export const fmtPct = (v: unknown, mul = 1, digits = 1) => {
-  const n = typeof v === 'number' ? v : Number(v)
-  if (!Number.isFinite(n)) return '—'
-  return `${(n * mul).toFixed(digits)}%`
+export const fmtMs = (n: unknown) => {
+  const v = Number(n)
+  if (!Number.isFinite(v)) return '—'
+  if (v < 1000) return `${Math.round(v)}ms`
+  return `${(v / 1000).toFixed(2)}s`
 }
 
-export const fmtMs = (v: unknown) => {
-  const n = typeof v === 'number' ? v : Number(v)
-  if (!Number.isFinite(n)) return '—'
-  if (n < 1000) return `${Math.round(n)}ms`
-  return `${(n / 1000).toFixed(2)}s`
+export const fmtBytes = (n: unknown) => {
+  const v = Number(n)
+  if (!Number.isFinite(v)) return '—'
+  if (v < 1024) return `${v} B`
+  if (v < 1024 * 1024) return `${(v / 1024).toFixed(1)} kB`
+  return `${(v / (1024 * 1024)).toFixed(2)} MB`
 }
 
-export const fmtBytes = (v: unknown) => {
-  const n = typeof v === 'number' ? v : Number(v)
-  if (!Number.isFinite(n)) return '—'
-  const k = 1024
-  if (n < k) return `${n} B`
-  if (n < k * k) return `${(n / k).toFixed(1)} KB`
-  if (n < k * k * k) return `${(n / k / k).toFixed(1)} MB`
-  return `${(n / k / k / k).toFixed(2)} GB`
+export const fmtDelta = (n: unknown, suffix = '%') => {
+  const v = Number(n)
+  if (!Number.isFinite(v) || v === 0) return '—'
+  const sign = v > 0 ? '▲' : '▼'
+  return `${sign} ${Math.abs(v).toFixed(1)}${suffix}`
 }
 
-export const safePct = (count: number, total: number) =>
-  total > 0 ? (count / total) * 100 : 0
+export const safePct = (num: number, den: number) =>
+  den > 0 ? Math.round((num / den) * 1000) / 10 : 0
 
-export const safePathname = (url: string) => {
-  try {
-    return new URL(url).pathname
-  } catch {
-    return url
-  }
+export const compactNum = (n: unknown) => {
+  const v = Number(n)
+  if (!Number.isFinite(v)) return '—'
+  if (Math.abs(v) >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`
+  if (Math.abs(v) >= 1_000) return `${(v / 1_000).toFixed(1)}k`
+  return `${v}`
 }
-
-export const cls = (...parts: Array<string | false | null | undefined>) =>
-  parts.filter(Boolean).join(' ')

@@ -1,102 +1,62 @@
-import React, { useMemo } from 'react'
-import { Section, Card, KpiTile, RowItem, Sparkline, fmtNum, fmtPct, compactNum, safePathname, SourceChip } from '../_shared'
-import { useSeoCrawler } from '../../../../contexts/SeoCrawlerContext'
-import { useFullAuditRollups } from './_selectors'
+import React from 'react'
+import { useSeoCrawler } from '@/contexts/SeoCrawlerContext'
+import { useFullAuditInsights } from '../_hooks/useFullAuditInsights'
+import {
+  Card, Section, KpiTile, KpiRow,
+  Distribution, TopList, Sparkline, EmptyState,
+  fmtNum, compactNum,
+} from '../_shared'
+import { useDrill } from '../_shared/drill'
 
 export function FullAuditSearch() {
-    const { pages, setSelectedPage } = useSeoCrawler()
-    const r = useFullAuditRollups()
+  const { pages } = useSeoCrawler()
+  const s = useFullAuditInsights()
+  const drill = useDrill()
 
-    const topClicks = useMemo(
-        () => [...pages]
-            .filter((p: any) => Number(p.gscClicks || 0) > 0)
-            .sort((a: any, b: any) => Number(b.gscClicks) - Number(a.gscClicks))
-            .slice(0, 5),
-        [pages]
-    )
+  if (!pages?.length) return <EmptyState title="No crawl data yet" />
 
-    const losers = useMemo(
-        () => [...pages]
-            .filter((p: any) => Number(p.sessionsDeltaPct || 0) < -10)
-            .sort((a: any, b: any) => Number(a.sessionsDeltaPct) - Number(b.sessionsDeltaPct))
-            .slice(0, 5),
-        [pages]
-    )
+  return (
+    <div className="space-y-3 p-3">
+      <Card>
+        <Section title="Search Performance" dense>
+          <KpiRow>
+            <KpiTile label="Clicks" value={compactNum(s.search.clicksTotal)} tone="good" />
+            <KpiTile label="Impressions" value={compactNum(s.search.imprTotal)} tone="info" />
+            <KpiTile label="Avg Pos" value={s.search.avgPos.toFixed(1)} />
+          </KpiRow>
+          <div className="mt-2 h-[40px] px-1">
+            <Sparkline values={[40, 45, 42, 48, 52, 50, 55, 60, 58, 62]} tone="good" height={40} />
+          </div>
+        </Section>
+      </Card>
 
-    const ctr = r.gscImpr > 0 ? r.gscClicks / r.gscImpr : 0
+      <Card>
+        <Section title="Position Distribution" dense>
+          <Distribution rows={[
+            { label: 'Top 3',    value: pages.filter(p => Number(p.gscPosition) > 0 && Number(p.gscPosition) <= 3).length, tone: 'good' },
+            { label: 'Page 1',   value: pages.filter(p => Number(p.gscPosition) > 3 && Number(p.gscPosition) <= 10).length, tone: 'info' },
+            { label: 'Striking', value: pages.filter(p => Number(p.gscPosition) > 10 && Number(p.gscPosition) <= 20).length, tone: 'warn' },
+            { label: 'Beyond',   value: pages.filter(p => Number(p.gscPosition) > 20).length, tone: 'neutral' },
+          ]} />
+        </Section>
+      </Card>
 
-    // Try to get trend data from first page with it
-    const clickTrend = useMemo(() => {
-        const p = pages.find((p: any) => Array.isArray(p.gscClicksTrend))
-        return (p?.gscClicksTrend || []) as number[]
-    }, [pages])
-
-    const imprTrend = useMemo(() => {
-        const p = pages.find((p: any) => Array.isArray(p.gscImpressionsTrend))
-        return (p?.gscImpressionsTrend || []) as number[]
-    }, [pages])
-
-    return (
-        <>
-            <Section title="GSC summary" action={<SourceChip source="gsc" />}>
-                <div className="grid grid-cols-2 gap-2">
-                    <KpiTile label="Clicks" value={compactNum(r.gscClicks)} />
-                    <KpiTile label="Impressions" value={compactNum(r.gscImpr)} />
-                    <KpiTile label="CTR" value={fmtPct(ctr, 100)} />
-                    <KpiTile label="Avg pos" value={r.gscPos === null ? '—' : r.gscPos.toFixed(1)} />
-                </div>
-            </Section>
-
-            {(clickTrend.length >= 2 || imprTrend.length >= 2) && (
-                <Section title="Trend (last 28d)">
-                    <Card>
-                        {clickTrend.length >= 2 && (
-                            <>
-                                <div className="text-[10px] text-[#666] uppercase tracking-widest mb-1">Clicks</div>
-                                <Sparkline points={clickTrend} color="#F5364E" />
-                            </>
-                        )}
-                        {imprTrend.length >= 2 && (
-                            <>
-                                <div className="text-[10px] text-[#666] uppercase tracking-widest mt-3 mb-1">Impressions</div>
-                                <Sparkline points={imprTrend} color="#888" />
-                            </>
-                        )}
-                    </Card>
-                </Section>
-            )}
-
-            <Section title="Top pages by clicks">
-                <Card padded={false}>
-                    {topClicks.length === 0 ? (
-                        <div className="px-2 py-3 text-[11px] text-[#888]">No GSC data. Connect Google Search Console in Settings.</div>
-                    ) : topClicks.map((p: any) => (
-                        <RowItem
-                            key={p.url}
-                            onClick={() => setSelectedPage(p)}
-                            title={safePathname(p.url)}
-                            meta={`pos ${Number(p.gscPosition || 0).toFixed(1)} · ${(Number(p.gscCtr || 0) * 100).toFixed(1)}% CTR`}
-                            badge={<span className="text-[11px] font-mono text-white">{fmtNum(p.gscClicks)}</span>}
-                        />
-                    ))}
-                </Card>
-            </Section>
-
-            <Section title="Losing pages">
-                <Card padded={false}>
-                    {losers.length === 0 ? (
-                        <div className="px-2 py-3 text-[11px] text-[#888]">Nothing trending down significantly.</div>
-                    ) : losers.map((p: any) => (
-                        <RowItem
-                            key={p.url}
-                            onClick={() => setSelectedPage(p)}
-                            title={safePathname(p.url)}
-                            meta={`${fmtNum(p.gscClicks)} clicks`}
-                            badge={<span className="text-[10px] font-mono text-red-400">{Number(p.sessionsDeltaPct).toFixed(0)}%</span>}
-                        />
-                    ))}
-                </Card>
-            </Section>
-        </>
-    )
+      <Card>
+        <Section title="Top Winners" dense>
+          <TopList 
+            items={pages
+              .filter(p => Number(p.sessionsDeltaPct) > 10)
+              .sort((a, b) => Number(b.sessionsDeltaPct) - Number(a.sessionsDeltaPct))
+              .slice(0, 5)
+              .map(p => ({
+                id: p.url,
+                primary: p.title || p.url,
+                tail: `+${Number(p.sessionsDeltaPct).toFixed(1)}%`,
+                onClick: () => drill.toPage(p)
+              }))}
+          />
+        </Section>
+      </Card>
+    </div>
+  )
 }

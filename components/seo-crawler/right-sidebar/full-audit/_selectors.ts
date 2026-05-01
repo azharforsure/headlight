@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { useSeoCrawler } from '../../../../contexts/SeoCrawlerContext'
+import { useSeoCrawler } from '@/contexts/SeoCrawlerContext'
 
 export function useFullAuditRollups() {
     const { pages, filteredIssuePages } = useSeoCrawler()
