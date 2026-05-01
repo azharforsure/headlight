@@ -1,11 +1,12 @@
 import type React from 'react'
-import type { Mode } from '../../../contexts/SeoCrawlerContext'
+import type { Mode } from '@headlight/types'
+import { fullAuditTabs } from './full-audit'
+import { wqaTabs } from './wqa'
 
 export type RsTabDescriptor = {
     id: string
     label: string
     Component: React.FC
-    /** Optional. Computes a small badge count next to the tab. */
     badge?: (state: { pages: any[]; site: any }) => number | string | undefined
 }
 
@@ -15,15 +16,17 @@ export type RsRegistry = Partial<Record<Mode, {
     tabs: RsTabDescriptor[]
 }>>
 
-import { fullAuditTabs } from './full-audit/index'
-
 export const RS_REGISTRY: RsRegistry = {
     fullAudit: {
         label: 'Full Audit',
         accent: '#F5364E',
         tabs: fullAuditTabs,
     },
-    // Other modes register here later.
+    wqa: {
+        label: 'Website Quality',
+        accent: '#F5364E',
+        tabs: wqaTabs,
+    },
 }
 
 export function getRsTabsFor(mode: Mode) {

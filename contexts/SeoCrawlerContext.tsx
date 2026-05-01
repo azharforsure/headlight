@@ -412,6 +412,8 @@ export interface CrawlerContextType {
     setShowComparisonView: React.Dispatch<React.SetStateAction<boolean>>;
     showExportDialog: boolean;
     setShowExportDialog: React.Dispatch<React.SetStateAction<boolean>>;
+    showLogsDialog: boolean;
+    setShowLogsDialog: React.Dispatch<React.SetStateAction<boolean>>;
     isLoadingHistory: boolean;
     saveCrawlSession: (status?: 'completed' | 'paused' | 'failed') => Promise<void>;
     loadSession: (id: string) => Promise<void>;
@@ -1026,6 +1028,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
     const [diffResult, setDiffResult] = useState<any | null>(null);
     const [showComparisonView, setShowComparisonView] = useState(false);
     const [showExportDialog, setShowExportDialog] = useState(false);
+    const [showLogsDialog, setShowLogsDialog] = useState(false);
     const [detectedGscSite, setDetectedGscSite] = useState<string | null>(null);
     const [detectedGa4Property, setDetectedGa4Property] = useState<string | null>(null);
     const [tier4Results, setTier4Results] = useState<Map<string, any[]>>(new Map());
@@ -5077,7 +5080,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         dynamicClusters, healthScore, auditInsights, strategicOpportunities, 
         crawlRate, crawlRuntime, analysisRuntime, elapsedTime,
         formatBytes, handleExport, handleExportRawDB, handleImport, filteredPages, handleSort, graphData, handleNodeClick,
-        crawlHistory: projectScopedHistory, currentSessionId, compareSessionId, diffResult, showComparisonView, setShowComparisonView, showExportDialog, setShowExportDialog, isLoadingHistory,
+        crawlHistory: projectScopedHistory, currentSessionId, compareSessionId, diffResult, showComparisonView, setShowComparisonView, showExportDialog, setShowExportDialog, showLogsDialog, setShowLogsDialog, isLoadingHistory,
         saveCrawlSession, loadSession, resumeCrawlSession, compareSessions, deleteCrawlSession, loadCrawlHistory,
         detectedGscSite, setDetectedGscSite, detectedGa4Property, setDetectedGa4Property,
         runFullEnrichment, runIncrementalEnrichment, runSelectedEnrichment, runCompleteAnalysis,
@@ -5150,7 +5153,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         showTrialLimitAlert,
         dynamicClusters, healthScore, auditInsights, strategicOpportunities, crawlRate, crawlRuntime, elapsedTime,
         filteredPages, graphData,
-        projectScopedHistory, currentSessionId, compareSessionId, diffResult, showComparisonView, showExportDialog, isLoadingHistory,
+        projectScopedHistory, currentSessionId, compareSessionId, diffResult, showComparisonView, showExportDialog, showLogsDialog, isLoadingHistory,
         detectedGscSite, detectedGa4Property,
         isAuthenticated, user, profile, trialPagesLimit,
         prioritizeByIssues,
