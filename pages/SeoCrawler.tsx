@@ -17,7 +17,7 @@ import ExportDialog from '../components/seo-crawler/ExportDialog';
 import MobileBottomSheet from '../components/seo-crawler/MobileBottomSheet';
 import AIChatDrawer from '../components/seo-crawler/AIChatDrawer';
 import CrawlerSettingsDrawer from '../components/seo-crawler/CrawlerSettingsDrawer';
-import { RsShell, RsPlaceholder } from '../components/seo-crawler/right-sidebar';
+import { RsShell } from '../components/seo-crawler/right-sidebar/index';
 
 
 
@@ -158,7 +158,7 @@ function SeoCrawlerLayout() {
                 )}
 
                 <div className="flex-1 flex flex-col min-h-0">
-                    <div className="flex-1 flex min-h-0 relative overflow-hidden">
+                    <div className="flex-1 flex min-h-0 relative">
                         <PanelErrorBoundary name="Audit View" fallback={<div className="m-3 rounded border border-[#2b2b2f] bg-[#111] p-3 text-[12px] text-[#999]">Audit view failed to load.</div>}>
                             {isWqaMode ? <WqaMainCanvas /> : <AuditViewRouter />}
                         </PanelErrorBoundary>
@@ -214,8 +214,7 @@ function SeoCrawlerLayout() {
 
                     <MobileBottomSheet isOpen={showMobileAudit} onClose={() => setShowMobileAudit(false)} title="Audit Panel" defaultHeight={82}>
                         <div className="flex h-full flex-col overflow-hidden bg-[#0a0a0a]">
-                            <RsPlaceholder />
-
+                            <RsShell />
                         </div>
                     </MobileBottomSheet>
                 </>

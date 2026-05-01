@@ -1,6 +1,6 @@
 import React from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
-import { RsPanel as ChartCard } from '@/components/seo-crawler/right-sidebar/primitives';
+import { RsPanel as ChartCard } from '../right-sidebar/primitives';
 
 export default function CrawlDepthFunnel({
   data,

@@ -1,6 +1,6 @@
 import React from 'react';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-import ChartCard from './ChartCard';
+import { RsPanel as ChartCard } from '../right-sidebar/primitives';
 
 const COLORS: Record<string, string> = {
   '2xx': '#4ade80',

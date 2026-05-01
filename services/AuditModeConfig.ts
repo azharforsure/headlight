@@ -9,7 +9,6 @@ export interface AuditModeConfig {
     icon: string;
     totalChecks: string;
     viewType: 'grid' | 'competitor_matrix' | 'ai_view' | 'geo_view' | 'opportunity_view' | 'visual_heat_map';
-    sidebarSections: string[];
     defaultColumns: string[];
     isCompetitiveMode?: boolean;
     isWqaMode?: boolean;
@@ -31,7 +30,6 @@ export const AUDIT_MODES: Record<AuditMode, AuditModeConfig> = {
         icon: '🔍',
         totalChecks: '~250',
         viewType: 'grid',
-        sidebarSections: ['overview', 'issues', 'opportunities', 'geo', 'tasks', 'ai', 'monitor', 'migration', 'history', 'logs', 'robots', 'sitemap', 'visual'],
         defaultColumns: []
     },
     website_quality: {
@@ -41,7 +39,6 @@ export const AUDIT_MODES: Record<AuditMode, AuditModeConfig> = {
         icon: '🌐',
         totalChecks: '~80',
         viewType: 'grid', // Driven by WQA mode router
-        sidebarSections: ['wqa_overview', 'wqa_actions', 'wqa_search', 'wqa_content', 'wqa_tech'],
         defaultColumns: [],
         isWqaMode: true,
     },
@@ -52,7 +49,6 @@ export const AUDIT_MODES: Record<AuditMode, AuditModeConfig> = {
         icon: '⚙️',
         totalChecks: '~75',
         viewType: 'grid',
-        sidebarSections: ['overview', 'issues', 'details'],
         defaultColumns: [
             'url', 'statusCode', 'canonical', 'metaRobots1', 'redirectUrl',
             'redirectChainLength', 'inSitemap', 'crawlDepth', 'loadTime',
@@ -67,7 +63,6 @@ export const AUDIT_MODES: Record<AuditMode, AuditModeConfig> = {
         icon: '📝',
         totalChecks: '~60',
         viewType: 'grid',
-        sidebarSections: ['overview', 'issues', 'ai'],
         defaultColumns: [
             'url', 'title', 'wordCount', 'readability', 'fleschScore',
             'textRatio', 'hash', 'nearDuplicateMatch', 'spellingErrors',
@@ -82,7 +77,6 @@ export const AUDIT_MODES: Record<AuditMode, AuditModeConfig> = {
         icon: '📊',
         totalChecks: '~55',
         viewType: 'grid',
-        sidebarSections: ['overview', 'issues', 'details'],
         defaultColumns: [
             'url', 'title', 'titleLength', 'titlePixelWidth', 'metaDesc',
             'metaDescLength', 'h1_1', 'h1_1Length', 'h2_1', 'canonical',
@@ -97,7 +91,6 @@ export const AUDIT_MODES: Record<AuditMode, AuditModeConfig> = {
         icon: '🔗',
         totalChecks: '~40',
         viewType: 'grid',
-        sidebarSections: ['overview', 'issues', 'geo'],
         defaultColumns: [
             'url', 'authorityScore', 'urlRating', 'referringDomains',
             'backlinks', 'externalOutlinks', 'uniqueExternalOutlinks',
@@ -111,7 +104,6 @@ export const AUDIT_MODES: Record<AuditMode, AuditModeConfig> = {
         icon: '📍',
         totalChecks: '~50',
         viewType: 'grid',
-        sidebarSections: ['overview', 'issues', 'geo'],
         defaultColumns: [
             'url', 'title', 'statusCode', 'canonical', 'language',
             'wordCount', 'totalImages', 'missingAltImages'
@@ -124,7 +116,6 @@ export const AUDIT_MODES: Record<AuditMode, AuditModeConfig> = {
         icon: '🛒',
         totalChecks: '~65',
         viewType: 'grid',
-        sidebarSections: ['overview', 'issues', 'details'],
         defaultColumns: [
             'url', 'title', 'statusCode', 'lcp', 'crawlDepth',
             'canonical', 'wordCount', 'totalImages', 'sizeBytes'
@@ -137,7 +128,6 @@ export const AUDIT_MODES: Record<AuditMode, AuditModeConfig> = {
         icon: '📰',
         totalChecks: '~50',
         viewType: 'grid',
-        sidebarSections: ['overview', 'issues', 'details'],
         defaultColumns: [
             'url', 'title', 'statusCode', 'wordCount', 'lastModified',
             'contentDecay', 'readability', 'loadTime'
@@ -150,7 +140,6 @@ export const AUDIT_MODES: Record<AuditMode, AuditModeConfig> = {
         icon: '🤖',
         totalChecks: '~25',
         viewType: 'ai_view',
-        sidebarSections: ['ai', 'issues'],
         defaultColumns: [
             'url', 'title', 'wordCount', 'readability', 'h1_1',
             'topicCluster', 'searchIntent'
@@ -163,7 +152,6 @@ export const AUDIT_MODES: Record<AuditMode, AuditModeConfig> = {
         icon: '🎯',
         totalChecks: '~45',
         viewType: 'competitor_matrix',
-        sidebarSections: ['comp_overview', 'comp_gaps', 'comp_threats', 'comp_brief', 'comp_trends'],
         defaultColumns: [
             'url', 'title', 'gscClicks', 'gscImpressions', 'gscPosition',
             'mainKeyword', 'opportunityScore', 'businessValueScore'
@@ -177,7 +165,6 @@ export const AUDIT_MODES: Record<AuditMode, AuditModeConfig> = {
         icon: '💼',
         totalChecks: '~40',
         viewType: 'grid',
-        sidebarSections: ['overview', 'issues', 'details'],
         defaultColumns: [
             'url', 'title', 'statusCode', 'wordCount', 'businessValueScore',
             'opportunityScore', 'recommendedAction'
@@ -190,7 +177,6 @@ export const AUDIT_MODES: Record<AuditMode, AuditModeConfig> = {
         icon: '♿',
         totalChecks: '~30',
         viewType: 'grid',
-        sidebarSections: ['overview', 'issues', 'details'],
         defaultColumns: [
             'url', 'title', 'statusCode', 'missingAltImages',
             'language', 'wordCount', 'formsWithoutLabels',
@@ -204,7 +190,6 @@ export const AUDIT_MODES: Record<AuditMode, AuditModeConfig> = {
         icon: '🔒',
         totalChecks: '~25',
         viewType: 'grid',
-        sidebarSections: ['overview', 'issues', 'details'],
         defaultColumns: [
             'url', 'statusCode', 'hasHsts', 'hasCsp', 'sslValid', 'sslProtocol',
             'insecureCookies', 'cookiesMissingSameSite', 'exposedApiKeys'

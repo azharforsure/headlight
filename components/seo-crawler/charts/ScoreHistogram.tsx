@@ -1,6 +1,6 @@
 import React from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import { RsPanel as ChartCard } from '@/components/seo-crawler/right-sidebar/primitives';
+import { RsPanel as ChartCard } from '../right-sidebar/primitives';
 
 const getBarColor = (range: string) => {
   const start = parseInt(range.split('-')[0]);

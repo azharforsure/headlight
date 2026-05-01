@@ -3,7 +3,7 @@ import {
   RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
   Radar, ResponsiveContainer, Tooltip,
 } from 'recharts';
-import { RsPanel as ChartCard } from '@/components/seo-crawler/right-sidebar/primitives';
+import { RsPanel as ChartCard } from '../right-sidebar/primitives';
 
 export default function ContentQualityRadar({
   data,

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Treemap, ResponsiveContainer, Tooltip } from 'recharts';
-import { RsPanel as ChartCard } from '@/components/seo-crawler/right-sidebar/primitives';
+import { RsPanel as ChartCard } from '../right-sidebar/primitives';
 
 const CATEGORY_COLORS: Record<string, string> = {
   Content: '#f87171',

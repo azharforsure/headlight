@@ -3,7 +3,7 @@ import {
   DataRow, MetricCard, SectionHeader, StatusBadge,
   formatNumber, getMetric
 } from '../../../inspector/shared';
-import { Sparkline } from '@/components/seo-crawler/right-sidebar/primitives';
+import { Sparkline } from '@/components/seo-crawler/right-sidebar/_shared';
 import CollapseGroup from '../parts/CollapseGroup';
 
 export default function QualityTab({ page }: { page: any }) {

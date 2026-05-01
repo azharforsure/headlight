@@ -1,5 +1,5 @@
 import React from 'react';
-import { RsPanel as ChartCard } from '@/components/seo-crawler/right-sidebar/primitives';
+import { RsPanel as ChartCard } from '../right-sidebar/primitives';
 
 type Rating = 'good' | 'needs-improvement' | 'poor';
 

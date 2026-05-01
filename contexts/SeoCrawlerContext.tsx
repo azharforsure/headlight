@@ -292,8 +292,7 @@ export interface CrawlerContextType {
     activeCheckIds: Set<string>;
 
     filteredIssuePages: Array<{ category: string; issues: any[] }>;
-    activeViewType: string;
-    activeSidebarSections: string[];
+    activeViewType: 'grid' | 'competitor_matrix' | 'ai_view' | 'geo_view' | 'opportunity_view' | 'visual_heat_map';
 
     customPresets: CustomAuditPreset[];
     applyAuditMode: (modes: AuditMode[], industry: IndustryFilter) => void;
@@ -508,7 +507,7 @@ export interface CrawlerContextType {
     buildOwnProfile: () => void;
     addCompetitorAndCrawl: (competitorUrl: string) => Promise<void>;
     removeCompetitor: (domain: string) => void;
-    recrawlCompetitor: (domain: string) => Promise<void>;
+    recrawlCompetitor: (domain: string) => void;
     recrawlAllCompetitors: () => Promise<void>;
     refreshCompetitorScores: (targetDomain?: string) => void;
     generateCompetitiveBrief: () => Promise<void>;
@@ -1180,11 +1179,6 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
             default:
                 return 'grid';
         }
-    }, [mode]);
-
-    const activeSidebarSections = useMemo(() => {
-        const legacyMode = MODE_TO_LEGACY_AUDIT_MODE[mode];
-        return AUDIT_MODES[legacyMode]?.sidebarSections || ['overview', 'issues', 'details'];
     }, [mode]);
 
     const isWqaMode = useMemo(() => mode === 'wqa', [mode]);
@@ -5050,9 +5044,6 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
 
     const openIntegrationsModal = useCallback((provider?: string) => {
         setSettingsTab('integrations');
-        if (provider) {
-            // Logic to pre-select provider if needed, for now just open the tab
-        }
         setShowSettings(true);
     }, []);
 
@@ -5062,7 +5053,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         crawlDb,
                         auditFilter, activeCheckIds, filteredIssuePages,
         mode, setMode, fingerprint, refreshFingerprint, connected, capabilities,
-        activeViewType, activeSidebarSections,
+        activeViewType,
 
         customPresets, applyAuditMode, saveCustomPreset, loadCustomPreset,
         searchQuery, setSearchQuery,
@@ -5140,7 +5131,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         
         auditFilter, activeCheckIds, filteredIssuePages,
         mode, fingerprint, connected, capabilities,
-        activeViewType, activeSidebarSections,
+        activeViewType,
 
         customPresets,
         searchQuery,
