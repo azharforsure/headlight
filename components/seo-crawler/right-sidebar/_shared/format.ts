@@ -42,3 +42,8 @@ export const compactNum = (n: unknown) => {
   if (Math.abs(v) >= 1_000) return `${(v / 1_000).toFixed(1)}k`
   return `${v}`
 }
+
+export function fmtCurrency(n: number, ccy = 'USD'): string {
+  if (!isFinite(n)) return '—'
+  return new Intl.NumberFormat(undefined, { style: 'currency', currency: ccy, maximumFractionDigits: 0 }).format(n)
+}

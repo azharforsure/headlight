@@ -1,54 +1,51 @@
-import React from 'react'
+import React, { useMemo } from 'react'
 import { useSeoCrawler } from '@/contexts/SeoCrawlerContext'
 import { useSocialInsights } from '../_hooks/useSocialInsights'
+import { useDrill } from '../_shared/drill'
 import {
-  Card, Section, KpiRow, KpiTile, Distribution, TopList, AlertRow, EmptyState, compactNum,
+  HealthBlock, DistBlock, DonutBlock, DistRowsBlock, TrendBlock,
+  TopListBlock, SegmentBlock, HeatmapBlock, BenchmarkBlock, FunnelBlock,
+  CompareBlock, KvBlock, TimelineBlock, DrillFooter,
+  AlertsBlock, ActionsBlock,
+  EmptyState, fmtNum, fmtPct, fmtMs, compactNum, scoreToTone, fmtCurrency,
 } from '../_shared'
 
 export function SocialMentions() {
-  const { pages } = useSeoCrawler()
+  const { socialMentions } = useSeoCrawler() as any
   const s = useSocialInsights()
+  if (!socialMentions?.length) return <EmptyState title="No mentions tracked" />
 
-  if (!pages?.length) return <EmptyState title="No crawl data yet" />
+  const top = [...socialMentions].sort((a, b) => Number(b.engagement) - Number(a.engagement)).slice(0, 6)
 
   return (
     <div className="space-y-3 p-3">
-      <Card><Section title="Sentiment mix" dense>
-        <KpiRow>
-          <KpiTile label="Positive" value={s.sentiment.pos} tone="good" />
-          <KpiTile label="Neutral"  value={s.sentiment.neu} />
-          <KpiTile label="Negative" value={s.sentiment.neg} tone="bad" />
-        </KpiRow>
-      </Section></Card>
-
-      <Card><Section title="Source distribution" dense>
-        <Distribution rows={[
-          { label: 'X (Twitter)', value: s.mentions.filter((m: any) => m.source === 'x').length, tone: 'info' },
-          { label: 'LinkedIn',    value: s.mentions.filter((m: any) => m.source === 'linkedin').length, tone: 'info' },
-          { label: 'Reddit',      value: s.mentions.filter((m: any) => m.source === 'reddit').length, tone: 'info' },
-          { label: 'YouTube',     value: s.mentions.filter((m: any) => m.source === 'youtube').length, tone: 'info' },
-        ]} />
-      </Section></Card>
-
-      <Card><Section title="Top mentioners" dense>
-        <TopList 
-          items={s.topMentioners.map((m: any) => ({
-            id: m.id,
-            primary: m.user,
-            secondary: m.text,
-            tail: compactNum(m.reach),
-            tone: m.sentiment < -0.1 ? 'bad' : 'neutral'
-          }))}
-        />
-      </Section></Card>
-
-      <Card><Section title="Crisis signals" dense>
-        {s.sentiment.neg > 10 && (
-          <AlertRow alert={{ id: 'c1', tone: 'bad', title: 'Viral negative thread on Reddit' }} />
-        )}
-        <AlertRow alert={{ id: 'c2', tone: 'info', title: 'No major brand crisis detected' }} />
-      </Section></Card>
+      <DistBlock title="Sentiment" segments={[
+        { value: s.sentiment.positive, tone: 'good', label: 'Positive' },
+        { value: s.sentiment.neutral, tone: 'info', label: 'Neutral' },
+        { value: s.sentiment.negative, tone: 'bad', label: 'Negative' },
+      ]} />
+      <DistRowsBlock title="By channel" rows={[
+        { label: 'X', value: s.byChannel.twitter },
+        { label: 'Reddit', value: s.byChannel.reddit },
+        { label: 'News', value: s.byChannel.news },
+        { label: 'Blog', value: s.byChannel.blog },
+        { label: 'Forum', value: s.byChannel.forum },
+      ]} />
+      <TrendBlock title="Mentions (90d)" values={s.mentions.series90d} tone="info" />
+      <TopListBlock title="Top mentions" items={top.map((m: any) => ({
+        id: m.id, primary: m.author, secondary: m.text.slice(0, 80),
+        tail: `${m.channel} · ${compactNum(m.engagement)}`,
+      }))} />
+      <TopListBlock title="Negative mentions" items={s.mentions.negativeList.slice(0, 6).map((m: any) => ({
+        id: m.id, primary: m.author, secondary: m.text.slice(0, 80), tail: m.channel,
+      }))} emptyText="No negative mentions" />
+      <SegmentBlock title="By topic" headers={['Topic','Mentions','Sent.','Reach']} rows={s.topics.list.slice(0, 6).map((t: any) => ({
+        id: t.id, label: t.label, values: [t.mentions, t.sentiment, compactNum(t.reach)],
+      }))} />
+      <DrillFooter chips={[
+        { label: 'Negative', count: s.sentiment.negative },
+        { label: 'Topics', count: s.topics.list.length },
+      ]} />
     </div>
   )
 }
-

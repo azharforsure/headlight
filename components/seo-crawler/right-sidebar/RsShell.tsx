@@ -49,11 +49,14 @@ export function RsShell() {
         window.addEventListener('mouseup', onUp)
     }
 
+    const styleShell = { width: showAuditSidebar ? auditSidebarWidth : 0 }
+
+
     return (
         <aside
             id="rs-shell"
             className="relative flex h-full flex-col border-l border-[#1a1a1a] bg-[#0a0a0a] transition-[width] duration-300 ease-in-out"
-            style={{ width: showAuditSidebar ? auditSidebarWidth : 0 }}
+            style={styleShell}
         >
             {/* Drag Handle (only when open) */}
             {showAuditSidebar && (
@@ -74,16 +77,10 @@ export function RsShell() {
                 {showAuditSidebar ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
             </button>
 
-            {/* Content (only when open) */}
             {showAuditSidebar && (
                 <>
-                    <header className="flex h-9 items-center justify-between border-b border-[#161616] px-3 shrink-0">
-                        <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: reg?.accent ?? '#bbb' }}>
-                            {reg?.label ?? 'Insights'}
-                        </span>
-                    </header>
                     <RsTabBar />
-                    <div className="flex-1 overflow-y-auto custom-scrollbar">
+                    <div className="flex-1 overflow-y-auto custom-scrollbar @container">
                         <RsRouter />
                     </div>
                 </>

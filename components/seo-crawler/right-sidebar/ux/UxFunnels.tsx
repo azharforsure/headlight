@@ -1,49 +1,44 @@
-import React from 'react'
+import React, { useMemo } from 'react'
 import { useSeoCrawler } from '@/contexts/SeoCrawlerContext'
 import { useUxInsights } from '../_hooks/useUxInsights'
+import { useDrill } from '../_shared/drill'
 import {
-  Card, Section, Distribution, TopList, EmptyState,
+  HealthBlock, DistBlock, DonutBlock, DistRowsBlock, TrendBlock,
+  TopListBlock, SegmentBlock, HeatmapBlock, BenchmarkBlock, FunnelBlock,
+  CompareBlock, KvBlock, TimelineBlock, DrillFooter,
+  AlertsBlock, ActionsBlock,
+  EmptyState, fmtNum, fmtPct, fmtMs, compactNum, scoreToTone,
 } from '../_shared'
+import { templateOf, inlinkBucket } from '../_shared/derive'
 
 export function UxFunnels() {
   const { pages } = useSeoCrawler()
   const s = useUxInsights()
-
-  // Mock funnel data as it's often configuration-based
-  const funnels = [
-    {
-      name: 'Checkout Funnel',
-      steps: [
-        { label: 'Visit',    value: 1200, tone: 'info' as const },
-        { label: 'Product',  value: 800,  tone: 'info' as const },
-        { label: 'Cart',     value: 200,  tone: 'warn' as const },
-        { label: 'Success',  value: 45,   tone: 'good' as const },
-      ]
-    }
-  ]
-
+  const drill = useDrill()
   if (!pages?.length) return <EmptyState title="No crawl data yet" />
 
-  if (funnels.length === 0) {
-    return <EmptyState title="No funnels configured" hint="Setup conversion funnels in settings." />
-  }
+  const worstStep = s.funnels.worstStep || { name: '—', dropPct: 0 }
 
   return (
     <div className="space-y-3 p-3">
-      {funnels.map((f, i) => (
-        <Card key={i}><Section title={f.name} dense>
-          <Distribution rows={f.steps} />
-        </Section></Card>
-      ))}
-
-      <Card><Section title="Top step drops" dense>
-        <TopList 
-          items={[
-            { id: '1', primary: 'Cart → Success', tail: '78% drop', tone: 'bad' },
-            { id: '2', primary: 'Product → Cart', tail: '75% drop', tone: 'warn' },
-          ]}
-        />
-      </Section></Card>
+      <DistBlock title="Step health" segments={[
+        { value: s.funnels.healthy, tone: 'good', label: 'Healthy' },
+        { value: s.funnels.dropping, tone: 'warn', label: 'Dropping' },
+        { value: s.funnels.broken, tone: 'bad', label: 'Broken' },
+      ]} />
+      <FunnelBlock title="Primary funnel" steps={s.funnels.primary.slice(0, 6)} />
+      <FunnelBlock title="Secondary funnel" steps={s.funnels.secondary.slice(0, 6)} />
+      <SegmentBlock title="Funnels list" headers={['Funnel','Steps','Completion','Worst step']} rows={s.funnels.list.slice(0, 6).map((f: any) => ({
+        id: f.id, label: f.name, values: [f.steps, fmtPct(f.completion * 100), f.worstStep],
+      }))} />
+      <TrendBlock title="Completion (30d)" values={s.funnels.completionSeries} tone="info" />
+      <CompareBlock title="vs last 30d" rows={[
+        { label: 'Avg completion', a: { v: s.funnels.avgCompletion * 100, tag: 'now' }, b: { v: s.funnels.avgCompletionPrev * 100, tag: 'prev' }, format: fmtPct },
+      ]} />
+      <DrillFooter chips={[
+        { label: 'Funnels', count: s.funnels.list.length },
+        { label: 'Drops', count: s.funnels.dropping },
+      ]} />
     </div>
   )
 }

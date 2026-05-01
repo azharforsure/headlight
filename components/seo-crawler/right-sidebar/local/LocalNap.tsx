@@ -1,60 +1,48 @@
-import React from 'react'
+import React, { useMemo } from 'react'
 import { useSeoCrawler } from '@/contexts/SeoCrawlerContext'
 import { useLocalInsights } from '../_hooks/useLocalInsights'
+import { useDrill } from '../_shared/drill'
 import {
-  Card, Section, KpiRow, KpiTile, Distribution, TopList, ActionRow, EmptyState,
+  HealthBlock, DistBlock, DonutBlock, DistRowsBlock, TrendBlock,
+  TopListBlock, SegmentBlock, HeatmapBlock, BenchmarkBlock,
+  CompareBlock, KvBlock, TimelineBlock, DrillFooter,
+  AlertsBlock, ActionsBlock,
+  EmptyState, fmtNum, fmtPct, fmtMs, compactNum, scoreToTone,
 } from '../_shared'
 
 export function LocalNap() {
+  const { locations } = useSeoCrawler() as any
   const s = useLocalInsights()
-
-  if (!s.locations.length) return <EmptyState title="No locations tracked" />
+  if (!locations?.length) return <EmptyState title="No locations set" />
 
   return (
     <div className="space-y-3 p-3">
-      <Card><Section title="Consistency summary" dense>
-        <KpiRow>
-          <KpiTile label="Consistent" value={s.nap.consistent} tone="good" />
-          <KpiTile label="Mismatch"   value={s.nap.mismatch}   tone="warn" />
-          <KpiTile label="Missing"    value={s.nap.noData}     tone="neutral" />
-        </KpiRow>
-      </Section></Card>
-
-      <Card><Section title="Source coverage" dense>
-        <Distribution rows={[
-          { label: 'Website', value: 100, tone: 'good' },
-          { label: 'GBP',     value: 95,  tone: 'good' },
-          { label: 'Yelp',    value: 70,  tone: 'info' },
-          { label: 'Apple',   value: 65,  tone: 'info' },
-          { label: 'Bing',    value: 40,  tone: 'warn' },
-        ]} />
-      </Section></Card>
-
-      <Card><Section title="Biggest mismatches" dense>
-        <TopList 
-          items={s.locations
-            .filter((l: any) => l.napConsistencyScore < 0.9)
-            .slice(0, 5)
-            .map((l: any) => ({
-              id: l.id,
-              primary: l.name,
-              secondary: `Score: ${Math.round(l.napConsistencyScore * 100)}%`,
-              tail: 'Fix',
-            }))}
-        />
-      </Section></Card>
-
-      <Section title="Actions" dense>
-        <ActionRow 
-          action={{
-            id: 'nap-1',
-            title: 'Resync NAP data across web',
-            reason: `${s.nap.mismatch} locations have inconsistent business data`,
-            affected: s.nap.mismatch,
-            primary: true
-          }}
-        />
-      </Section>
+      <DistBlock title="Citation status" segments={[
+        { value: s.nap.matched, tone: 'good', label: 'Matched' },
+        { value: s.nap.partial, tone: 'warn', label: 'Partial' },
+        { value: s.nap.mismatched, tone: 'bad', label: 'Mismatched' },
+        { value: s.nap.missing, tone: 'neutral', label: 'Missing' },
+      ]} />
+      <DistRowsBlock title="Field-level match" rows={[
+        { label: 'Name', value: fmtPct(s.nap.name * 100), tone: scoreToTone(s.nap.name * 100) },
+        { label: 'Address', value: fmtPct(s.nap.address * 100), tone: scoreToTone(s.nap.address * 100) },
+        { label: 'Phone', value: fmtPct(s.nap.phone * 100), tone: scoreToTone(s.nap.phone * 100) },
+        { label: 'Website', value: fmtPct(s.nap.website * 100), tone: scoreToTone(s.nap.website * 100) },
+        { label: 'Hours', value: fmtPct(s.nap.hours * 100), tone: scoreToTone(s.nap.hours * 100) },
+      ]} />
+      <TopListBlock title="Worst directories" items={s.nap.worstDirectories.slice(0, 6).map((d: any) => ({
+        id: d.id, primary: d.name, tail: fmtPct(d.consistency * 100),
+      }))} />
+      <TopListBlock title="Mismatched listings" items={s.nap.mismatchedList.slice(0, 6).map((l: any) => ({
+        id: l.id, primary: l.directory, secondary: l.location, tail: l.field,
+      }))} emptyText="No mismatches" />
+      <SegmentBlock title="By location" headers={['Location','Citations','Match %','Mismatches']} rows={s.byLocation.slice(0, 6).map((l: any) => ({
+        id: l.id, label: l.name, values: [l.citations, fmtPct(l.napConsistency * 100), l.napMismatches],
+      }))} />
+      <DrillFooter chips={[
+        { label: 'Mismatches', count: s.nap.mismatches },
+        { label: 'Missing', count: s.nap.missing },
+      ]} />
     </div>
   )
 }

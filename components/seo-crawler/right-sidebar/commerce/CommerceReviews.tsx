@@ -1,65 +1,52 @@
-import React from 'react'
+import React, { useMemo } from 'react'
 import { useSeoCrawler } from '@/contexts/SeoCrawlerContext'
 import { useCommerceInsights } from '../_hooks/useCommerceInsights'
-import {
-  Card, Section, KpiRow, KpiTile, Distribution, TopList, ActionRow, EmptyState, fmtNum, compactNum,
-} from '../_shared'
 import { useDrill } from '../_shared/drill'
+import {
+  HealthBlock, DistBlock, DonutBlock, DistRowsBlock, TrendBlock,
+  TopListBlock, SegmentBlock, HeatmapBlock, BenchmarkBlock, FunnelBlock,
+  CompareBlock, KvBlock, TimelineBlock, DrillFooter,
+  AlertsBlock, ActionsBlock,
+  EmptyState, fmtNum, fmtPct, fmtMs, compactNum, scoreToTone, fmtCurrency,
+} from '../_shared'
 
 export function CommerceReviews() {
   const { pages } = useSeoCrawler()
   const s = useCommerceInsights()
   const drill = useDrill()
-
-  if (!pages?.length || s.total === 0) return <EmptyState title="No product data" />
+  if (!pages?.length) return <EmptyState title="No crawl data yet" />
 
   return (
     <div className="space-y-3 p-3">
-      <Card><Section title="Review summary" dense>
-        <KpiRow>
-          <KpiTile label="Total reviews" value={fmtNum(s.reviews.total)} />
-          <KpiTile label="Avg rating"    value={s.reviews.avg.toFixed(1) + ' ★'} tone={s.reviews.avg > 4.5 ? 'good' : 'warn'} />
-          <KpiTile label="No reviews"    value={s.reviews.noReviews} tone="warn" />
-        </KpiRow>
-      </Section></Card>
-
-      <Card><Section title="Rating distribution" dense>
-        <Distribution rows={[
-          { label: '5 Star', value: 75, tone: 'good' },
-          { label: '4 Star', value: 15, tone: 'good' },
-          { label: '3 Star', value: 5,  tone: 'neutral' },
-          { label: '2 Star', value: 3,  tone: 'warn' },
-          { label: '1 Star', value: 2,  tone: 'bad' },
-        ]} />
-      </Section></Card>
-
-      <Card><Section title="Products needing reviews" dense>
-        <TopList 
-          items={s.products
-            .filter(p => Number(p.reviewCount || 0) === 0)
-            .sort((a, b) => Number(b.ga4Views || 0) - Number(a.ga4Views || 0))
-            .slice(0, 5)
-            .map(p => ({
-              id: p.url,
-              primary: p.title || p.url,
-              tail: `${compactNum(Number(p.ga4Views || 0))} views`,
-              onClick: () => drill.toPage(p)
-            }))}
-        />
-      </Section></Card>
-
-      <Section title="Actions" dense>
-        <ActionRow 
-          action={{
-            id: 'rev-1',
-            title: 'Solicit reviews for high-traffic products',
-            reason: `${s.reviews.noReviews} products have zero reviews despite high traffic`,
-            forecast: 'Improve CvR & CTR',
-            primary: true
-          }}
-        />
-      </Section>
+      <DistBlock title="Rating mix" segments={[
+        { value: s.reviews.dist[5] || 0, tone: 'good', label: '5★' },
+        { value: s.reviews.dist[4] || 0, tone: 'good', label: '4★' },
+        { value: s.reviews.dist[3] || 0, tone: 'info', label: '3★' },
+        { value: s.reviews.dist[2] || 0, tone: 'warn', label: '2★' },
+        { value: s.reviews.dist[1] || 0, tone: 'bad', label: '1★' },
+      ]} />
+      <DistRowsBlock title="Review source" rows={[
+        { label: 'Site', value: s.reviews.bySource.site },
+        { label: 'Trustpilot', value: s.reviews.bySource.trustpilot },
+        { label: 'Google', value: s.reviews.bySource.google },
+        { label: 'Other', value: s.reviews.bySource.other },
+      ]} />
+      <TrendBlock title="Avg rating (12 weeks)" values={s.reviews.ratingSeries} tone="info" />
+      <TopListBlock title="Worst-reviewed products" items={s.reviews.worstProducts.slice(0, 6).map((p: any) => ({
+        id: p.url, primary: p.title || p.url, tail: `${p.avgRating.toFixed(2)} · ${p.reviewCount}`,
+        onClick: () => drill.toPage(p),
+      }))} />
+      <TopListBlock title="Recent low-star reviews" items={s.reviews.recentLow.slice(0, 6).map((r: any) => ({
+        id: r.id, primary: r.title || r.text.slice(0, 60),
+        secondary: r.productTitle, tail: `${r.rating}★`,
+      }))} emptyText="No recent low-star" />
+      <SegmentBlock title="By category" headers={['Category','Avg rating','Reviews','% < 3']} rows={s.reviews.byCategory.slice(0, 6).map((c: any) => ({
+        id: c.id, label: c.label, values: [c.avgRating.toFixed(2), c.count, fmtPct(c.lowSharePct * 100)],
+      }))} />
+      <DrillFooter chips={[
+        { label: 'Low star', count: s.reviews.lowStar },
+        { label: 'No reviews', count: s.reviews.noReviewProducts },
+      ]} />
     </div>
   )
 }
-

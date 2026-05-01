@@ -1,66 +1,47 @@
-import React from 'react'
+import React, { useMemo } from 'react'
 import { useSeoCrawler } from '@/contexts/SeoCrawlerContext'
 import { useAiInsights } from '../_hooks/useAiInsights'
-import {
-  Card, Section, KpiRow, KpiTile, Distribution, TopList, ActionRow, EmptyState,
-} from '../_shared'
 import { useDrill } from '../_shared/drill'
+import {
+  HealthBlock, DistBlock, DonutBlock, DistRowsBlock, TrendBlock,
+  TopListBlock, SegmentBlock, HeatmapBlock, BenchmarkBlock,
+  CompareBlock, KvBlock, TimelineBlock, DrillFooter,
+  AlertsBlock, ActionsBlock,
+  EmptyState, fmtNum, fmtPct, fmtMs, compactNum, scoreToTone,
+} from '../_shared'
 
 export function AiSchema() {
   const { pages } = useSeoCrawler()
   const s = useAiInsights()
   const drill = useDrill()
-
   if (!pages?.length) return <EmptyState title="No crawl data yet" />
-
-  const schemaCoverage = Math.round((s.extractability.hasFaq + s.extractability.hasHowto + s.entities.hasOrg) / 3)
 
   return (
     <div className="space-y-3 p-3">
-      <Card><Section title="AI Schema coverage" dense>
-        <KpiRow>
-          <KpiTile label="Coverage" value={schemaCoverage + '%'} />
-          <KpiTile label="FAQ"      value={s.extractability.hasFaq + '%'} tone="info" />
-          <KpiTile label="HowTo"    value={s.extractability.hasHowto + '%'} tone="info" />
-        </KpiRow>
-      </Section></Card>
-
-      <Card><Section title="Schema types coverage" dense>
-        <Distribution rows={[
-          { label: 'Organization', value: s.entities.hasOrg, tone: 'good' },
-          { label: 'WebSite',      value: s.entities.hasWebsite, tone: 'good' },
-          { label: 'FAQPage',      value: s.extractability.hasFaq, tone: 'info' },
-          { label: 'HowTo',        value: s.extractability.hasHowto, tone: 'info' },
-          { label: 'Speakable',    value: 5, tone: 'warn' },
-        ]} />
-      </Section></Card>
-
-      <Card><Section title="High answer-box fit" dense>
-        <TopList 
-          items={pages
-            .filter(p => Number(p.answerBoxFitScore) >= 0.7)
-            .sort((a, b) => Number(b.answerBoxFitScore) - Number(a.answerBoxFitScore))
-            .slice(0, 5)
-            .map(p => ({
-              id: p.url,
-              primary: p.title || p.url,
-              tail: `${Math.round(Number(p.answerBoxFitScore) * 100)}%`,
-              onClick: () => drill.toPage(p)
-            }))}
-        />
-      </Section></Card>
-
-      <Section title="Actions" dense>
-        <ActionRow 
-          action={{
-            id: 'ai-s1',
-            title: 'Add answer schema (FAQ)',
-            reason: `${100 - s.extractability.hasFaq}% of pages could benefit from FAQ blocks`,
-            forecast: 'Boost AI snippets',
-            primary: true
-          }}
-        />
-      </Section>
+      <DistBlock title="Schema type mix" segments={s.schema.types.slice(0, 6).map((t: any, i: number) => ({
+        value: t.count, tone: ['good','info','warn','neutral','bad','info'][i] as any, label: t.type,
+      }))} />
+      <DistRowsBlock title="AI-key fields coverage" rows={[
+        { label: 'about / mentions', value: fmtPct(s.schema.fields.about), tone: scoreToTone(s.schema.fields.about) },
+        { label: 'sameAs', value: fmtPct(s.schema.fields.sameAs), tone: scoreToTone(s.schema.fields.sameAs) },
+        { label: 'author', value: fmtPct(s.schema.fields.author), tone: scoreToTone(s.schema.fields.author) },
+        { label: 'datePublished', value: fmtPct(s.schema.fields.datePublished), tone: scoreToTone(s.schema.fields.datePublished) },
+      ]} />
+      <TopListBlock title="Pages missing schema" items={s.schema.missingPages.slice(0, 6).map((p: any) => ({
+        id: p.url, primary: p.title || p.url, tail: 'no schema',
+        onClick: () => drill.toPage(p),
+      }))} emptyText="All pages have schema" />
+      <TopListBlock title="Pages with schema errors" items={s.schema.errorPages.slice(0, 6).map((p: any) => ({
+        id: p.url, primary: p.title || p.url, tail: p.error,
+        onClick: () => drill.toPage(p),
+      }))} emptyText="No schema errors" />
+      <SegmentBlock title="By template" headers={['Template','Coverage','Errors','Warnings']} rows={s.schema.byTemplate.slice(0, 6).map((t: any) => ({
+        id: t.id, label: t.label, values: [fmtPct(t.coverage), t.errors, t.warnings],
+      }))} />
+      <DrillFooter chips={[
+        { label: 'Missing', count: s.schema.missingPages.length },
+        { label: 'Errors', count: s.schema.errors },
+      ]} />
     </div>
   )
 }

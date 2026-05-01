@@ -15,7 +15,7 @@ export function Card({
     const border =
         tone === 'accent' ? 'border-[#F5364E]/25' : 'border-[#1f1f1f]'
     return (
-        <div className={`rounded-md border ${border} ${bg} ${padded ? 'p-3' : ''} ${className}`}>
+        <div className={`rounded-md border ${border} ${bg} shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] ${padded ? 'p-3' : ''} ${className}`}>
             {children}
         </div>
     )

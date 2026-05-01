@@ -15,6 +15,9 @@ export const LEGACY_MODE_MAP: Record<string, Mode> = {
     business: 'wqa',
     accessibility: 'wqa',
     security: 'technical',
+    uxConversion: 'uxConversion',
+    paid: 'paid',
+    socialBrand: 'socialBrand',
 };
 
 export const MODE_SET: Record<Mode, true> = {

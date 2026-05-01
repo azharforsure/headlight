@@ -1,63 +1,50 @@
-import React from 'react'
+import React, { useMemo } from 'react'
 import { useSeoCrawler } from '@/contexts/SeoCrawlerContext'
 import { useCommerceInsights } from '../_hooks/useCommerceInsights'
-import {
-  Card, Section, KpiRow, KpiTile, Distribution, TopList, ActionRow, EmptyState, fmtPct,
-} from '../_shared'
 import { useDrill } from '../_shared/drill'
+import {
+  HealthBlock, DistBlock, DonutBlock, DistRowsBlock, TrendBlock,
+  TopListBlock, SegmentBlock, HeatmapBlock, BenchmarkBlock, FunnelBlock,
+  CompareBlock, KvBlock, TimelineBlock, DrillFooter,
+  AlertsBlock, ActionsBlock,
+  EmptyState, fmtNum, fmtPct, fmtMs, compactNum, scoreToTone, fmtCurrency,
+} from '../_shared'
 
 export function CommerceSchema() {
   const { pages } = useSeoCrawler()
   const s = useCommerceInsights()
   const drill = useDrill()
-
-  if (!pages?.length || s.total === 0) return <EmptyState title="No product data" />
+  if (!pages?.length) return <EmptyState title="No crawl data yet" />
 
   return (
     <div className="space-y-3 p-3">
-      <Card><Section title="Schema coverage" dense>
-        <KpiRow>
-          <KpiTile label="Has Product" value={s.schema.hasProduct + '%'} />
-          <KpiTile label="Valid"       value={s.schema.validProduct + '%'} tone={s.schema.validProduct > 80 ? 'good' : 'bad'} />
-          <KpiTile label="Has Reviews" value={s.schema.hasReviewSchema + '%'} />
-        </KpiRow>
-      </Section></Card>
-
-      <Card><Section title="Field coverage" dense>
-        <Distribution rows={[
-          { label: 'Name',    value: 100, tone: 'good' },
-          { label: 'Image',   value: 98,  tone: 'good' },
-          { label: 'Offers',  value: Math.round(s.total - s.schema.missingPrice), tone: 'info' },
-          { label: 'Stock',   value: Math.round(s.total - s.schema.missingAvailability), tone: 'info' },
-          { label: 'GTIN/MPN', value: Math.round(s.total - s.schema.missingGtin), tone: 'warn' },
-        ]} />
-      </Section></Card>
-
-      <Card><Section title="Invalid schema products" dense>
-        <TopList 
-          items={s.products
-            .filter(p => p.productSchemaValid === false)
-            .slice(0, 5)
-            .map(p => ({
-              id: p.url,
-              primary: p.title || p.url,
-              tail: 'Invalid',
-              onClick: () => drill.toPage(p)
-            }))}
-        />
-      </Section></Card>
-
-      <Section title="Actions" dense>
-        <ActionRow 
-          action={{
-            id: 'sch-1',
-            title: 'Fix product schema errors',
-            reason: `${s.products.filter(p => p.productSchemaValid === false).length} products have critical schema errors`,
-            affected: s.products.filter(p => p.productSchemaValid === false).length,
-            primary: true
-          }}
-        />
-      </Section>
+      <DistRowsBlock title="Schema field coverage" rows={[
+        { label: 'Price', value: fmtPct(s.schema.fields.price * 100), tone: scoreToTone(s.schema.fields.price * 100) },
+        { label: 'Availability', value: fmtPct(s.schema.fields.availability * 100), tone: scoreToTone(s.schema.fields.availability * 100) },
+        { label: 'Rating', value: fmtPct(s.schema.fields.rating * 100), tone: scoreToTone(s.schema.fields.rating * 100) },
+        { label: 'Brand', value: fmtPct(s.schema.fields.brand * 100), tone: scoreToTone(s.schema.fields.brand * 100) },
+        { label: 'GTIN/SKU', value: fmtPct(s.schema.fields.gtin * 100), tone: scoreToTone(s.schema.fields.gtin * 100) },
+      ]} />
+      <DistBlock title="Validation" segments={[
+        { value: s.schema.valid, tone: 'good', label: 'Valid' },
+        { value: s.schema.warnings, tone: 'warn', label: 'Warnings' },
+        { value: s.schema.errors, tone: 'bad', label: 'Errors' },
+      ]} />
+      <TopListBlock title="Missing schema" items={s.schema.missingPages.slice(0, 6).map((p: any) => ({
+        id: p.url, primary: p.title || p.url, tail: 'no schema',
+        onClick: () => drill.toPage(p),
+      }))} emptyText="All products have schema" />
+      <TopListBlock title="Invalid schema" items={s.schema.invalidPages.slice(0, 6).map((p: any) => ({
+        id: p.url, primary: p.title || p.url, tail: p.error,
+        onClick: () => drill.toPage(p),
+      }))} emptyText="All schema valid" />
+      <SegmentBlock title="By category" headers={['Category','Coverage','Errors','Warnings']} rows={s.schema.byCategory.slice(0, 6).map((c: any) => ({
+        id: c.id, label: c.label, values: [fmtPct(c.coverage * 100), c.errors, c.warnings],
+      }))} />
+      <DrillFooter chips={[
+        { label: 'Missing', count: s.schema.missingPages.length },
+        { label: 'Errors', count: s.schema.errors },
+      ]} />
     </div>
   )
 }

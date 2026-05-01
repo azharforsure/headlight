@@ -1,46 +1,41 @@
-import React from 'react'
+import React, { useMemo } from 'react'
 import { useSeoCrawler } from '@/contexts/SeoCrawlerContext'
 import { useCompetitorsInsights } from '../_hooks/useCompetitorsInsights'
+import { useDrill } from '../_shared/drill'
 import {
-  Card, Section, KpiRow, KpiTile, TopList, Distribution, EmptyState, fmtNum,
+  HealthBlock, DistBlock, DonutBlock, DistRowsBlock, TrendBlock,
+  TopListBlock, SegmentBlock, HeatmapBlock, BenchmarkBlock,
+  CompareBlock, KvBlock, TimelineBlock, DrillFooter,
+  AlertsBlock, ActionsBlock,
+  EmptyState, fmtNum, fmtPct, fmtMs, compactNum, scoreToTone,
 } from '../_shared'
 
 export function CompetitorsBacklinks() {
+  const { competitors } = useSeoCrawler() as any
   const s = useCompetitorsInsights()
-
-  if (!s.competitors.length) return <EmptyState title="No competitors tracked" />
-
-  const shared = s.backlinks.reduce((a, b) => a + b.shared, 0)
-  const theirs = s.backlinks.reduce((a, b) => a + b.onlyTheirs, 0)
+  if (!competitors?.length) return <EmptyState title="No competitors set" />
 
   return (
     <div className="space-y-3 p-3">
-      <Card><Section title="Link intersection" dense>
-        <KpiRow>
-          <KpiTile label="Shared domains" value={fmtNum(shared)} />
-          <KpiTile label="Comp-only"      value={fmtNum(theirs)} tone="warn" />
-          <KpiTile label="Our-only"       value="124" tone="good" />
-        </KpiRow>
-      </Section></Card>
-
-      <Card><Section title="Prospecting (Comp-only)" dense>
-        <TopList 
-          items={[
-            { id: '1', primary: 'industry-journal.com', secondary: 'Links to: 3 comps', tail: 'DR 72' },
-            { id: '2', primary: 'tech-blog.io', secondary: 'Links to: 2 comps', tail: 'DR 65' },
-            { id: '3', primary: 'review-site.net', secondary: 'Links to: 4 comps', tail: 'DR 58' },
-          ]}
-        />
-      </Section></Card>
-
-      <Card><Section title="DR Distribution" dense>
-        <Distribution rows={[
-          { label: 'DR 70+', value: 15, tone: 'good' },
-          { label: 'DR 40-70', value: 45, tone: 'info' },
-          { label: 'DR 10-40', value: 30, tone: 'neutral' },
-          { label: 'DR <10', value: 10, tone: 'warn' },
-        ]} />
-      </Section></Card>
+      <DistBlock title="Refdom share" segments={s.backlinks.byCompetitor.slice(0, 6).map((c: any, i: number) => ({
+        value: c.refDomains, tone: c.isYou ? 'good' : (['info','warn','neutral','bad','info','neutral'][i] as any),
+        label: c.isYou ? 'You' : c.domain,
+      }))} />
+      <TrendBlock title="Your refdoms (90d)" values={s.backlinks.youSeries} tone="info" />
+      <TopListBlock title="Refdoms competitors have, you don't" items={s.backlinks.gapList.slice(0, 6).map((r: any) => ({
+        id: r.domain, primary: r.domain, secondary: `DR ${r.dr}`, tail: r.competitors.join(', '),
+      }))} emptyText="No backlink gaps" />
+      <TopListBlock title="Refdoms unique to you" items={s.backlinks.youOnly.slice(0, 6).map((r: any) => ({
+        id: r.domain, primary: r.domain, tail: `DR ${r.dr}`,
+      }))} />
+      <SegmentBlock title="By competitor" headers={['Domain','Refdoms','New 30d','DR avg']} rows={s.backlinks.byCompetitor.slice(0, 6).map((c: any) => ({
+        id: c.id, label: c.domain, values: [compactNum(c.refDomains), c.gained30d, c.avgDr.toFixed(0)],
+      }))} />
+      <BenchmarkBlock title="Refdoms vs leader" site={s.backlinks.you.refDomains} benchmark={s.backlinks.leader.refDomains} higherIsBetter />
+      <DrillFooter chips={[
+        { label: 'Gaps', count: s.backlinks.gapTotal },
+        { label: 'You only', count: s.backlinks.youOnly.length },
+      ]} />
     </div>
   )
 }

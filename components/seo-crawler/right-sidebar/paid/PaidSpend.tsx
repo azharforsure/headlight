@@ -1,49 +1,54 @@
-import React from 'react'
+import React, { useMemo } from 'react'
 import { useSeoCrawler } from '@/contexts/SeoCrawlerContext'
 import { usePaidInsights } from '../_hooks/usePaidInsights'
+import { useDrill } from '../_shared/drill'
 import {
-  Card, Section, KpiRow, KpiTile, Distribution, TopList, Sparkline, EmptyState, compactNum,
+  HealthBlock, DistBlock, DonutBlock, DistRowsBlock, TrendBlock,
+  TopListBlock, SegmentBlock, HeatmapBlock, BenchmarkBlock, FunnelBlock,
+  CompareBlock, KvBlock, TimelineBlock, DrillFooter,
+  AlertsBlock, ActionsBlock,
+  EmptyState, fmtNum, fmtPct, fmtMs, compactNum, scoreToTone, fmtCurrency,
 } from '../_shared'
 
 export function PaidSpend() {
   const { paidCampaigns } = useSeoCrawler() as any
   const s = usePaidInsights()
+  const drill = useDrill()
+  if (!paidCampaigns?.length) return <EmptyState title="No paid data yet" />
 
-  if (!paidCampaigns?.length) return <EmptyState title="No paid data" />
+  const top = [...paidCampaigns].sort((a, b) => Number(b.spend) - Number(a.spend)).slice(0, 6)
 
   return (
     <div className="space-y-3 p-3">
-      <Card><Section title="Efficiency" dense>
-        <KpiRow>
-          <KpiTile label="Spend" value={'$' + compactNum(s.spend30d)} />
-          <KpiTile label="Conversions" value={s.conv30d} tone="good" />
-          <KpiTile label="ROAS" value={s.roas.toFixed(1) + 'x'} tone="good" />
-        </KpiRow>
-      </Section></Card>
-
-      <Card><Section title="Spend by Network" dense>
-        <Distribution rows={[
-          { label: 'Google',  value: Math.round(s.spend30d * 0.45), tone: 'info' },
-          { label: 'Meta',    value: Math.round(s.spend30d * 0.35), tone: 'info' },
-          { label: 'LinkedIn',value: Math.round(s.spend30d * 0.15), tone: 'info' },
-          { label: 'Other',   value: Math.round(s.spend30d * 0.05), tone: 'neutral' },
-        ]} />
-      </Section></Card>
-
-      <Card><Section title="ROAS Trend (12w)" dense>
-        <div className="h-[40px] px-1">
-          <Sparkline values={[4.2, 4.5, 4.0, 4.8, 5.2, 5.0, 5.5, 6.0, 5.8, 6.2]} tone="good" height={40} />
-        </div>
-      </Section></Card>
-
-      <Card><Section title="Top movers (7d)" dense>
-        <TopList 
-          items={[
-            { id: '1', primary: 'Search - NonBrand', secondary: 'Spend +$1.2k', tail: 'Conv +22%', tone: 'good' },
-            { id: '2', primary: 'Display - Retargeting', secondary: 'Spend -$400', tail: 'Conv -12%', tone: 'bad' },
-          ]}
-        />
-      </Section></Card>
+      <DistBlock title="Channel split" segments={[
+        { value: s.byChannel.search, tone: 'good', label: 'Search' },
+        { value: s.byChannel.display, tone: 'info', label: 'Display' },
+        { value: s.byChannel.video, tone: 'info', label: 'Video' },
+        { value: s.byChannel.shopping, tone: 'good', label: 'Shopping' },
+        { value: s.byChannel.social, tone: 'info', label: 'Social' },
+      ]} />
+      <DistRowsBlock title="Spend tier" rows={[
+        { label: '> $10k/mo', value: s.spendTiers.huge, tone: 'info' },
+        { label: '$1k–10k', value: s.spendTiers.big, tone: 'info' },
+        { label: '$100–1k', value: s.spendTiers.mid, tone: 'neutral' },
+        { label: '< $100', value: s.spendTiers.tiny, tone: 'neutral' },
+      ]} />
+      <TrendBlock title="Spend (90d)" values={s.spendSeries90d} tone="info" />
+      <TopListBlock title="Top campaigns" items={top.map(c => ({
+        id: c.id, primary: c.name, secondary: c.channel,
+        tail: fmtCurrency(Number(c.spend)),
+      }))} />
+      <TopListBlock title="Wasted spend" items={s.wasted.slice(0, 6).map((c: any) => ({
+        id: c.id, primary: c.name, secondary: c.reason, tail: fmtCurrency(c.wastedAmount),
+      }))} emptyText="No flagged waste" />
+      <SegmentBlock title="By account" headers={['Account','Spend','Conv','CPA']} rows={s.byAccount.slice(0, 6).map((a: any) => ({
+        id: a.id, label: a.name, values: [fmtCurrency(a.spend), a.conv, fmtCurrency(a.cpa)],
+      }))} />
+      <BenchmarkBlock title="CPC vs vertical" site={s.cpc} benchmark={s.bench.cpc} unit="$" higherIsBetter={false} />
+      <DrillFooter chips={[
+        { label: 'Wasted', count: fmtCurrency(s.wastedTotal) },
+        { label: 'Pacing', count: fmtPct(s.pacing * 100) },
+      ]} />
     </div>
   )
 }

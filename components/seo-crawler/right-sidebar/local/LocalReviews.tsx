@@ -1,55 +1,48 @@
-import React from 'react'
+import React, { useMemo } from 'react'
 import { useSeoCrawler } from '@/contexts/SeoCrawlerContext'
 import { useLocalInsights } from '../_hooks/useLocalInsights'
+import { useDrill } from '../_shared/drill'
 import {
-  Card, Section, KpiRow, KpiTile, Distribution, TopList, ActionRow, EmptyState, fmtNum,
+  HealthBlock, DistBlock, DonutBlock, DistRowsBlock, TrendBlock,
+  TopListBlock, SegmentBlock, HeatmapBlock, BenchmarkBlock,
+  CompareBlock, KvBlock, TimelineBlock, DrillFooter,
+  AlertsBlock, ActionsBlock,
+  EmptyState, fmtNum, fmtPct, fmtMs, compactNum, scoreToTone,
 } from '../_shared'
 
 export function LocalReviews() {
+  const { locations, reviewSources } = useSeoCrawler() as any
   const s = useLocalInsights()
-
-  if (!s.reviewSources.length) return <EmptyState title="No reviews aggregated" />
+  if (!locations?.length) return <EmptyState title="No locations set" />
 
   return (
     <div className="space-y-3 p-3">
-      <Card><Section title="Review overview" dense>
-        <KpiRow>
-          <KpiTile label="Total"    value={fmtNum(s.rev.total)} />
-          <KpiTile label="Avg"      value={s.rev.avg.toFixed(1)} tone={s.rev.avg >= 4 ? 'good' : 'warn'} />
-          <KpiTile label="Neg 30d"  value={s.rev.negative30d} tone={s.rev.negative30d > 0 ? 'bad' : 'neutral'} />
-        </KpiRow>
-      </Section></Card>
-
-      <Card><Section title="Rating buckets" dense>
-        <Distribution rows={[
-          { label: '5 ★', value: 70, tone: 'good' },
-          { label: '4 ★', value: 15, tone: 'good' },
-          { label: '3 ★', value: 8,  tone: 'neutral' },
-          { label: '2 ★', value: 4,  tone: 'warn' },
-          { label: '1 ★', value: 3,  tone: 'bad' },
-        ]} />
-      </Section></Card>
-
-      <Card><Section title="Unresponded negatives" dense>
-        <TopList 
-          items={[
-            { id: '1', primary: 'Bad service experience', secondary: '2 days ago · Google', tail: '1 ★', tone: 'bad' },
-            { id: '2', primary: 'Order missing item', secondary: '5 days ago · Yelp', tail: '2 ★', tone: 'bad' },
-          ]}
-        />
-      </Section></Card>
-
-      <Section title="Actions" dense>
-        <ActionRow 
-          action={{
-            id: 'rev-1',
-            title: 'Respond to negative reviews',
-            reason: `${s.rev.negative30d} negative reviews need official responses`,
-            affected: s.rev.negative30d,
-            primary: true
-          }}
-        />
-      </Section>
+      <DistBlock title="Rating mix" segments={[
+        { value: s.reviews.dist[5] || 0, tone: 'good', label: '5★' },
+        { value: s.reviews.dist[4] || 0, tone: 'good', label: '4★' },
+        { value: s.reviews.dist[3] || 0, tone: 'info', label: '3★' },
+        { value: s.reviews.dist[2] || 0, tone: 'warn', label: '2★' },
+        { value: s.reviews.dist[1] || 0, tone: 'bad', label: '1★' },
+      ]} />
+      <DistRowsBlock title="Source mix" rows={(reviewSources || []).slice(0, 6).map((r: any) => ({
+        label: r.name, value: r.count, tone: 'info',
+      }))} />
+      <TrendBlock title="Review velocity (12 weeks)" values={s.reviews.velocitySeries} tone="info" />
+      <TopListBlock title="Recent low-star" items={s.reviews.recentLow.slice(0, 6).map((r: any) => ({
+        id: r.id, primary: r.author, secondary: r.text.slice(0, 80),
+        tail: `${r.rating}★ · ${r.location}`,
+      }))} emptyText="No recent low-star" />
+      <TopListBlock title="Unanswered reviews" items={s.reviews.unanswered.slice(0, 6).map((r: any) => ({
+        id: r.id, primary: r.author, secondary: r.text.slice(0, 80), tail: `${r.rating}★`,
+      }))} emptyText="All replied" />
+      <SegmentBlock title="By location" headers={['Location','Avg','Count','Response %']} rows={s.byLocation.slice(0, 6).map((l: any) => ({
+        id: l.id, label: l.name, values: [l.avgRating.toFixed(2), l.reviewCount, fmtPct(l.responseRate * 100)],
+      }))} />
+      <BenchmarkBlock title="Avg rating vs vertical" site={s.reviews.avg * 20} benchmark={s.bench.reviewAvg * 20} unit="%" higherIsBetter />
+      <DrillFooter chips={[
+        { label: 'Unanswered', count: s.reviews.unanswered.length },
+        { label: 'Low star', count: s.reviews.lowStarTotal },
+      ]} />
     </div>
   )
 }

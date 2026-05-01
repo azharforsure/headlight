@@ -1,60 +1,45 @@
-import React from 'react'
+import React, { useMemo } from 'react'
 import { useSeoCrawler } from '@/contexts/SeoCrawlerContext'
 import { useCommerceInsights } from '../_hooks/useCommerceInsights'
+import { useDrill } from '../_shared/drill'
 import {
-  Card, Section, KpiRow, KpiTile, Distribution, TopList, ActionRow, EmptyState,
+  HealthBlock, DistBlock, DonutBlock, DistRowsBlock, TrendBlock,
+  TopListBlock, SegmentBlock, HeatmapBlock, BenchmarkBlock, FunnelBlock,
+  CompareBlock, KvBlock, TimelineBlock, DrillFooter,
+  AlertsBlock, ActionsBlock,
+  EmptyState, fmtNum, fmtPct, fmtMs, compactNum, scoreToTone, fmtCurrency,
 } from '../_shared'
 
 export function CommerceFeed() {
   const { pages } = useSeoCrawler()
   const s = useCommerceInsights()
-
-  if (!pages?.length || s.total === 0) return <EmptyState title="No product data" />
+  if (!pages?.length) return <EmptyState title="No crawl data yet" />
 
   return (
     <div className="space-y-3 p-3">
-      <Card><Section title="Merchant feed status" dense>
-        <KpiRow>
-          <KpiTile label="Approved" value={s.feed.approved} tone="good" />
-          <KpiTile label="Warnings" value={s.feed.warnings} tone="warn" />
-          <KpiTile label="Errors"   value={s.feed.errors}   tone="bad" />
-        </KpiRow>
-      </Section></Card>
-
-      <Card><Section title="Status mix" dense>
-        <Distribution rows={[
-          { label: 'Approved', value: s.feed.approved, tone: 'good' },
-          { label: 'Warning',  value: s.feed.warnings, tone: 'warn' },
-          { label: 'Error',    value: s.feed.errors,   tone: 'bad' },
-          { label: 'Missing',  value: s.feed.missing,  tone: 'neutral' },
-        ]} />
-      </Section></Card>
-
-      <Card><Section title="Feed errors" dense>
-        <TopList 
-          items={s.products
-            .filter(p => p.feedStatus === 'error')
-            .slice(0, 5)
-            .map(p => ({
-              id: p.url,
-              primary: p.title || p.url,
-              tail: p.feedErrorReason || 'Invalid data',
-              tone: 'bad'
-            }))}
-        />
-      </Section></Card>
-
-      <Section title="Actions" dense>
-        <ActionRow 
-          action={{
-            id: 'feed-1',
-            title: 'Regenerate product feed',
-            reason: `${s.feed.errors} products have feed sync errors`,
-            affected: s.feed.errors,
-            primary: true
-          }}
-        />
-      </Section>
+      <DistBlock title="Feed status" segments={[
+        { value: s.feed.approved, tone: 'good', label: 'Approved' },
+        { value: s.feed.pending, tone: 'warn', label: 'Pending' },
+        { value: s.feed.disapproved, tone: 'bad', label: 'Disapproved' },
+        { value: s.feed.expired, tone: 'neutral', label: 'Expired' },
+      ]} />
+      <DistRowsBlock title="Disapproval reasons" rows={[
+        { label: 'Price mismatch', value: s.feed.reasons.priceMismatch, tone: 'bad' },
+        { label: 'Availability mismatch', value: s.feed.reasons.availMismatch, tone: 'bad' },
+        { label: 'Image issues', value: s.feed.reasons.image, tone: 'warn' },
+        { label: 'Title/desc policy', value: s.feed.reasons.policy, tone: 'warn' },
+        { label: 'GTIN missing', value: s.feed.reasons.gtin, tone: 'warn' },
+      ]} />
+      <TopListBlock title="Disapproved items" items={s.feed.disapprovedList.slice(0, 6).map((i: any) => ({
+        id: i.id, primary: i.title, secondary: i.reason, tail: i.merchant,
+      }))} emptyText="No disapprovals" />
+      <SegmentBlock title="By merchant" headers={['Merchant','Items','Disapproved']} rows={s.feed.byMerchant.slice(0, 6).map((m: any) => ({
+        id: m.id, label: m.name, values: [m.items, m.disapproved],
+      }))} />
+      <DrillFooter chips={[
+        { label: 'Disapproved', count: s.feed.disapproved },
+        { label: 'Pending', count: s.feed.pending },
+      ]} />
     </div>
   )
 }

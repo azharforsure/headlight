@@ -1,75 +1,53 @@
-import React from 'react'
+import React, { useMemo } from 'react'
 import { useSeoCrawler } from '@/contexts/SeoCrawlerContext'
 import { usePaidInsights } from '../_hooks/usePaidInsights'
+import { useDrill } from '../_shared/drill'
 import {
-  Card, Section, KpiRow, KpiTile, Distribution, TopList, ActionRow, EmptyState, compactNum,
+  HealthBlock, DistBlock, DonutBlock, DistRowsBlock, TrendBlock,
+  TopListBlock, SegmentBlock, HeatmapBlock, BenchmarkBlock, FunnelBlock,
+  CompareBlock, KvBlock, TimelineBlock, DrillFooter,
+  AlertsBlock, ActionsBlock,
+  EmptyState, fmtNum, fmtPct, fmtMs, compactNum, scoreToTone, fmtCurrency,
 } from '../_shared'
 
 export function PaidQualityScore() {
   const { paidCampaigns } = useSeoCrawler() as any
   const s = usePaidInsights()
-
-  if (!paidCampaigns?.length) return <EmptyState title="No paid data" />
-
-  const avgQs = s.total > 0 ? 7.4 : 0 // Mocking avg if not in hook aggregate
+  if (!paidCampaigns?.length) return <EmptyState title="No paid data yet" />
 
   return (
     <div className="space-y-3 p-3">
-      <Card><Section title="Quality summary" dense>
-        <KpiRow>
-          <KpiTile label="Avg QS" value={avgQs} tone={avgQs > 7 ? 'good' : 'warn'} />
-          <KpiTile label="Low QS (<6)" value={s.qsBucket.lt6} tone="bad" />
-          <KpiTile label="Disapproved" value="1" tone="bad" />
-        </KpiRow>
-      </Section></Card>
-
-      <Card><Section title="QS Distribution" dense>
-        <Distribution rows={[
-          { label: '10', value: s.qsBucket.ten,   tone: 'good' },
-          { label: '9',  value: s.qsBucket.nine,  tone: 'good' },
-          { label: '8',  value: s.qsBucket.eight, tone: 'info' },
-          { label: '7',  value: s.qsBucket.seven, tone: 'warn' },
-          { label: '6',  value: s.qsBucket.six,   tone: 'bad' },
-          { label: '<6', value: s.qsBucket.lt6,   tone: 'bad' },
-        ]} />
-      </Section></Card>
-
-      <Card><Section title="Low QS Campaigns" dense>
-        <TopList 
-          items={paidCampaigns
-            .filter((c: any) => Number(c.qsAvg) < 7)
-            .sort((a: any, b: any) => Number(b.spend30d) - Number(a.spend30d))
-            .slice(0, 5)
-            .map((c: any) => ({
-              id: c.id,
-              primary: c.name,
-              secondary: `$${compactNum(c.spend30d)} spend`,
-              tail: `QS ${c.qsAvg}`,
-              tone: 'bad'
-            }))}
-        />
-      </Section></Card>
-
-      <Section title="Actions" dense>
-        <ActionRow 
-          action={{
-            id: 'qs-1',
-            title: 'Refresh low-QS creatives',
-            reason: '3 ads have "Below Average" CTR components',
-            affected: 3,
-            primary: true
-          }}
-        />
-        <ActionRow 
-          action={{
-            id: 'qs-2',
-            title: 'Pause keywords with QS < 3',
-            reason: 'High spend with very low quality signal',
-            affected: 12
-          }}
-        />
-      </Section>
+      <DistBlock title="QS distribution" segments={[
+        { value: s.qs.dist[1] || 0, tone: 'bad', label: '1' },
+        { value: s.qs.dist[2] || 0, tone: 'bad', label: '2' },
+        { value: s.qs.dist[3] || 0, tone: 'bad', label: '3' },
+        { value: s.qs.dist[4] || 0, tone: 'warn', label: '4' },
+        { value: s.qs.dist[5] || 0, tone: 'warn', label: '5' },
+        { value: s.qs.dist[6] || 0, tone: 'info', label: '6' },
+        { value: s.qs.dist[7] || 0, tone: 'info', label: '7' },
+        { value: s.qs.dist[8] || 0, tone: 'good', label: '8' },
+        { value: s.qs.dist[9] || 0, tone: 'good', label: '9' },
+        { value: s.qs.dist[10] || 0, tone: 'good', label: '10' },
+      ]} />
+      <DistRowsBlock title="Component mix" rows={[
+        { label: 'Expected CTR', value: s.qs.expectedCtr.toFixed(1), tone: scoreToTone(s.qs.expectedCtr * 10) },
+        { label: 'Ad relevance', value: s.qs.adRelevance.toFixed(1), tone: scoreToTone(s.qs.adRelevance * 10) },
+        { label: 'Landing page', value: s.qs.landingPage.toFixed(1), tone: scoreToTone(s.qs.landingPage * 10) },
+      ]} />
+      <TrendBlock title="Avg QS (12 weeks)" values={s.qs.series} tone="info" />
+      <TopListBlock title="Worst keywords" items={s.qs.worstKeywords.slice(0, 6).map((k: any) => ({
+        id: k.id, primary: k.text, tail: `QS ${k.qs} · ${fmtCurrency(k.spend)}`,
+      }))} />
+      <SegmentBlock title="By campaign" headers={['Campaign','Avg QS','Worst','% < 5']} rows={s.qs.byCampaign.slice(0, 6).map((c: any) => ({
+        id: c.id, label: c.name, values: [c.avg.toFixed(1), c.worst, fmtPct(c.below5Pct * 100)],
+      }))} />
+      <CompareBlock title="vs last 30d" rows={[
+        { label: 'Avg QS', a: { v: s.avgQs, tag: 'now' }, b: { v: s.avgQsPrev, tag: 'prev' }, format: v => v.toFixed(1) },
+        { label: 'Below 5', a: { v: s.qs.below5, tag: 'now' }, b: { v: s.qs.below5Prev, tag: 'prev' } },
+      ]} />
+      <DrillFooter chips={[
+        { label: 'Below 5', count: s.qs.below5 }, { label: 'Above 8', count: s.qs.above8 },
+      ]} />
     </div>
   )
 }
-

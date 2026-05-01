@@ -194,6 +194,33 @@ export const AUDIT_MODES: Record<AuditMode, AuditModeConfig> = {
             'url', 'statusCode', 'hasHsts', 'hasCsp', 'sslValid', 'sslProtocol',
             'insecureCookies', 'cookiesMissingSameSite', 'exposedApiKeys'
         ]
+    },
+    uxConversion: {
+        id: 'uxConversion',
+        label: 'UX & Conversion',
+        description: 'User experience, friction, and conversion signals',
+        icon: '✨',
+        totalChecks: '~45',
+        viewType: 'grid',
+        defaultColumns: []
+    },
+    paid: {
+        id: 'paid',
+        label: 'Paid Audit',
+        description: 'PPC, ads, and landing page quality',
+        icon: '💰',
+        totalChecks: '~30',
+        viewType: 'grid',
+        defaultColumns: []
+    },
+    socialBrand: {
+        id: 'socialBrand',
+        label: 'Social & Brand',
+        description: 'Social signals, brand mentions, and sentiment',
+        icon: '📱',
+        totalChecks: '~35',
+        viewType: 'grid',
+        defaultColumns: []
     }
 };
 

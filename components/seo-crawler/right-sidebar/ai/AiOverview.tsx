@@ -1,59 +1,62 @@
-import React from 'react'
+import React, { useMemo } from 'react'
 import { useSeoCrawler } from '@/contexts/SeoCrawlerContext'
 import { useAiInsights } from '../_hooks/useAiInsights'
 import { useDrill } from '../_shared/drill'
 import {
-  Card, Section, KpiRow, KpiTile, RingGauge, MetricRow,
-  AlertRow, DrillChip, EmptyState, fmtNum,
+  HeroStrip, HealthBlock, DistBlock, DonutBlock, DistRowsBlock, TrendBlock,
+  TopListBlock, SegmentBlock, HeatmapBlock, BenchmarkBlock,
+  CompareBlock, KvBlock, TimelineBlock, DrillFooter,
+  AlertsBlock, ActionsBlock,
+  EmptyState, fmtNum, fmtPct, fmtMs, compactNum, scoreToTone,
 } from '../_shared'
 
 export function AiOverview() {
-  const { pages } = useSeoCrawler()
+  const { pages, robotsTxt } = useSeoCrawler() as any
   const s = useAiInsights()
   const drill = useDrill()
-
   if (!pages?.length) return <EmptyState title="No crawl data yet" />
 
   return (
     <div className="space-y-3 p-3">
-      <Card>
-        <div className="flex flex-col items-center py-5">
-          <RingGauge value={s.score} size={92} label="AI-readiness" />
-        </div>
-      </Card>
+      <HeroStrip ring="gauge" score={s.score} scoreLabel="AI ready"
+        scoreHint="Crawlability + citations + entities + schema"
+        kpis={[
+          { label: 'Citations (30d)', value: s.citations.total },
+          { label: 'llms.txt', value: s.llmsTxt ? 'Present' : 'Missing', tone: s.llmsTxt ? 'good' : 'warn' },
+          { label: 'Schema score', value: s.schema.score, tone: scoreToTone(s.schema.score) },
+        ]} />
+      <DistBlock title="Bot allow / block" segments={[
+        { value: s.bots.allowed, tone: 'good', label: 'Allowed' },
+        { value: s.bots.blocked, tone: 'bad', label: 'Blocked' },
+        { value: s.bots.partial, tone: 'warn', label: 'Partial' },
+      ]} />
+      <DistRowsBlock title="Engine mix (citations)" rows={[
+        { label: 'ChatGPT', value: s.citations.byEngine.chatgpt, tone: 'good' },
+        { label: 'Gemini', value: s.citations.byEngine.gemini, tone: 'good' },
+        { label: 'Perplexity', value: s.citations.byEngine.perplexity, tone: 'good' },
+        { label: 'Claude', value: s.citations.byEngine.claude, tone: 'good' },
+        { label: 'Bing Copilot', value: s.citations.byEngine.bing, tone: 'info' },
+      ]} />
+      <TrendBlock title="Citations (90d)" values={s.citations.series} tone="info" />
+      <TopListBlock title="Most-cited pages" items={s.citations.topPages.slice(0, 6).map((p: any) => ({
+        id: p.url, primary: p.title || p.url, secondary: p.url,
+        tail: `${p.citations} cites`, onClick: () => drill.toPage(p),
+      }))} emptyText="No citations tracked" />
+      <SegmentBlock title="By topic" headers={['Topic','Pages','Schema','Cites']} rows={s.entities.list.slice(0, 6).map((e: any) => ({
+        id: e.id, label: e.label, values: [e.pages, e.schema, e.citations],
+      }))} />
+      <BenchmarkBlock title="Schema vs vertical" site={s.schema.score} benchmark={s.bench.schemaScore} unit="%" higherIsBetter />
+      <CompareBlock title="vs last 30d" rows={[
+        { label: 'Citations', a: { v: s.citations.total, tag: 'now' }, b: { v: s.citations.totalPrev, tag: 'prev' } },
+        { label: 'Schema score', a: { v: s.schema.score, tag: 'now' }, b: { v: s.schema.scorePrev, tag: 'prev' } },
+      ]} />
 
-      <Card><Section title="Snapshot" dense>
-        <KpiRow>
-          <KpiTile label="Bots blocked"  value={fmtNum(s.blockedBotsCount)} tone={s.blockedBotsCount ? 'warn' : 'good'} />
-          <KpiTile label="llms.txt"      value={s.llmsTxt.hasLlmsTxt ? 'Yes' : 'No'} tone={s.llmsTxt.hasLlmsTxt ? 'good' : 'warn'} />
-          <KpiTile label="Citations"     value={fmtNum(s.citations.total)} />
-        </KpiRow>
-      </Section></Card>
-
-      <Card><Section title="Extractability" dense>
-        <MetricRow label="Avg fitness"   value={(s.extractability.avgScore * 100).toFixed(0)} tone={s.extractability.avgScore >= 0.6 ? 'good' : 'warn'} />
-        <MetricRow label="Answerable"    value={`${s.extractability.answerable}%`} />
-        <MetricRow label="FAQ schema"    value={`${s.extractability.hasFaq}%`} />
-        <MetricRow label="HowTo schema"  value={`${s.extractability.hasHowto}%`} />
-      </Section></Card>
-
-      <Card><Section title="Alerts" dense>
-        {!s.llmsTxt.hasLlmsTxt && (
-          <AlertRow alert={{ id: 'l', tone: 'warn', title: 'No llms.txt at site root' }} />
-        )}
-        {s.blockedBotsCount > 0 && (
-          <AlertRow alert={{ id: 'b', tone: 'warn', title: 'AI bots blocked', count: s.blockedBotsCount }} />
-        )}
-        {s.entities.hasOrg < 50 && (
-          <AlertRow alert={{ id: 'e', tone: 'warn', title: 'Weak Organization schema coverage' }} />
-        )}
-      </Section></Card>
-
-      <div className="flex flex-wrap gap-1">
-        <DrillChip label="Crawlability" />
-        <DrillChip label="Citations"    count={s.citations.total} />
-        <DrillChip label="Schema"       />
-      </div>
+      <DrillFooter chips={[
+        { label: 'Crawlability', count: s.bots.allowed + s.bots.blocked },
+        { label: 'Citations', count: s.citations.total },
+        { label: 'Entities', count: s.entities.list.length },
+        { label: 'Schema', count: s.schema.gaps },
+      ]} />
     </div>
   )
 }

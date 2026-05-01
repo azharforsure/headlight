@@ -1,40 +1,50 @@
-import React from 'react'
+import React, { useMemo } from 'react'
 import { useSeoCrawler } from '@/contexts/SeoCrawlerContext'
 import { useAiInsights } from '../_hooks/useAiInsights'
+import { useDrill } from '../_shared/drill'
 import {
-  Card, Section, KpiRow, KpiTile, TopList, AlertRow, EmptyState,
+  HealthBlock, DistBlock, DonutBlock, DistRowsBlock, TrendBlock,
+  TopListBlock, SegmentBlock, HeatmapBlock, BenchmarkBlock,
+  CompareBlock, KvBlock, TimelineBlock, DrillFooter,
+  AlertsBlock, ActionsBlock,
+  EmptyState, fmtNum, fmtPct, fmtMs, compactNum, scoreToTone,
 } from '../_shared'
 
 export function AiEntities() {
   const { pages } = useSeoCrawler()
   const s = useAiInsights()
-
+  const drill = useDrill()
   if (!pages?.length) return <EmptyState title="No crawl data yet" />
 
   return (
     <div className="space-y-3 p-3">
-      <Card><Section title="Knowledge anchoring" dense>
-        <KpiRow>
-          <KpiTile label="Org Schema" value={s.entities.hasOrg + '%'} tone={s.entities.hasOrg > 80 ? 'good' : 'warn'} />
-          <KpiTile label="SameAs"     value="42%" tone="info" />
-          <KpiTile label="Entity Den" value={s.entities.avgEntityDensity.toFixed(1)} />
-        </KpiRow>
-      </Section></Card>
-
-      <Card><Section title="Primary entities detected" dense>
-        <TopList 
-          items={[
-            { id: 'e1', primary: 'Search Engine Optimization', secondary: 'Topics: 124', tail: '0.85 rel' },
-            { id: 'e2', primary: 'Digital Marketing', secondary: 'Topics: 85', tail: '0.72 rel' },
-            { id: 'e3', primary: 'Software as a Service', secondary: 'Topics: 42', tail: '0.65 rel' },
-          ]}
-        />
-      </Section></Card>
-
-      <Card><Section title="Alerts" dense>
-        <AlertRow alert={{ id: 'a1', tone: 'warn', title: 'Missing peer entity "Content Strategy" context' }} />
-        <AlertRow alert={{ id: 'a2', tone: 'bad', title: 'Weak knowledge graph anchoring for "Brand"' }} />
-      </Section></Card>
+      <DistBlock title="Type mix" segments={[
+        { value: s.entities.types.person, tone: 'info', label: 'Person' },
+        { value: s.entities.types.org, tone: 'info', label: 'Organization' },
+        { value: s.entities.types.place, tone: 'info', label: 'Place' },
+        { value: s.entities.types.product, tone: 'good', label: 'Product' },
+        { value: s.entities.types.event, tone: 'info', label: 'Event' },
+      ]} />
+      <DistRowsBlock title="Source mix" rows={[
+        { label: 'Schema.org', value: s.entities.sources.schema, tone: 'good' },
+        { label: 'Wikipedia', value: s.entities.sources.wikipedia, tone: 'good' },
+        { label: 'Wikidata', value: s.entities.sources.wikidata, tone: 'good' },
+        { label: 'Knowledge graph', value: s.entities.sources.kg, tone: 'good' },
+      ]} />
+      <TopListBlock title="Top entities" items={s.entities.list.slice(0, 6).map((e: any) => ({
+        id: e.id, primary: e.label, secondary: e.type,
+        tail: `${e.pages} pages · ${e.citations} cites`,
+      }))} />
+      <TopListBlock title="Entity gaps" items={s.entities.gapList.slice(0, 6).map((e: any) => ({
+        id: e.id, primary: e.label, tail: 'no schema',
+      }))} emptyText="No entity gaps" />
+      <SegmentBlock title="By page cluster" headers={['Cluster','Entities','Schema','Gaps']} rows={s.entities.byCluster.slice(0, 6).map((c: any) => ({
+        id: c.id, label: c.label, values: [c.entities, c.schema, c.gaps],
+      }))} />
+      <DrillFooter chips={[
+        { label: 'Gaps', count: s.entities.gaps },
+        { label: 'Schema', count: s.entities.withSchema },
+      ]} />
     </div>
   )
 }

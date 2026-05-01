@@ -1,61 +1,53 @@
-import React from 'react'
+import React, { useMemo } from 'react'
 import { useSeoCrawler } from '@/contexts/SeoCrawlerContext'
 import { useAiInsights } from '../_hooks/useAiInsights'
-import {
-  Card, Section, KpiRow, KpiTile, Distribution, TopList, Sparkline, EmptyState,
-} from '../_shared'
 import { useDrill } from '../_shared/drill'
+import {
+  HealthBlock, DistBlock, DonutBlock, DistRowsBlock, TrendBlock,
+  TopListBlock, SegmentBlock, HeatmapBlock, BenchmarkBlock,
+  CompareBlock, KvBlock, TimelineBlock, DrillFooter,
+  AlertsBlock, ActionsBlock,
+  EmptyState, fmtNum, fmtPct, fmtMs, compactNum, scoreToTone,
+} from '../_shared'
 
 export function AiCitations() {
   const { pages } = useSeoCrawler()
   const s = useAiInsights()
   const drill = useDrill()
-
   if (!pages?.length) return <EmptyState title="No crawl data yet" />
-
-  const engineData = Object.entries(s.citations.perEngine).map(([label, value]) => ({
-    label, value, tone: 'info' as const
-  }))
 
   return (
     <div className="space-y-3 p-3">
-      <Card><Section title="Citation metrics" dense>
-        <KpiRow>
-          <KpiTile label="Total citations" value={s.citations.total} tone="good" />
-          <KpiTile label="Engines"        value={engineData.length} />
-          <KpiTile label="Missed"         value="12" tone="warn" />
-        </KpiRow>
-      </Section></Card>
-
-      <Card><Section title="Citation trend (12w)" dense>
-        <div className="h-[40px] px-1">
-          <Sparkline values={[12, 15, 14, 20, 25, 22, 30, 35, 32, 40]} tone="good" height={40} />
-        </div>
-      </Section></Card>
-
-      <Card><Section title="Per-engine breakdown" dense>
-        <Distribution rows={engineData.length ? engineData : [
-          { label: 'GPT', value: 45, tone: 'info' },
-          { label: 'Perplexity', value: 30, tone: 'info' },
-          { label: 'Claude', value: 15, tone: 'info' },
-          { label: 'Gemini', value: 10, tone: 'info' },
-        ]} />
-      </Section></Card>
-
-      <Card><Section title="Most cited pages" dense>
-        <TopList 
-          items={pages
-            .filter(p => Number(p.aiCitationCount) > 0)
-            .sort((a, b) => Number(b.aiCitationCount) - Number(a.aiCitationCount))
-            .slice(0, 5)
-            .map(p => ({
-              id: p.url,
-              primary: p.title || p.url,
-              tail: `${p.aiCitationCount} refs`,
-              onClick: () => drill.toPage(p)
-            }))}
-        />
-      </Section></Card>
+      <DistBlock title="Engine mix" segments={[
+        { value: s.citations.byEngine.chatgpt, tone: 'good', label: 'ChatGPT' },
+        { value: s.citations.byEngine.gemini, tone: 'good', label: 'Gemini' },
+        { value: s.citations.byEngine.perplexity, tone: 'good', label: 'Perplexity' },
+        { value: s.citations.byEngine.claude, tone: 'good', label: 'Claude' },
+        { value: s.citations.byEngine.bing, tone: 'info', label: 'Bing' },
+      ]} />
+      <DistRowsBlock title="Query intent mix" rows={[
+        { label: 'Informational', value: s.citations.byIntent.info, tone: 'info' },
+        { label: 'Commercial', value: s.citations.byIntent.comm, tone: 'good' },
+        { label: 'Transactional', value: s.citations.byIntent.tx, tone: 'good' },
+        { label: 'Navigational', value: s.citations.byIntent.nav, tone: 'neutral' },
+      ]} />
+      <TrendBlock title="Citations (90d)" values={s.citations.series} tone="good" />
+      <TopListBlock title="Most-cited pages" items={s.citations.topPages.slice(0, 6).map((p: any) => ({
+        id: p.url, primary: p.title || p.url, tail: `${p.citations}`,
+        onClick: () => drill.toPage(p),
+      }))} />
+      <TopListBlock title="Most-cited queries" items={s.citations.topQueries.slice(0, 6).map((q: any) => ({
+        id: q.query, primary: q.query, secondary: q.engine, tail: `${q.count}`,
+      }))} />
+      <BenchmarkBlock title="Citations vs competitors" site={s.citations.total} benchmark={s.bench.citations} higherIsBetter />
+      <CompareBlock title="vs last 30d" rows={[
+        { label: 'Total', a: { v: s.citations.total, tag: 'now' }, b: { v: s.citations.totalPrev, tag: 'prev' } },
+        { label: 'Pages cited', a: { v: s.citations.uniquePages, tag: 'now' }, b: { v: s.citations.uniquePagesPrev, tag: 'prev' } },
+      ]} />
+      <DrillFooter chips={[
+        { label: 'Top engine', count: s.citations.topEngine },
+        { label: 'Pages cited', count: s.citations.uniquePages },
+      ]} />
     </div>
   )
 }

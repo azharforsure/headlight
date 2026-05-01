@@ -1,63 +1,51 @@
-import React from 'react'
+import React, { useMemo } from 'react'
 import { useSeoCrawler } from '@/contexts/SeoCrawlerContext'
 import { useCommerceInsights } from '../_hooks/useCommerceInsights'
-import {
-  Card, Section, KpiRow, KpiTile, Distribution, TopList, ActionRow, EmptyState,
-} from '../_shared'
 import { useDrill } from '../_shared/drill'
+import {
+  HealthBlock, DistBlock, DonutBlock, DistRowsBlock, TrendBlock,
+  TopListBlock, SegmentBlock, HeatmapBlock, BenchmarkBlock, FunnelBlock,
+  CompareBlock, KvBlock, TimelineBlock, DrillFooter,
+  AlertsBlock, ActionsBlock,
+  EmptyState, fmtNum, fmtPct, fmtMs, compactNum, scoreToTone, fmtCurrency,
+} from '../_shared'
 
 export function CommerceInventory() {
   const { pages } = useSeoCrawler()
   const s = useCommerceInsights()
   const drill = useDrill()
+  if (!pages?.length) return <EmptyState title="No crawl data yet" />
 
-  if (!pages?.length || s.total === 0) return <EmptyState title="No product data" />
+  const oos = s.products.outOfStockList.slice(0, 6)
 
   return (
     <div className="space-y-3 p-3">
-      <Card><Section title="Inventory levels" dense>
-        <KpiRow>
-          <KpiTile label="In-stock"  value={s.inventory.inStock} tone="good" />
-          <KpiTile label="OOS"       value={s.inventory.oos}     tone="bad" />
-          <KpiTile label="Backorder" value={s.inventory.backorder} tone="warn" />
-        </KpiRow>
-      </Section></Card>
-
-      <Card><Section title="Stock distribution" dense>
-        <Distribution rows={[
-          { label: 'In Stock',  value: s.inventory.inStock, tone: 'good' },
-          { label: 'Out of Stock', value: s.inventory.oos, tone: 'bad' },
-          { label: 'Backorder', value: s.inventory.backorder, tone: 'warn' },
-          { label: 'Preorder',  value: s.inventory.preorder, tone: 'info' },
-        ]} />
-      </Section></Card>
-
-      <Card><Section title="Long-OOS Products" dense>
-        <TopList 
-          items={s.products
-            .filter(p => p.availability === 'out_of_stock' && Number(p.oosDays) > 0)
-            .sort((a, b) => Number(b.oosDays) - Number(a.oosDays))
-            .slice(0, 5)
-            .map(p => ({
-              id: p.url,
-              primary: p.title || p.url,
-              tail: `${p.oosDays}d OOS`,
-              onClick: () => drill.toPage(p)
-            }))}
-        />
-      </Section></Card>
-
-      <Section title="Actions" dense>
-        <ActionRow 
-          action={{
-            id: 'inv-1',
-            title: 'Hide OOS from marketing feed',
-            reason: `${s.inventory.oos} products are out of stock but may still be in feed`,
-            affected: s.inventory.oos,
-            primary: true
-          }}
-        />
-      </Section>
+      <DistBlock title="Stock band" segments={[
+        { value: s.products.inStock, tone: 'good', label: 'In stock' },
+        { value: s.products.lowStock, tone: 'warn', label: 'Low' },
+        { value: s.products.outOfStock, tone: 'bad', label: 'OOS' },
+        { value: s.products.discontinued, tone: 'neutral', label: 'Discontinued' },
+      ]} />
+      <DistRowsBlock title="OOS impact" rows={[
+        { label: 'OOS with traffic', value: s.inventory.oosWithTraffic, tone: 'bad' },
+        { label: 'OOS with backlinks', value: s.inventory.oosWithBacklinks, tone: 'warn' },
+        { label: 'OOS in sitemap', value: s.inventory.oosInSitemap, tone: 'warn' },
+      ]} />
+      <TrendBlock title="OOS count (90d)" values={s.inventory.oosSeries} tone="warn" />
+      <TopListBlock title="OOS with most traffic" items={oos.map((p: any) => ({
+        id: p.url, primary: p.title || p.url, tail: compactNum(p.gscClicks),
+        onClick: () => drill.toPage(p),
+      }))} emptyText="No OOS" />
+      <TopListBlock title="Recent restocks" items={s.inventory.recentRestock.slice(0, 6).map((p: any) => ({
+        id: p.url, primary: p.title || p.url, tail: p.relTime,
+      }))} emptyText="No recent restocks" />
+      <SegmentBlock title="By category" headers={['Category','OOS','Low','Avg days OOS']} rows={s.inventory.byCategory.slice(0, 6).map((c: any) => ({
+        id: c.id, label: c.label, values: [c.oos, c.low, c.avgDaysOos],
+      }))} />
+      <DrillFooter chips={[
+        { label: 'OOS', count: s.products.outOfStock },
+        { label: 'OOS traffic', count: s.inventory.oosWithTraffic },
+      ]} />
     </div>
   )
 }

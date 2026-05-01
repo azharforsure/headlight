@@ -1,9 +1,9 @@
-import React from 'react'
 import { scoreToTone } from './scoring'
+import { HelpHint } from './HelpHint'
 
 const toneStroke = { good: '#10b981', warn: '#f59e0b', bad: '#f43f5e', neutral: '#666' } as const
 
-export function RingGauge({ value, size = 88, label }: { value: number; size?: number; label?: string }) {
+export function RingGauge({ value, size = 88, label, hint }: { value: number; size?: number; label?: string; hint?: string }) {
   const v = Math.max(0, Math.min(100, Number(value) || 0))
   const r = size / 2 - 6
   const c = 2 * Math.PI * r
@@ -19,7 +19,12 @@ export function RingGauge({ value, size = 88, label }: { value: number; size?: n
         <text x="50%" y="50%" textAnchor="middle" dy=".35em"
           className="fill-white text-[20px] font-bold tabular-nums">{Math.round(v)}</text>
       </svg>
-      {label && <div className="text-[10px] uppercase tracking-widest text-[#666]">{label}</div>}
+      {label && (
+        <div className="text-[10px] uppercase tracking-widest text-[#666] flex items-center gap-1">
+          {label}
+          {hint && <HelpHint text={hint} />}
+        </div>
+      )}
     </div>
   )
 }

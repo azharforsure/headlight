@@ -1,61 +1,61 @@
-import React from 'react'
+import React, { useMemo } from 'react'
 import { useSeoCrawler } from '@/contexts/SeoCrawlerContext'
 import { useLocalInsights } from '../_hooks/useLocalInsights'
 import { useDrill } from '../_shared/drill'
 import {
-  Card, Section, KpiRow, KpiTile, RingGauge, MetricRow,
-  AlertRow, DrillChip, EmptyState, NotConnected, fmtNum,
+  HeroStrip, HealthBlock, DistBlock, DonutBlock, DistRowsBlock, TrendBlock,
+  TopListBlock, SegmentBlock, HeatmapBlock, BenchmarkBlock,
+  CompareBlock, KvBlock, TimelineBlock, DrillFooter,
+  AlertsBlock, ActionsBlock,
+  EmptyState, fmtNum, fmtPct, fmtMs, compactNum, scoreToTone,
 } from '../_shared'
 
 export function LocalOverview() {
+  const { locations } = useSeoCrawler() as any
   const s = useLocalInsights()
-  const drill = useDrill()
-
-  if (!s.locations.length && !s.gbpProfiles.length) {
-    return <NotConnected source="Locations" />
-  }
+  if (!locations?.length) return <EmptyState title="No locations set" hint="Connect Google Business Profile." />
 
   return (
     <div className="space-y-3 p-3">
-      <Card>
-        <div className="flex flex-col items-center py-5">
-          <RingGauge value={s.score} size={92} label="Local score" />
-        </div>
-      </Card>
+      <HeroStrip ring="gauge" score={s.score} scoreLabel="Local"
+        scoreHint="NAP + GBP + reviews + local pack"
+        kpis={[
+          { label: 'Locations', value: locations?.length || 0 },
+          { label: 'NAP consistent', value: fmtPct(s.nap.consistency * 100), tone: scoreToTone(s.nap.consistency * 100) },
+          { label: 'GBP avg score', value: s.gbp.avgScore.toFixed(0), tone: scoreToTone(s.gbp.avgScore) },
+        ]} />
+      <DistBlock title="Location health" segments={[
+        { value: s.bands.healthy, tone: 'good', label: 'Healthy' },
+        { value: s.bands.atRisk, tone: 'warn', label: 'At risk' },
+        { value: s.bands.broken, tone: 'bad', label: 'Broken' },
+      ]} />
+      <DistRowsBlock title="NAP signals" rows={[
+        { label: 'Name match', value: fmtPct(s.nap.name * 100), tone: scoreToTone(s.nap.name * 100) },
+        { label: 'Address match', value: fmtPct(s.nap.address * 100), tone: scoreToTone(s.nap.address * 100) },
+        { label: 'Phone match', value: fmtPct(s.nap.phone * 100), tone: scoreToTone(s.nap.phone * 100) },
+        { label: 'Hours match', value: fmtPct(s.nap.hours * 100), tone: scoreToTone(s.nap.hours * 100) },
+      ]} />
+      <TrendBlock title="Local pack share (12 weeks)" values={s.localPack.shareSeries} tone="info" />
+      <TopListBlock title="Top locations by visibility" items={s.byLocation.slice(0, 6).map((l: any) => ({
+        id: l.id, primary: l.name, secondary: l.address,
+        tail: fmtPct(l.localVisibility * 100),
+      }))} />
+      <SegmentBlock title="By location" headers={['Location','GBP','NAP %','Reviews']} rows={s.byLocation.slice(0, 6).map((l: any) => ({
+        id: l.id, label: l.name,
+        values: [l.gbpScore.toFixed(0), fmtPct(l.napConsistency * 100), `${l.reviewCount} · ${l.avgRating.toFixed(1)}★`],
+      }))} />
+      <BenchmarkBlock title="Local pack share vs market" site={s.localPack.share * 100} benchmark={s.bench.localPackShare * 100} unit="%" higherIsBetter />
+      <CompareBlock title="vs last 30d" rows={[
+        { label: 'Local pack share', a: { v: s.localPack.share * 100, tag: 'now' }, b: { v: s.localPack.sharePrev * 100, tag: 'prev' }, format: fmtPct },
+        { label: 'Reviews (30d)', a: { v: s.reviews.new30d, tag: 'now' }, b: { v: s.reviews.new30dPrev, tag: 'prev' } },
+      ]} />
 
-      <Card><Section title="Snapshot" dense>
-        <KpiRow>
-          <KpiTile label="Locations" value={fmtNum(s.locations.length)} />
-          <KpiTile label="GBP verified" value={`${s.gbp.verified}/${s.gbpProfiles.length || 0}`} tone={s.gbp.unverified ? 'warn' : 'good'} />
-          <KpiTile label="Avg rating" value={s.rev.avg.toFixed(1)} tone={s.rev.avg >= 4 ? 'good' : 'warn'} />
-        </KpiRow>
-      </Section></Card>
-
-      <Card><Section title="Highlights" dense>
-        <MetricRow label="NAP consistent" value={`${s.nap.consistent}/${s.locations.length || 0}`} />
-        <MetricRow label="Top-3 local pack" value={`${s.localPack.presencePct}%`} />
-        <MetricRow label="Negative reviews 30d" value={s.rev.negative30d} tone={s.rev.negative30d ? 'warn' : 'good'} />
-        <MetricRow label="Response rate" value={`${Math.round(s.rev.responseRate * 100)}%`} />
-      </Section></Card>
-
-      <Card><Section title="Alerts" dense>
-        {s.gbp.unverified > 0 && (
-          <AlertRow alert={{ id: 'g', tone: 'warn', title: 'Unverified GBP profiles', count: s.gbp.unverified }} />
-        )}
-        {s.nap.mismatch > 0 && (
-          <AlertRow alert={{ id: 'n', tone: 'warn', title: 'NAP mismatches', count: s.nap.mismatch }} />
-        )}
-        {s.rev.negative30d > 0 && (
-          <AlertRow alert={{ id: 'r', tone: 'bad', title: 'Negative reviews this month', count: s.rev.negative30d }} />
-        )}
-      </Section></Card>
-
-      <div className="flex flex-wrap gap-1">
-        <DrillChip label="NAP"        count={s.nap.mismatch} />
-        <DrillChip label="GBP"        count={s.gbp.unverified} />
-        <DrillChip label="Reviews"    count={s.rev.negative30d} />
-        <DrillChip label="Local pack" />
-      </div>
+      <DrillFooter chips={[
+        { label: 'NAP issues', count: s.nap.issues },
+        { label: 'GBP issues', count: s.gbp.issues },
+        { label: 'Reviews', count: s.reviews.total },
+        { label: 'Local pack', count: fmtPct(s.localPack.share * 100) },
+      ]} />
     </div>
   )
 }

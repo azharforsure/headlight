@@ -1,46 +1,42 @@
-import React from 'react'
+import React, { useMemo } from 'react'
 import { useSeoCrawler } from '@/contexts/SeoCrawlerContext'
 import { useWqaInsights } from '../_hooks/useWqaInsights'
+import { useDrill } from '../_shared/drill'
 import {
-  Card, Section, Sparkline, TopList, EmptyState,
+  HealthBlock, DistBlock, DonutBlock, DistRowsBlock, TrendBlock,
+  TopListBlock, SegmentBlock, HeatmapBlock, TreemapBlock, BenchmarkBlock,
+  CompareBlock, KvBlock, TimelineBlock, DrillFooter,
+  AlertsBlock, ActionsBlock,
+  EmptyState, fmtNum, fmtPct, fmtMs, compactNum, scoreToTone,
 } from '../_shared'
+import { templateOf, inlinkBucket, depthBucket, ageBucket } from '../_shared/derive'
 
 export function WqaHistory() {
-  const { pages, crawlHistory } = useSeoCrawler()
+  const { pages } = useSeoCrawler()
   const s = useWqaInsights()
-
-  if (!pages?.length) return <EmptyState title="No crawl data yet" />
+  if (!pages?.length) return <EmptyState title="No crawl history yet" />
 
   return (
     <div className="space-y-3 p-3">
-      <Card>
-        <Section title="Quality Trend" dense>
-          <div className="h-[40px] px-1">
-            <Sparkline values={s.trend} height={40} tone="good" />
-          </div>
-        </Section>
-      </Card>
-
-      <Card>
-        <Section title="Search History" dense>
-          <div className="h-[40px] px-1">
-            <Sparkline values={[1200, 1250, 1180, 1300, 1400, 1350, 1450]} height={40} tone="info" />
-          </div>
-        </Section>
-      </Card>
-
-      <Card>
-        <Section title="Recent Scans" dense>
-          <TopList 
-            items={(crawlHistory || []).slice(0, 5).map((run: any) => ({
-              id: run.id,
-              primary: new Date(run.completedAt || run.startedAt).toLocaleDateString(),
-              tail: run.qScore || run.score || '—',
-              onClick: () => {}
-            }))}
-          />
-        </Section>
-      </Card>
+      <DistBlock title="Outcome mix" segments={[
+        { value: s.history.success, tone: 'good', label: 'Success' },
+        { value: s.history.partial, tone: 'warn', label: 'Partial' },
+        { value: s.history.failed,  tone: 'bad',  label: 'Failed' },
+      ]} />
+      <TrendBlock title="Avg quality (12 weeks)" values={s.qualitySeries} tone="info" />
+      <TimelineBlock title="Recent crawls" entries={s.history.recent.map((c: any) => ({
+        id: c.id, ts: c.relTime, title: `${c.score} · ${c.label}`,
+        detail: `${c.pages} pages · ${c.thin} thin`,
+        tone: c.score >= s.history.score30dAvg ? 'good' : 'warn',
+      }))} max={8} />
+      <CompareBlock title="This vs last vs 30d avg" rows={[
+        { label: 'Score', a: { v: s.score, tag: 'now' }, b: { v: s.scorePrev, tag: 'prev' }, c: { v: s.history.score30dAvg, tag: 'avg' } },
+        { label: 'Thin', a: { v: s.thin, tag: 'now' }, b: { v: s.thinPrev, tag: 'prev' }, c: { v: s.history.thin30dAvg, tag: 'avg' } },
+      ]} />
+      <DrillFooter chips={[
+        { label: 'Recrawl', onClick: () => {} },
+        { label: 'Compare', onClick: () => {} },
+      ]} />
     </div>
   )
 }

@@ -1,64 +1,55 @@
-import React from 'react'
+import React, { useMemo } from 'react'
 import { useSeoCrawler } from '@/contexts/SeoCrawlerContext'
 import { useLinksInsights } from '../_hooks/useLinksInsights'
 import { useDrill } from '../_shared/drill'
 import {
-  Card, Section, Donut, Distribution,
-  TopList, AlertRow, EmptyState,
+  HealthBlock, DistBlock, DonutBlock, DistRowsBlock, TrendBlock,
+  TopListBlock, SegmentBlock, HeatmapBlock, BenchmarkBlock, FunnelBlock,
+  CompareBlock, KvBlock, TimelineBlock, DrillFooter,
+  AlertsBlock, ActionsBlock,
+  EmptyState, fmtNum, fmtPct, fmtMs, compactNum, scoreToTone,
 } from '../_shared'
+import { templateOf, inlinkBucket } from '../_shared/derive'
 
 export function LinksAnchors() {
   const { pages } = useSeoCrawler()
   const s = useLinksInsights()
   const drill = useDrill()
-
   if (!pages?.length) return <EmptyState title="No crawl data yet" />
-
-  const segments = [
-    { value: s.anchorMix.brand,   tone: 'info' as const, label: 'Brand' },
-    { value: s.anchorMix.exact,   tone: 'bad' as const,  label: 'Exact' },
-    { value: s.anchorMix.partial, tone: 'warn' as const, label: 'Partial' },
-    { value: s.anchorMix.generic, tone: 'warn' as const, label: 'Generic' },
-    { value: s.anchorMix.url,     tone: 'neutral' as const, label: 'URL' },
-    { value: s.anchorMix.image,   tone: 'neutral' as const, label: 'Image' },
-  ]
 
   return (
     <div className="space-y-3 p-3">
-      <Card><Section title="Anchor mix" dense>
-        <div className="flex justify-center py-4">
-          <Donut segments={segments} size={140} thickness={12} />
-        </div>
-        <Distribution rows={segments.map(seg => ({
-          label: seg.label,
-          value: Math.round(seg.value),
-          tone: seg.tone
-        }))} />
-      </Section></Card>
-
-      <Card><Section title="Alerts" dense>
-        {s.anchorMix.exact > 30 && (
-          <AlertRow alert={{ id: 'ex', tone: 'bad', title: 'High exact match anchor ratio (>30%)' }} />
-        )}
-        {s.anchorMix.generic > 25 && (
-          <AlertRow alert={{ id: 'ge', tone: 'warn', title: 'High generic anchor ratio (>25%)' }} />
-        )}
-      </Section></Card>
-
-      <Card><Section title="Top over-optimized pages" dense>
-        <TopList 
-          items={pages
-            .filter(p => Number(p.anchorExactShare) > 40)
-            .sort((a, b) => Number(b.anchorExactShare) - Number(a.anchorExactShare))
-            .slice(0, 5)
-            .map(p => ({
-              id: p.url,
-              primary: p.title || p.url,
-              tail: `${Math.round(Number(p.anchorExactShare))}% exact`,
-              onClick: () => drill.toPage(p)
-            }))}
-        />
-      </Section></Card>
+      <DistBlock title="Anchor type mix" segments={[
+        { value: s.anchors.branded, tone: 'good', label: 'Branded' },
+        { value: s.anchors.exact, tone: 'warn', label: 'Exact' },
+        { value: s.anchors.partial, tone: 'info', label: 'Partial' },
+        { value: s.anchors.generic, tone: 'info', label: 'Generic' },
+        { value: s.anchors.naked, tone: 'neutral', label: 'Naked' },
+        { value: s.anchors.image, tone: 'neutral', label: 'Image' },
+      ]} />
+      <DistRowsBlock title="Anchor lengths" rows={[
+        { label: '1 word', value: s.anchors.len1, tone: 'warn' },
+        { label: '2–3 words', value: s.anchors.len23, tone: 'good' },
+        { label: '4–6 words', value: s.anchors.len46, tone: 'good' },
+        { label: '7+ words', value: s.anchors.len7, tone: 'info' },
+      ]} />
+      <TopListBlock title="Top anchors" items={s.anchors.top.slice(0, 8).map((a: any) => ({
+        id: a.text, primary: a.text || '(empty)', tail: `${a.count} · ${a.type}`,
+      }))} />
+      <TopListBlock title="Over-optimized exact anchors" items={s.anchors.exactRisk.slice(0, 6).map((a: any) => ({
+        id: a.text, primary: a.text, tail: `${a.count}`,
+      }))} emptyText="No exact-match risk" />
+      <SegmentBlock title="By target page" headers={['Page','Branded','Exact','Generic']} rows={s.anchors.byPage.slice(0, 6).map((p: any) => ({
+        id: p.url, label: p.title || p.url, values: [p.branded, p.exact, p.generic], onRowClick: () => drill.toPage(p),
+      }))} />
+      <CompareBlock title="vs last crawl" rows={[
+        { label: 'Branded share', a: { v: s.anchors.brandedShare * 100, tag: 'now' }, b: { v: s.anchors.brandedSharePrev * 100, tag: 'prev' }, format: fmtPct },
+        { label: 'Exact share', a: { v: s.anchors.exactShare * 100, tag: 'now' }, b: { v: s.anchors.exactSharePrev * 100, tag: 'prev' }, format: fmtPct },
+      ]} />
+      <DrillFooter chips={[
+        { label: 'Exact risk', count: s.anchors.exactRisk.length },
+        { label: 'Empty anchors', count: s.anchors.empty },
+      ]} />
     </div>
   )
 }

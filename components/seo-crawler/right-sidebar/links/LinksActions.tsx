@@ -1,15 +1,38 @@
-import React from 'react'
-import { useActionEngine } from '../_hooks/useActionEngine'
-import { Card, Section, ActionRow, EmptyState } from '../_shared'
+import React, { useMemo } from 'react'
+import { useSeoCrawler } from '@/contexts/SeoCrawlerContext'
+import { useLinksInsights } from '../_hooks/useLinksInsights'
+import { useDrill } from '../_shared/drill'
+import {
+  HealthBlock, DistBlock, DonutBlock, DistRowsBlock, TrendBlock,
+  TopListBlock, SegmentBlock, HeatmapBlock, BenchmarkBlock, FunnelBlock,
+  CompareBlock, KvBlock, TimelineBlock, DrillFooter,
+  AlertsBlock, ActionsBlock,
+  EmptyState, fmtNum, fmtPct, fmtMs, compactNum, scoreToTone,
+} from '../_shared'
+import { templateOf, inlinkBucket } from '../_shared/derive'
 
 export function LinksActions() {
-  const actions = useActionEngine('links').slice(0, 8)
-  if (!actions.length) return <EmptyState title="Link profile is healthy" />
+  const { pages } = useSeoCrawler()
+  const s = useLinksInsights()
+  if (!pages?.length) return <EmptyState title="No crawl data yet" />
+
   return (
     <div className="space-y-3 p-3">
-      <Card><Section title="Link Actions" dense>
-        {actions.map(a => <ActionRow key={a.id} action={a} />)}
-      </Section></Card>
+      <DistBlock title="Action band" segments={[
+        { value: s.actions.critical, tone: 'bad', label: 'Critical' },
+        { value: s.actions.high, tone: 'warn', label: 'High' },
+        { value: s.actions.med, tone: 'info', label: 'Medium' },
+        { value: s.actions.low, tone: 'neutral', label: 'Low' },
+      ]} />
+      <TrendBlock title="Closed (30d)" values={s.actions.doneSeries} tone="good" />
+      <SegmentBlock title="By reason" headers={['Reason','Open','Done']} rows={s.actions.byReason.slice(0, 6).map((r: any) => ({
+        id: r.id, label: r.label, values: [r.open, r.done],
+      }))} />
+      <AlertsBlock tabId="linksAuthority" />
+      <ActionsBlock tabId="linksAuthority" max={12} />
+      <DrillFooter chips={[
+        { label: 'Critical', count: s.actions.critical }, { label: 'High', count: s.actions.high },
+      ]} />
     </div>
   )
 }
