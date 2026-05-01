@@ -1,5 +1,5 @@
 import React from 'react';
-import { Clock, Layers, Keyboard, Cpu, Route, GitCompare, Save } from 'lucide-react';
+import { Clock, Layers, Keyboard, Cpu, Route, GitCompare, Save, Terminal } from 'lucide-react';
 import { useSeoCrawler } from '../../contexts/SeoCrawlerContext';
 
 const getSafeHostname = (url: string | undefined | null) => {
@@ -13,7 +13,7 @@ const getSafeHostname = (url: string | undefined | null) => {
 
 export default function StatusBar() {
     const { 
-        isCrawling, elapsedTime, crawlRate, crawlRuntime, isAuthenticated, viewMode, pages, trialPagesLimit, crawlHistory, setShowComparisonView, saveCrawlSession, activeViewType
+        isCrawling, elapsedTime, crawlRate, crawlRuntime, isAuthenticated, viewMode, pages, trialPagesLimit, crawlHistory, setShowComparisonView, saveCrawlSession, activeViewType, setShowLogsDialog
     } = useSeoCrawler();
 
     const statusMeta = (() => {
@@ -97,6 +97,16 @@ export default function StatusBar() {
 
             {/* Right side: Helpers */}
             <div className="flex items-center gap-4 text-[#666]">
+                <button
+                    onClick={() => setShowLogsDialog(true)}
+                    className="flex items-center gap-1.5 hover:text-[#bbb] transition-colors"
+                >
+                    <Terminal size={12} className="text-[#555]" />
+                    Logs
+                </button>
+
+                <span className="text-[#333]">|</span>
+
                 <button 
                     onClick={() => saveCrawlSession('completed')}
                     disabled={pages.length === 0}

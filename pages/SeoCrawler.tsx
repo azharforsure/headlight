@@ -14,6 +14,7 @@ import CrawlerEmptyState from '../components/seo-crawler/CrawlerEmptyState';
 import CrawlProgressOverlay from '../components/seo-crawler/CrawlProgressOverlay';
 import ComparisonView from '../components/seo-crawler/ComparisonView';
 import ExportDialog from '../components/seo-crawler/ExportDialog';
+import LogsDialog from '../components/seo-crawler/LogsDialog';
 import MobileBottomSheet from '../components/seo-crawler/MobileBottomSheet';
 import AIChatDrawer from '../components/seo-crawler/AIChatDrawer';
 import CrawlerSettingsDrawer from '../components/seo-crawler/CrawlerSettingsDrawer';
@@ -106,6 +107,8 @@ function SeoCrawlerLayout() {
         setShowComparisonView,
         showExportDialog,
         setShowExportDialog,
+        showLogsDialog,
+        setShowLogsDialog,
         showAiChat,
         setShowAiChat,
         showSettings,
@@ -185,6 +188,7 @@ function SeoCrawlerLayout() {
 
             {showComparisonView && <ComparisonView onClose={() => setShowComparisonView(false)} />}
             {showExportDialog && <ExportDialog onClose={() => setShowExportDialog(false)} />}
+            {showLogsDialog && <LogsDialog onClose={() => setShowLogsDialog(false)} />}
             <AIChatDrawer isOpen={showAiChat} onClose={() => setShowAiChat(false)} />
             {isSetup && <CrawlerSettingsDrawer isOpen={showSettings} onClose={() => setShowSettings(false)} />}
             <OnboardingTour />

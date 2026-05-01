@@ -1,6 +1,8 @@
 import React from 'react';
 import { Card, Section, Sparkline as NewSparkline } from '../_shared';
 
+export { Card, Section };
+
 /**
  * Legacy RsPanel shim for charts and inspector tabs.
  * Wraps content in a Card and adds a title via Section.
