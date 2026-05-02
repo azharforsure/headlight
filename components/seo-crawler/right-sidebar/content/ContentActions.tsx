@@ -6,7 +6,7 @@ import {
   HealthBlock, DistBlock, DonutBlock, DistRowsBlock, TrendBlock,
   TopListBlock, SegmentBlock, HeatmapBlock, BenchmarkBar,
   CompareBlock, KvBlock, TimelineBlock, DrillFooter,
-  AlertsBlock, ActionsBlock,
+  TabbedAlertsBlock, ActionsBlock,
   EmptyState, fmtNum, fmtPct, fmtMs, compactNum, scoreToTone,
 } from '../_shared'
 import { templateOf, depthBucket } from '../_shared/derive'
@@ -27,7 +27,7 @@ export function ContentActions() {
       <SegmentBlock title="By reason" headers={['Reason','Open','Done']} rows={s.actions.byReason.slice(0, 6).map((r: any) => ({
         id: r.id, label: r.label, values: [r.open, r.done],
       }))} />
-      <AlertsBlock tabId="content" />
+      <TabbedAlertsBlock tabId="content" />
       <ActionsBlock tabId="content" max={12} />
       <DrillFooter chips={[
         { label: 'Critical', count: s.actions.critical }, { label: 'High', count: s.actions.high },

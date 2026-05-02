@@ -6,7 +6,7 @@ import {
   HealthBlock, DistBlock, DonutBlock, DistRowsBlock, TrendBlock,
   TopListBlock, SegmentBlock, HeatmapBlock, BenchmarkBlock, FunnelBlock,
   CompareBlock, KvBlock, TimelineBlock, DrillFooter,
-  AlertsBlock, ActionsBlock,
+  TabbedAlertsBlock, ActionsBlock,
   EmptyState, fmtNum, fmtPct, fmtMs, compactNum, scoreToTone,
 } from '../_shared'
 import { templateOf, inlinkBucket } from '../_shared/derive'
@@ -28,7 +28,7 @@ export function LinksActions() {
       <SegmentBlock title="By reason" headers={['Reason','Open','Done']} rows={s.actions.byReason.slice(0, 6).map((r: any) => ({
         id: r.id, label: r.label, values: [r.open, r.done],
       }))} />
-      <AlertsBlock tabId="linksAuthority" />
+      <TabbedAlertsBlock tabId="linksAuthority" />
       <ActionsBlock tabId="linksAuthority" max={12} />
       <DrillFooter chips={[
         { label: 'Critical', count: s.actions.critical }, { label: 'High', count: s.actions.high },

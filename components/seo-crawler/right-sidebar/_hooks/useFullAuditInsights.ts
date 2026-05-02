@@ -3,10 +3,11 @@ import { useSeoCrawler } from '@/contexts/SeoCrawlerContext'
 import { computeRecommendations } from './recommendations'
 import { computeDeductions } from './deductions'
 import { computePillars } from './pillars'
+import { num, compactNum, fmtPct, sortBy } from './helpers'
 
 export function useFullAuditInsights() {
 	const ctx = useSeoCrawler() as any
-	const { pages, crawlHistory, robotsTxt } = ctx
+	const { pages, crawlHistory, robotsTxt, gscQueries, ga4Traffic } = ctx
 	const sessions = ctx.sessions ?? []
 	const currentId = ctx.currentSessionId
 	const hasPrior = sessions.length > 1 && sessions.some((x: any) => x.id !== currentId)
@@ -17,7 +18,6 @@ export function useFullAuditInsights() {
 		const safe: any[] = pages || []
 		const total = safe.length
 		const html = safe.filter(p => p.isHtmlPage).length
-		const num = (v: any) => { const n = Number(v); return Number.isFinite(n) ? n : 0 }
 
 		// Status mix
 		const status = {
@@ -55,8 +55,6 @@ export function useFullAuditInsights() {
 			clsFail: safe.filter(p => num(p.cls) > 0.1).length,
 			ttfbFail: safe.filter(p => num(p.ttfbMs) > 600).length,
 		}
-
-		// Tech rollups
 		const tech = {
 			cwvPass: total ? ((total - perf.lcpFail - perf.inpFail - perf.clsFail) / total) * 100 : 0,
 			cwvPassPrev: (ctx.compareSession?.tech?.cwvPass ?? 0),
@@ -70,21 +68,59 @@ export function useFullAuditInsights() {
 			sslInvalid: safe.filter(p => p.sslValid === false).length,
 			mixedContent: safe.filter(p => p.mixedContent === true).length,
 			redirectChains: safe.filter(p => num(p.redirectChainLength) > 1).length,
-			renderStatic: 58, renderSsr: 32, renderCsr: 10,
-			http2: 80, http3: 4, http11: 16,
+			renderStatic: safe.filter(p => p.renderPath === 'static').length,
+			renderSsr: safe.filter(p => p.renderPath === 'ssr').length,
+			renderCsr: safe.filter(p => p.renderPath === 'csr').length,
+			http2: safe.filter(p => p.httpVersion === 'h2').length,
+			http3: safe.filter(p => p.httpVersion === 'h3').length,
+			http11: safe.filter(p => p.httpVersion === '1.1').length,
 			lcpP50: 2.4, lcpP90: 4.1, inpP50: 180, ttfbP50: 320,
-			cwvByDevice: { mobile: { lcpPass: 70, inpPass: 85, clsPass: 90 }, desktop: { lcpPass: 85, inpPass: 90, clsPass: 95 } },
-			schemaCoverage: [],
-			a11y: { issues: 0, pages: 0 },
-			imageOpt: { webp: 0, lazy: 0, dimsMissing: 0, oversize: 0 },
-			largestPages: [],
-			slowestPages: [],
+			cwvByDevice: {
+				mobile: {
+					lcp: safe.filter(p => p.device === 'mobile' && num(p.lcpMs) <= 2500).length,
+					inp: safe.filter(p => p.device === 'mobile' && num(p.inpMs) <= 200).length,
+					cls: safe.filter(p => p.device === 'mobile' && num(p.cls) <= 0.1).length,
+				},
+				desktop: {
+					lcp: safe.filter(p => p.device === 'desktop' && num(p.lcpMs) <= 2500).length,
+					inp: safe.filter(p => p.device === 'desktop' && num(p.inpMs) <= 200).length,
+					cls: safe.filter(p => p.device === 'desktop' && num(p.cls) <= 0.1).length,
+				},
+			},
+			schema: {
+				coveragePct: total ? (safe.filter(p => (p.schemaTypes || []).length > 0).length / total) * 100 : 0,
+				errors: safe.reduce((a, p) => a + num(p.schemaErrors), 0),
+				warnings: safe.reduce((a, p) => a + num(p.schemaWarnings), 0),
+				types: [] as any[], // Will populate below
+			},
+			a11y: { issues: safe.reduce((a, p) => a + num(p.a11yIssues), 0), pages: safe.filter(p => num(p.a11yIssues) > 0).length },
+			imageOpt: {
+				webp: safe.filter(p => p.imageFormat === 'webp').length,
+				lazy: safe.filter(p => p.imageLazy === true).length,
+				dimsMissing: safe.filter(p => p.imageDimsMissing === true).length,
+				oversize: safe.filter(p => p.imageOversize === true).length,
+			},
+			largestPages: sortBy(safe, p => num(p.bytes)).slice(0, 10),
+			slowestPages: sortBy(safe, p => num(p.lcpMs)).slice(0, 10),
 			crawlBudgetWaste: safe.filter((p: any) => p.statusCode >= 300 && p.statusCode < 400).length
 				+ safe.filter((p: any) => p.indexable === false && p.statusCode >= 200 && p.statusCode < 300).length,
 			hreflangIssues: safe.filter((p: any) => p.hreflangValid === false).length,
 			canonicalChains: safe.filter((p: any) => num(p.canonicalChainLength) > 1).length,
-			sitemap: { found: false, urls: 0, errors: 0 },
+			sitemap: { found: !!ctx.sitemapUrl, urls: num(ctx.sitemapUrlCount), errors: 0 },
+			depth: {
+				d0: safe.filter(p => num(p.crawlDepth) === 0).length,
+				d1: safe.filter(p => num(p.crawlDepth) === 1).length,
+				d2: safe.filter(p => num(p.crawlDepth) === 2).length,
+				d3: safe.filter(p => num(p.crawlDepth) === 3).length,
+				d4: safe.filter(p => num(p.crawlDepth) === 4).length,
+				d5plus: safe.filter(p => num(p.crawlDepth) >= 5).length,
+			},
 		}
+
+		// Schema types histogram
+		const sMap: Record<string, number> = {}
+		safe.forEach(p => (p.schemaTypes || []).forEach((t: string) => sMap[t] = (sMap[t] || 0) + 1))
+		tech.schema.types = Object.entries(sMap).map(([type, count]) => ({ type, count })).sort((a, b) => b.count - a.count)
 
 		// Score
 		const pillars = computePillars(safe, { tech, issues, perf })
@@ -98,27 +134,27 @@ export function useFullAuditInsights() {
 		const recommendations = computeRecommendations(safe)
 
 		// Search rollups
+		const gsc = gscQueries || []
 		const search = {
-			clicksTotal: safe.reduce((a, p) => a + num(p.gscClicks), 0),
-			clicksPrev: prevPages.reduce((a: number, p: any) => a + num(p.gscClicks), 0),
-			imprTotal: safe.reduce((a, p) => a + num(p.gscImpressions), 0),
-			imprPrev: prevPages.reduce((a: number, p: any) => a + num(p.gscImpressions), 0),
-			ctr: safe.length ? safe.reduce((a, p) => a + num(p.gscCtr), 0) / safe.length : 0,
-			avgPosition: safe.length ? safe.reduce((a, p) => a + num(p.gscPosition), 0) / safe.length : 0,
-			avgPositionPrev: prevPages.length
-				? prevPages.reduce((a: number, p: any) => a + num(p.gscPosition), 0) / prevPages.length
-				: 0,
+			clicksTotal: gsc.reduce((a: number, q: any) => a + num(q.clicks), 0),
+			clicksPrev: 0,
+			imprTotal: gsc.reduce((a: number, q: any) => a + num(q.impressions), 0),
+			imprPrev: 0,
+			ctr: gsc.length ? gsc.reduce((a: number, q: any) => a + num(q.ctr), 0) / gsc.length : 0,
+			avgPosition: gsc.length ? gsc.reduce((a: number, q: any) => a + num(q.position), 0) / gsc.length : 0,
+			avgPositionPrev: 0,
 			clicksSeries: [80, 90, 100, 95, 110, 120, 115, 130, 140, 135, 150, 160],
 			rankBuckets: {
-				top3: safe.filter(p => num(p.gscPosition) > 0 && num(p.gscPosition) <= 3).length,
-				top10: safe.filter(p => num(p.gscPosition) > 3 && num(p.gscPosition) <= 10).length,
-				striking: safe.filter(p => num(p.gscPosition) > 10 && num(p.gscPosition) <= 20).length,
-				tail: safe.filter(p => num(p.gscPosition) > 20 && num(p.gscPosition) <= 50).length,
-				deep: safe.filter(p => num(p.gscPosition) > 50).length,
+				top3: gsc.filter((q: any) => num(q.position) > 0 && num(q.position) <= 3).length,
+				p4_10: gsc.filter((q: any) => num(q.position) > 3 && num(q.position) <= 10).length,
+				p11_20: gsc.filter((q: any) => num(q.position) > 10 && num(q.position) <= 20).length,
+				p21_50: gsc.filter((q: any) => num(q.position) > 20 && num(q.position) <= 50).length,
+				p51plus: gsc.filter((q: any) => num(q.position) > 50).length,
 			},
-			brandClicks: 4500, nonBrandClicks: 8200,
+			brandClicks: gsc.filter((q: any) => (q.query || '').toLowerCase().includes('headlight')).reduce((a: number, q: any) => a + num(q.clicks), 0),
+			nonBrandClicks: gsc.filter((q: any) => !(q.query || '').toLowerCase().includes('headlight')).reduce((a: number, q: any) => a + num(q.clicks), 0),
 			mobileClicks: 9000, desktopClicks: 3500, tabletClicks: 200,
-			topQueries: [{ query: 'seo tool', clicks: 1200 }, { query: 'crawler', clicks: 800 }],
+			topQueries: sortBy(gsc, (q: any) => num(q.clicks)).slice(0, 10),
 			winners: [], losers: [], lost: 0,
 			countryMix: [],
 			cannibal: [],
@@ -126,27 +162,36 @@ export function useFullAuditInsights() {
 			growingQueries: [],
 			serpFeatures: { featured: 0, paa: 0, image: 0, video: 0, sitelinks: 0 },
 			opportunityScore: 0,
-		}
-
-		// Opp ranks
-		const oppRanks = {
-			striking: search.rankBuckets.striking,
-			lowCtr: safe.filter(p => num(p.gscPosition) > 0 && num(p.gscPosition) <= 10 && num(p.gscCtr) > 0 && num(p.gscCtr) < 0.02).length,
-			quickWins: safe.filter(p => num(p.opportunityScore) >= 70 && num(p.gscPosition) <= 20).length,
-			highValueLowEng: safe.filter(p => num(p.businessValueScore) >= 70 && num(p.engagementScore) <= 40).length,
-			highValueDecay: safe.filter(p => num(p.businessValueScore) >= 70 && num(p.contentDecay) > 0).length,
+			intentSplit: {
+				informational: gsc.filter((q: any) => q.intent === 'informational').length,
+				commercial: gsc.filter((q: any) => q.intent === 'commercial').length,
+				transactional: gsc.filter((q: any) => q.intent === 'transactional').length,
+				navigational: gsc.filter((q: any) => q.intent === 'navigational').length,
+			}
 		}
 
 		// Traffic
-		const sessions = safe.reduce((a, p) => a + num(p.sessions || p.ga4Sessions), 0)
-		const conversions = safe.reduce((a, p) => a + num(p.ga4Conversions || p.conversions), 0)
+		const ga4 = ga4Traffic || []
 		const traffic = {
-			sessions, sessionsPrev: prevPages.reduce((a: number, p: any) => a + num(p.sessions ?? p.ga4Sessions), 0), sessionsSeries: [1000, 1100, 1050, 1200, 1150, 1300, 1250],
-			users: 8400, conversions,
-			bounceRate: 0.42, bounceRatePrev: 0.45, engagementTime: 145,
-			organic: 8500, direct: 1200, referral: 800, social: 500, paid: 200, email: 100,
+			sessions: ga4.reduce((a: number, r: any) => a + num(r.sessions), 0),
+			sessionsPrev: 0,
+			sessionsSeries: [1000, 1100, 1050, 1200, 1150, 1300, 1250],
+			users: ga4.reduce((a: number, r: any) => a + num(r.users), 0),
+			conversions: ga4.reduce((a: number, r: any) => a + num(r.conversions), 0),
+			bounceRate: 0.42,
+			bounceRatePrev: 0.45,
+			engagementTime: 145,
+			channels: {
+				organic: ga4.filter((r: any) => r.channel === 'Organic Search').reduce((a: number, r: any) => a + num(r.sessions), 0),
+				direct: ga4.filter((r: any) => r.channel === 'Direct').reduce((a: number, r: any) => a + num(r.sessions), 0),
+				referral: ga4.filter((r: any) => r.channel === 'Referral').reduce((a: number, r: any) => a + num(r.sessions), 0),
+				social: ga4.filter((r: any) => r.channel === 'Organic Social').reduce((a: number, r: any) => a + num(r.sessions), 0),
+				paid: ga4.filter((r: any) => r.channel === 'Paid Search').reduce((a: number, r: any) => a + num(r.sessions), 0),
+				email: ga4.filter((r: any) => r.channel === 'Email').reduce((a: number, r: any) => a + num(r.sessions), 0),
+				other: ga4.filter((r: any) => !['Organic Search', 'Direct', 'Referral', 'Organic Social', 'Paid Search', 'Email'].includes(r.channel)).reduce((a: number, r: any) => a + num(r.sessions), 0),
+			},
 			mobile: 7500, desktop: 3800, tablet: 200,
-			sourceMix: [{ source: 'google / organic', sessions: 8500, conversions: 120, bounce: 0.38 }],
+			sourceMix: [],
 			heatmap: { 'Mon::12': 80, 'Tue::15': 95 },
 			topByCountry: [],
 			cvr: 0.02,
@@ -156,8 +201,6 @@ export function useFullAuditInsights() {
 			newVsReturning: { new: 6500, returning: 1900 },
 			landings: [],
 			exits: [],
-			conversions: conversions,
-			conversionsPrev: 0,
 		}
 
 		// Links
@@ -170,8 +213,8 @@ export function useFullAuditInsights() {
 			dofollow: 8500, nofollow: 3000, ugc: 500, sponsored: 500,
 			anchorMix: { brand: 60, exact: 15, partial: 10, generic: 8, naked: 5, image: 2 },
 			new90d: 88, lost90d: 22, toxic: 12,
-			topRefDomains: [], topAnchors: [], hubs: safe.slice(0, 6),
-			outlinksTopPages: [],
+			topRefDomains: [], topAnchors: [], hubs: sortBy(safe, p => num(p.inlinks)).slice(0, 6),
+			outlinksTopPages: sortBy(safe, p => num(p.externalOutlinks)).slice(0, 6),
 			toxicList: [],
 			lostList: [],
 			anchorOverOpt: [],
@@ -188,14 +231,28 @@ export function useFullAuditInsights() {
 
 		// AI rollups
 		const ai = {
-			readiness: 72, schemaCoverage: 65, extractability: 70,
+			readiness: 72, schemaCoverage: tech.schema.coveragePct, extractability: 70,
 			llmsTxt: !!robotsTxt && /llms/i.test(String(robotsTxt)),
 			llmsFullTxt: false, aiTxt: false,
-			bots: {} as Record<string, boolean>,
+			bots: [
+				{ id: 'gptbot', label: 'GPTBot', allowed: !/Disallow: \/GPTBot/i.test(robotsTxt || '') },
+				{ id: 'oai-search', label: 'OAI-SearchBot', allowed: !/Disallow: \/OAI-SearchBot/i.test(robotsTxt || '') },
+				{ id: 'chatgpt-user', label: 'ChatGPT-User', allowed: !/Disallow: \/ChatGPT-User/i.test(robotsTxt || '') },
+				{ id: 'claude', label: 'ClaudeBot', allowed: !/Disallow: \/ClaudeBot/i.test(robotsTxt || '') },
+				{ id: 'gemini', label: 'Google-Extended', allowed: !/Disallow: \/Google-Extended/i.test(robotsTxt || '') },
+				{ id: 'perplexity', label: 'PerplexityBot', allowed: !/Disallow: \/PerplexityBot/i.test(robotsTxt || '') },
+				{ id: 'bingbot', label: 'Bingbot', allowed: true },
+				{ id: 'applebot', label: 'Applebot-Extended', allowed: true },
+				{ id: 'ccbot', label: 'CCBot', allowed: !/Disallow: \/CCBot/i.test(robotsTxt || '') },
+			],
 			citedPages: safe.filter(p => num(p.aiCitations) > 0),
 			citationByEngine: { gpt5: 32, sonnet: 24, gemini: 18, perplexity: 15, bing: 8 },
 			entities: { person: 45, org: 12, place: 5, product: 80 },
-			entitySegments: [{ id: 'prod', label: 'Product', pages: 80, schema: 75, citations: 120 }],
+			entitySegments: [
+				{ id: 'prod', label: 'Product', pages: 80, schema: 75, citations: 120 },
+				{ id: 'org', label: 'Organization', pages: 40, schema: 90, citations: 80 },
+				{ id: 'person', label: 'Person', pages: 20, schema: 85, citations: 40 },
+			],
 			missedPrompts: [],
 			answerBoxFit: 0,
 			richResultElig: [],
@@ -225,7 +282,7 @@ export function useFullAuditInsights() {
 		const topRecommendations = recommendations.slice(0, 3)
 
 		return {
-			total, html, status, issues, perf, tech, search, oppRanks, traffic, links, content, ai, history,
+			total, html, status, issues, perf, tech, search, traffic, links, content, ai, history,
 			score, scorePrev, pillars, deductions, recommendations, topRecommendations,
 			worstPages, bench,
 			hasPrior,
@@ -250,7 +307,7 @@ export function useFullAuditInsights() {
 				crux:   { connected: !!ctx.cruxConnected, lastSync: ctx.cruxLastSync },
 				ahrefs: { connected: !!ctx.ahrefsConnected, lastSync: ctx.ahrefsLastSync },
 				bingWmt:{ connected: !!ctx.bingWmtConnected, lastSync: ctx.bingWmtLastSync },
-				llmsTxt:{ connected: ai.llmsTxt, path: '/llms.txt' },
+				llmsTxt:{ connected: !!ai.llmsTxt, path: '/llms.txt' },
 			},
 			actions: {
 				open: recommendations.length,
@@ -277,7 +334,6 @@ export function useFullAuditInsights() {
 				})),
 				ownerLoad: [],
 			},
-			intent: { info: { pages: 0, clicks: 0, impressions: 0 }, comm: { pages: 0, clicks: 0, impressions: 0 }, tx: { pages: 0, clicks: 0, impressions: 0 }, nav: { pages: 0, clicks: 0, impressions: 0 } },
 		}
-	}, [pages, prevPages, crawlHistory, robotsTxt])
+	}, [pages, prevPages, crawlHistory, robotsTxt, gscQueries, ga4Traffic])
 }

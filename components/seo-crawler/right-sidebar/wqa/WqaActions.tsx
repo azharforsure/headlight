@@ -6,7 +6,7 @@ import {
   HealthBlock, DistBlock, DonutBlock, DistRowsBlock, TrendBlock,
   TopListBlock, SegmentBlock, HeatmapBlock, TreemapBlock, BenchmarkBlock,
   CompareBlock, KvBlock, TimelineBlock, DrillFooter,
-  AlertsBlock, ActionsBlock,
+  TabbedAlertsBlock, ActionsBlock,
   EmptyState, fmtNum, fmtPct, fmtMs, compactNum, scoreToTone,
 } from '../_shared'
 import { templateOf, inlinkBucket, depthBucket, ageBucket } from '../_shared/derive'
@@ -32,7 +32,7 @@ export function WqaActions() {
         { label: 'Open', a: { v: s.actions.open, tag: 'now' }, b: { v: s.actions.openPrev, tag: 'prev' } },
         { label: 'Done', a: { v: s.actions.done, tag: 'now' }, b: { v: s.actions.donePrev, tag: 'prev' } },
       ]} />
-      <AlertsBlock tabId="wqa" />
+      <TabbedAlertsBlock tabId="wqa" />
       <ActionsBlock tabId="wqa" max={12} />
       <DrillFooter chips={[
         { label: 'Critical', count: s.actions.critical },

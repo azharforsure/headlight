@@ -2,12 +2,12 @@ import React from 'react'
 
 type Props = {
   title?: string
-  rows: Array<{ id: string; name: string; count: number }>
+  rows?: Array<{ id: string; name: string; count: number }>
   onClick?: (id: string) => void
 }
 
-export function OwnerLoadBlock({ title = 'Owner load', rows, onClick }: Props) {
-  const filtered = rows.filter(r => r.id !== 'unassigned')
+export function OwnerLoadBlock({ title = 'Owner load', rows = [], onClick }: Props) {
+  const filtered = (rows || []).filter(r => r.id !== 'unassigned')
   if (filtered.length === 0) return null
   const max = Math.max(1, ...filtered.map(r => r.count))
   return (

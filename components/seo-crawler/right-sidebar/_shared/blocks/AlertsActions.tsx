@@ -4,7 +4,7 @@ import { useAlerts } from '../../_hooks/useAlerts'
 import { useActions } from '../../_hooks/useActions'
 import { useDrill } from '../drill'
 
-export function AlertsBlock({ tabId, max = 5 }: { tabId: string; max?: number }) {
+export function TabbedAlertsBlock({ tabId, max = 5 }: { tabId: string; max?: number }) {
   const alerts = useAlerts(tabId)
   const drill = useDrill()
   if (!alerts.length) return null

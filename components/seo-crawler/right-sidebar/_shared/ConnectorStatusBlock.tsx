@@ -24,6 +24,7 @@ function fmtAgo(iso?: string) {
 }
 
 export function ConnectorStatusBlock({ connectors, onConnect }: Props) {
+  if (!connectors) return null
   const rows: Conn[] = [
     { id: 'gsc',     label: 'Google Search Console', connected: connectors.gsc.connected,    lastSync: connectors.gsc.lastSync },
     { id: 'ga4',     label: 'Google Analytics 4',    connected: connectors.ga4.connected,    lastSync: connectors.ga4.lastSync },

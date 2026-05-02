@@ -6,14 +6,14 @@ export type Deduction = { id: string; label: string; points: number; onClick?: (
 
 export function WhatBlocksScoreCard({
 	title = 'What blocks your score',
-	deductions,
-	totalLost,
+	deductions = [],
+	totalLost = 0,
 }: {
 	title?: string
-	deductions: ReadonlyArray<Deduction>
-	totalLost: number
+	deductions?: ReadonlyArray<Deduction>
+	totalLost?: number
 }) {
-	if (!deductions.length) return null
+	if (!deductions?.length) return null
 	const max = Math.max(...deductions.map(d => d.points), 1)
 	return (
 		<Card>

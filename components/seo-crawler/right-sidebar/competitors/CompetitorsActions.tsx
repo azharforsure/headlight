@@ -6,7 +6,7 @@ import {
   HealthBlock, DistBlock, DonutBlock, DistRowsBlock, TrendBlock,
   TopListBlock, SegmentBlock, HeatmapBlock, BenchmarkBlock,
   CompareBlock, KvBlock, TimelineBlock, DrillFooter,
-  AlertsBlock, ActionsBlock,
+  TabbedAlertsBlock, ActionsBlock,
   EmptyState, fmtNum, fmtPct, fmtMs, compactNum, scoreToTone,
 } from '../_shared'
 
@@ -26,7 +26,7 @@ export function CompetitorsActions() {
       <SegmentBlock title="By reason" headers={['Reason','Open','Done']} rows={s.actions.byReason.slice(0, 6).map((r: any) => ({
         id: r.id, label: r.label, values: [r.open, r.done],
       }))} />
-      <AlertsBlock tabId="competitors" />
+      <TabbedAlertsBlock tabId="competitors" />
       <ActionsBlock tabId="competitors" max={12} />
       <DrillFooter chips={[
         { label: 'Critical', count: s.actions.critical }, { label: 'High', count: s.actions.high },
