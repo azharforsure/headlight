@@ -1,21 +1,20 @@
-import type { RsTabDescriptor } from '../registry'
-import { FullAuditOverview } from './FullAuditOverview'
-import { FullAuditFixes }    from './FullAuditFixes'
-import { FullAuditSearch }   from './FullAuditSearch'
-import { FullAuditTraffic }  from './FullAuditTraffic'
-import { FullAuditTech }     from './FullAuditTech'
-import { FullAuditLinks }    from './FullAuditLinks'
-import { FullAuditAi }       from './FullAuditAi'
+// components/seo-crawler/right-sidebar/full-audit/index.ts
+import FullAuditOverview from './FullAuditOverview'
+import FullAuditIssues from './FullAuditIssues'
+import FullAuditScores from './FullAuditScores'
+import FullAuditCrawlHealth from './FullAuditCrawlHealth'
+import FullAuditIntegrations from './FullAuditIntegrations'
+import { selectIssues } from './_selectors'
 
-export const fullAuditTabs: RsTabDescriptor[] = [
-	{ id: 'overview', label: 'Overview', Component: FullAuditOverview },
-	{
-		id: 'fixes', label: 'Fixes', Component: FullAuditFixes,
-		badge: ({ pages }) => pages.filter((p: any) => Number(p.statusCode) >= 400 || Number(p.lcpMs) > 2500 || p.indexable === false).length || undefined,
-	},
-	{ id: 'search',  label: 'Search',  Component: FullAuditSearch },
-	{ id: 'traffic', label: 'Traffic', Component: FullAuditTraffic },
-	{ id: 'tech',    label: 'Tech',    Component: FullAuditTech },
-	{ id: 'links',   label: 'Links',   Component: FullAuditLinks },
-	{ id: 'ai',       label: 'AI',      Component: FullAuditAi },
-]
+export const fullAuditTabs = [
+  { id: 'overview',      label: 'Overview',     Component: FullAuditOverview },
+  { id: 'issues',        label: 'Issues',       Component: FullAuditIssues,
+    badge: ({ pages }: any) => {
+      const { openTotal } = selectIssues(pages)
+      return openTotal > 0 ? openTotal : undefined
+    },
+  },
+  { id: 'scores',        label: 'Scores',       Component: FullAuditScores },
+  { id: 'crawl_health',  label: 'Crawl health', Component: FullAuditCrawlHealth },
+  { id: 'integrations',  label: 'Integrations', Component: FullAuditIntegrations },
+] as const

@@ -5,6 +5,20 @@ const toneBg: Record<Tone, string> = {
   good: '#10b981', warn: '#f59e0b', bad: '#f43f5e', info: '#3b82f6', neutral: '#71717a',
 }
 
+export function Bar({ value, max, tone = 'neutral', color, right }: { value: number; max: number; tone?: Tone; color?: string; right?: React.ReactNode }) {
+  const pct = max > 0 ? Math.min(100, (value / max) * 100) : 0
+  return (
+    <div className="flex items-center gap-2 grow min-w-0">
+      <div className="h-1.5 grow overflow-hidden rounded bg-[#1a1a1a]">
+        <div className="h-full transition-all duration-300" 
+             style={{ width: `${pct}%`, background: color ?? toneBg[tone] }} />
+      </div>
+      {right}
+    </div>
+  )
+}
+
+
 export function BarStack({ segments }: { segments: { value: number; tone?: Tone; label?: string }[] }) {
   const total = segments.reduce((a, s) => a + (Number(s.value) || 0), 0) || 1
   return (

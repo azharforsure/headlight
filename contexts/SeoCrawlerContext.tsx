@@ -407,6 +407,7 @@ export interface CrawlerContextType {
     graphData: any;
     handleNodeClick: (n: any) => void;
     crawlHistory: CrawlSession[];
+    sessions: CrawlSession[];
     currentSessionId: string | null;
     compareSessionId: string | null;
     diffResult: any | null;
@@ -530,7 +531,32 @@ export interface CrawlerContextType {
     setWqaFilter: React.Dispatch<React.SetStateAction<WqaFilterState>>;
     wqaFacets: WqaFacets;
     openIntegrationsModal: (provider?: string) => void;
-    openSettings?: (section: string) => void;
+    openSettings: (section: string, sub?: string) => void;
+    openIssueDrawer: (code: string) => void;
+    site: {
+        lastSession: {
+            startedAt: number;
+            finishedAt: number;
+            durationMs: number;
+            pagesCrawled: number;
+            responseAvgMs: number;
+            responseP90Ms: number;
+            responseP99Ms: number;
+            errors: { timeouts: number; server: number; parse: number; dns: number };
+            blocked: { robots: number; metaNoindex: number; auth: number };
+            sitemap: { inSitemap: number; missingFromSitemap: number; orphanInSitemap: number };
+            render: { staticHtml: number; ssr: number; csr: number };
+            newPages: number;
+            newIssues: number;
+            resolvedIssues: number;
+            movers: number;
+            scoreDelta: number;
+        };
+        cohort: { label: string; p25: number; p50: number; p75: number; percentile: number } | null;
+        connectors: Record<string, { id: string; label: string; state: string; lastSyncAt?: number; coveragePct?: number; coverageLabel?: string }>;
+        history: { issuesOpen: number[]; score: number[] };
+    };
+    scoreSpark: number[];
 }
 
 
@@ -5067,6 +5093,46 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         setShowSettings(true);
     }, []);
 
+    const openIssueDrawer = useCallback((code: string) => {
+        console.warn(`[SeoCrawlerContext] openIssueDrawer called with code: ${code}. This is not fully wired to a drawer UI yet.`);
+    }, []);
+
+    const site = useMemo(() => {
+        const session = crawlHistory.find(s => s.id === currentSessionId);
+        let summary: any = {};
+        try {
+            summary = session?.summaryJson ? JSON.parse(session.summaryJson) : {};
+        } catch (e) {
+            console.error('[SeoCrawlerContext] Failed to parse summaryJson', e);
+        }
+        
+        return {
+            lastSession: {
+                startedAt: session?.startedAt || 0,
+                finishedAt: session?.completedAt || 0,
+                durationMs: session?.completedAt && session?.startedAt ? session.completedAt - session.startedAt : 0,
+                pagesCrawled: session?.totalPages || 0,
+                responseAvgMs: summary.responseAvgMs || 0,
+                responseP90Ms: summary.responseP90Ms || 0,
+                responseP99Ms: summary.responseP99Ms || 0,
+                errors: summary.errors || { timeouts: 0, server: 0, parse: 0, dns: 0 },
+                blocked: summary.blocked || { robots: 0, metaNoindex: 0, auth: 0 },
+                sitemap: summary.sitemap || { inSitemap: 0, missingFromSitemap: 0, orphanInSitemap: 0 },
+                render: summary.render || { staticHtml: 0, ssr: 0, csr: 0 },
+                newPages: summary.newPages || 0,
+                newIssues: summary.newIssues || 0,
+                resolvedIssues: summary.resolvedIssues || 0,
+                movers: summary.movers || 0,
+                scoreDelta: wqaState.scoreDelta || 0
+            },
+            cohort: summary.cohort || null,
+            connectors: summary.connectors || {},
+            history: summary.history || { issuesOpen: [], score: [] }
+        };
+    }, [currentSessionId, crawlHistory, wqaState.scoreDelta]);
+
+    const scoreSpark = useMemo(() => site.history.score || [], [site.history.score]);
+
     const value = useMemo(() => ({
         crawlingMode, setCrawlingMode, urlInput, setUrlInput, listUrls, setListUrls, showListModal, setShowListModal,
         isCrawling, setIsCrawling, pages: pagesWithDerivedSignals, analysisPages, logs, setLogs, crawlStartTime, setCrawlStartTime,
@@ -5097,7 +5163,9 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         dynamicClusters, healthScore, auditInsights, strategicOpportunities, 
         crawlRate, crawlRuntime, analysisRuntime, elapsedTime,
         formatBytes, handleExport, handleExportRawDB, handleImport, filteredPages, handleSort, graphData, handleNodeClick,
-        crawlHistory: projectScopedHistory, currentSessionId, compareSessionId, diffResult, showComparisonView, setShowComparisonView, showExportDialog, setShowExportDialog, showLogsDialog, setShowLogsDialog, isLoadingHistory,
+        crawlHistory: projectScopedHistory, 
+        sessions: projectScopedHistory,
+        currentSessionId, compareSessionId, diffResult, showComparisonView, setShowComparisonView, showExportDialog, setShowExportDialog, showLogsDialog, setShowLogsDialog, isLoadingHistory,
         saveCrawlSession, loadSession, resumeCrawlSession, compareSessions, deleteCrawlSession, loadCrawlHistory,
         detectedGscSite, setDetectedGscSite, detectedGa4Property, setDetectedGa4Property,
         runFullEnrichment, runIncrementalEnrichment, runSelectedEnrichment, runCompleteAnalysis,
@@ -5136,12 +5204,18 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         wqaFilter, setWqaFilter, wqaFacets,
         pageFilter, setPageFilter, toggleSelection, setSelection, clearSelection, sidebarState, setSidebarState, toggleSection, setSidebarQuery,
         openIntegrationsModal,
+        openIssueDrawer,
+        site,
+        scoreSpark,
         // Foundation (Part 3.1)
         foundationMetrics, foundationActions, foundationHydrated,
         foundationMetricsMap, foundationActionsMap, crawlerFoundationEnabled,
-        openSettings: (section: string) => {
+        openSettings: (section: string, sub?: string) => {
             setSettingsTab(section);
             setShowSettings(true);
+            if (sub) {
+                console.warn(`[SeoCrawlerContext] openSettings sub-section '${sub}' requested but not yet implemented.`);
+            }
         },
         setActiveCategories,
         scrollGridIntoView,

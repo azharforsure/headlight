@@ -1,96 +1,77 @@
+// components/seo-crawler/right-sidebar/full-audit/FullAuditOverview.tsx
 import React from 'react'
 import { useSeoCrawler } from '@/contexts/SeoCrawlerContext'
-import { useFullAuditInsights } from '../_hooks/useFullAuditInsights'
-import { useDrill } from '../_shared/drill'
+import { useHasTrend } from '../_hooks/useSessionsCount'
+import { Card } from '../_shared/Card'
+import { KpiTile } from '../_shared/KpiTile'
+import { Distribution } from '../_shared/Distribution'
+import { ProgressRing } from '../_shared/ProgressRing'
+import { HealthStrip } from '../_shared/HealthStrip'
+import { RsSparkline } from '../parts/RsSparkline'
 import {
-  CrawlHeaderCard, HeroStrip, PillarCard, AlertsBlock, RecommendedActionsBlock,
-  ConnectorStatusBlock, TrendBlock, EmptyState, SingleCrawlNotice,
-  compactNum, fmtPct, scoreToTone,
-} from '../_shared'
+  selectStatusMix,
+  selectDepthDistribution,
+  selectCategoryDonut,
+  selectIndexable,
+  selectIssues,
+  selectPillars,
+  selectOverallScore,
+} from './_selectors'
 
-export function FullAuditOverview() {
-  const { pages, setRsTab, openSettings } = useSeoCrawler() as any
-  const s = useFullAuditInsights()
-  const drill = useDrill()
+export default function FullAuditOverview() {
+  const { pages, site, scoreSpark } = useSeoCrawler() as any
+  const hasTrend = useHasTrend()
 
-  if (!pages?.length) return <EmptyState title="No crawl yet" hint="Run a crawl to populate the audit." />
-
-  const alerts = [
-    s.issues.errors > 0 && { id: 'err', text: `${compactNum(s.issues.errors)} pages with 4xx or 5xx`, tone: 'bad' as const, onClick: () => drill.toCategory('codes', '404 Not Found') },
-    s.issues.notIndexable > 0 && { id: 'idx', text: `${compactNum(s.issues.notIndexable)} pages not indexable`, tone: 'warn' as const, onClick: () => drill.toCategory('indexability', 'Non-Indexable') },
-    s.tech.cwvPass < 70 && { id: 'cwv', text: `Only ${fmtPct(s.tech.cwvPass)} of pages pass Core Web Vitals`, tone: 'warn' as const, onClick: () => drill.toCategory('performance', 'Poor LCP') },
-    s.links.broken > 0 && { id: 'bln', text: `${compactNum(s.links.broken)} broken internal links`, tone: 'warn' as const, onClick: () => drill.toCategory('links', 'Broken Internal') },
-    !s.connectors.gsc.connected && { id: 'gsc', text: 'Search Console not connected — search insights are limited', tone: 'info' as const, onClick: () => openSettings?.('connectors') },
-  ].filter(Boolean) as any[]
-
-  const anyConnectorMissing =
-    !s.connectors.gsc.connected || !s.connectors.ga4.connected ||
-    !s.connectors.crux.connected || !s.connectors.ahrefs.connected ||
-    !s.connectors.bingWmt.connected
-
-  const pillarSubTab: Record<string, string> = {
-    tech: 'tech', links: 'links', search: 'search', ai: 'ai', content: 'fixes',
-  }
+  const status = selectStatusMix(pages)
+  const depth = selectDepthDistribution(pages)
+  const donut = selectCategoryDonut(pages)
+  const idx = selectIndexable(pages)
+  const issues = selectIssues(pages)
+  const pillars = selectPillars(pages)
+  const score = selectOverallScore(pillars)
+  const newPages = Number(site?.lastSession?.newPages ?? 0)
 
   return (
-    <div className="flex flex-col gap-3 p-3 pb-8">
-      {!s.hasPrior && <SingleCrawlNotice />}
+    <div className="flex flex-col gap-3 p-3">
+      <Card>
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="text-[11px] uppercase tracking-wide text-[#888]">Site score</div>
+            <div className="mt-1 text-2xl font-semibold text-white">{score}</div>
+            {hasTrend && scoreSpark?.length ? (
+              <div className="mt-1 w-24"><RsSparkline points={scoreSpark} /></div>
+            ) : null}
+          </div>
+          <ProgressRing value={score} max={100} size={72} />
+        </div>
+      </Card>
 
-      <CrawlHeaderCard
-        scope={s.scope}
-        industry={s.fingerprint.industry}
-        cms={s.fingerprint.cms}
-        language={s.fingerprint.language}
-        country={s.fingerprint.country}
-        lastCrawlAt={s.crawl.lastAt}
-        durationMs={s.crawl.durationMs}
-        pagesCrawled={s.crawl.pagesCrawled}
-      />
+      <div className="grid grid-cols-2 gap-2">
+        <KpiTile label="Pages" value={status.total} />
+        <KpiTile label="Indexable" value={idx.indexable} secondary={`${idx.notIndexable} blocked`} />
+        <KpiTile label="Issues open" value={issues.openTotal} accent={issues.severity.critical > 0 ? '#ef4444' : '#94a3b8'} />
+        <KpiTile label="New since last crawl" value={newPages} delta={hasTrend ? newPages : undefined} />
+      </div>
 
-      <HeroStrip
-        ring="gauge"
-        score={s.score}
-        scoreLabel="Site score"
-        scoreDelta={s.hasPrior ? (s.score - s.scorePrev) : undefined}
-        kpis={[
-          { label: 'CWV pass', value: fmtPct(s.tech.cwvPass), tone: scoreToTone(s.tech.cwvPass) },
-          { label: 'Indexable', value: fmtPct(s.tech.indexable), tone: scoreToTone(s.tech.indexable) },
-          { label: 'Top fixes', value: compactNum(s.actions.open), tone: s.actions.open > 0 ? 'warn' : 'good' },
-        ]}
-      />
-
-      <PillarCard
-        pillars={s.pillars.map((p: any) => ({
-          ...p,
-          onClick: () => setRsTab?.('fullAudit', pillarSubTab[p.id] ?? 'fixes'),
-        }))}
-      />
-
-      {alerts.length > 0 && <AlertsBlock title="Top priorities" items={alerts.slice(0, 4)} />}
-
-      {s.topRecommendations.length > 0 && (
-        <RecommendedActionsBlock
-          items={s.topRecommendations}
-          onSeeAll={() => setRsTab?.('fullAudit', 'fixes')}
-          seeAllLabel={`See all ${s.recommendations.length}`}
+      <Card title="Status mix">
+        <HealthStrip
+          total={status.total}
+          segments={[
+            { label: '2xx', value: status.ok, color: '#22c55e' },
+            { label: '3xx', value: status.redirect, color: '#3b82f6' },
+            { label: '4xx', value: status.clientError, color: '#f59e0b' },
+            { label: '5xx', value: status.serverError, color: '#ef4444' },
+          ]}
         />
-      )}
+      </Card>
 
-      {s.hasPrior && (
-        <TrendBlock
-          title="Score history"
-          values={s.history.scoreSeries}
-          tone={scoreToTone(s.score)}
-          hint={`Current ${s.score} · Avg ${s.history.score30dAvg}`}
-        />
-      )}
+      <Card title="Depth distribution">
+        <Distribution rows={depth.map((d) => ({ label: `D${d.depth}`, value: d.count }))} />
+      </Card>
 
-      {anyConnectorMissing && (
-        <ConnectorStatusBlock
-          connectors={s.connectors}
-          onConnect={(id) => openSettings?.('connectors', id)}
-        />
-      )}
+      <Card title="Page types">
+        <Distribution rows={donut.map((d) => ({ label: d.name, value: d.value, color: d.color }))} />
+      </Card>
     </div>
   )
 }

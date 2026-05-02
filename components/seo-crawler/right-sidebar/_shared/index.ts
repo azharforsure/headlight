@@ -37,6 +37,8 @@ export { FreshnessChip } from './FreshnessChip'
 export type { Freshness } from './FreshnessChip'
 export { HelpHint } from './HelpHint'
 export { Skeleton } from './Skeleton'
+export { HealthStrip } from './HealthStrip'
+export { SourceTag } from './SourceTag'
 
 export { HeroStrip } from './blocks/HeroStrip'
 export type { HeroKpi } from './blocks/HeroStrip'
