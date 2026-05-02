@@ -8,7 +8,7 @@ export function HeroStrip({
   title = 'Snapshot',
   ring, score, scoreLabel, scoreHint,
   kpis,
-  trendCurrent, trendPrevious, trendUnit, trendInvert,
+  scoreDelta,
 }: {
   title?: string
   ring?: 'gauge' | 'progress'
@@ -16,14 +16,9 @@ export function HeroStrip({
   scoreLabel?: string
   scoreHint?: string
   kpis: ReadonlyArray<HeroKpi>
-  trendCurrent?: number
-  trendPrevious?: number
-  trendUnit?: string
-  trendInvert?: boolean
+  scoreDelta?: number
 }) {
-  const { crawlHistory } = useSeoCrawler()
   const Ring = ring === 'progress' ? ProgressRing : RingGauge
-  const hasHistory = crawlHistory && crawlHistory.length > 1
   
   return (
     <div className="flex flex-col @md:flex-row items-stretch gap-2 w-full">
@@ -43,8 +38,10 @@ export function HeroStrip({
           </div>
           
           <div className="mt-1.5 h-[16px] flex items-center">
-            {trendCurrent != null && trendPrevious != null && hasHistory ? (
-              <TrendDelta current={trendCurrent} previous={trendPrevious} unit={trendUnit} invert={trendInvert} />
+            {typeof scoreDelta === 'number' ? (
+              <span className={`text-[11px] font-mono tabular-nums ${scoreDelta > 0 ? 'text-emerald-400' : scoreDelta < 0 ? 'text-rose-400' : 'text-neutral-400'}`}>
+                {scoreDelta > 0 ? '▲' : scoreDelta < 0 ? '▼' : '='} {Math.abs(scoreDelta).toFixed(0)}
+              </span>
             ) : (
               <span className="text-[10px] font-mono text-[#555]">—</span>
             )}

@@ -57,3 +57,7 @@ export { RecommendedActionsBlock, type RecommendedAction } from './blocks/Recomm
 export { ImpactForecastCard } from './blocks/ImpactForecastCard'
 export { WhatBlocksScoreCard, type Deduction } from './blocks/WhatBlocksScoreCard'
 export { IssueAreaGridBlock, type IssueAreaTile } from './blocks/IssueAreaGridBlock'
+export { CrawlHeaderCard } from './CrawlHeaderCard'
+export { ConnectorStatusBlock } from './ConnectorStatusBlock'
+export { QuadrantBlock } from './QuadrantBlock'
+export { OwnerLoadBlock } from './OwnerLoadBlock'

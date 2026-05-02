@@ -5,9 +5,12 @@ import { computeDeductions } from './deductions'
 import { computePillars } from './pillars'
 
 export function useFullAuditInsights() {
-	const crawler = useSeoCrawler() as any
-	const { pages, crawlHistory, robotsTxt } = crawler
-	const compareSession = crawler.compareSession
+	const ctx = useSeoCrawler() as any
+	const { pages, crawlHistory, robotsTxt } = ctx
+	const sessions = ctx.sessions ?? []
+	const currentId = ctx.currentSessionId
+	const hasPrior = sessions.length > 1 && sessions.some((x: any) => x.id !== currentId)
+	const compareSession = ctx.compareSession
 	const prevPages = compareSession?.pages || []
 
 	return useMemo(() => {
@@ -70,6 +73,16 @@ export function useFullAuditInsights() {
 			renderStatic: 58, renderSsr: 32, renderCsr: 10,
 			http2: 80, http3: 4, http11: 16,
 			lcpP50: 2.4, lcpP90: 4.1, inpP50: 180, ttfbP50: 320,
+			cwvByDevice: { mobile: { lcpPass: 70, inpPass: 85, clsPass: 90 }, desktop: { lcpPass: 85, inpPass: 90, clsPass: 95 } },
+			schemaCoverage: [],
+			a11y: { issues: 0, pages: 0 },
+			imageOpt: { webp: 0, lazy: 0, dimsMissing: 0, oversize: 0 },
+			largestPages: [],
+			slowestPages: [],
+			crawlBudgetWaste: 0,
+			hreflangIssues: 0,
+			canonicalChains: 0,
+			sitemap: { found: false, urls: 0, errors: 0 },
 		}
 
 		// Score
@@ -105,6 +118,11 @@ export function useFullAuditInsights() {
 			topQueries: [{ query: 'seo tool', clicks: 1200 }, { query: 'crawler', clicks: 800 }],
 			winners: [], losers: [], lost: 0,
 			countryMix: [],
+			cannibal: [],
+			lostQueries: [],
+			growingQueries: [],
+			serpFeatures: { featured: 0, paa: 0, image: 0, video: 0, sitelinks: 0 },
+			opportunityScore: 0,
 		}
 
 		// Opp ranks
@@ -128,6 +146,15 @@ export function useFullAuditInsights() {
 			sourceMix: [{ source: 'google / organic', sessions: 8500, conversions: 120, bounce: 0.38 }],
 			heatmap: { 'Mon::12': 80, 'Tue::15': 95 },
 			topByCountry: [],
+			cvr: 0.02,
+			cvrPrev: 0.018,
+			engagedRate: 0.65,
+			pagesPerSession: 3.2,
+			newVsReturning: { new: 6500, returning: 1900 },
+			landings: [],
+			exits: [],
+			conversions: conversions,
+			conversionsPrev: 0,
 		}
 
 		// Links
@@ -141,6 +168,11 @@ export function useFullAuditInsights() {
 			anchorMix: { brand: 60, exact: 15, partial: 10, generic: 8, naked: 5, image: 2 },
 			new90d: 88, lost90d: 22, toxic: 12,
 			topRefDomains: [], topAnchors: [], hubs: safe.slice(0, 6),
+			outlinksTopPages: [],
+			toxicList: [],
+			lostList: [],
+			anchorOverOpt: [],
+			pagerankHistogram: [],
 		}
 
 		// Content rollups
@@ -162,6 +194,10 @@ export function useFullAuditInsights() {
 			entities: { person: 45, org: 12, place: 5, product: 80 },
 			entitySegments: [{ id: 'prod', label: 'Product', pages: 80, schema: 75, citations: 120 }],
 			missedPrompts: [],
+			answerBoxFit: 0,
+			richResultElig: [],
+			competitorOnlyCites: [],
+			citationsSeries: [10, 12, 15, 14, 18, 20],
 		}
 
 		// History
@@ -189,6 +225,30 @@ export function useFullAuditInsights() {
 			total, html, status, issues, perf, tech, search, oppRanks, traffic, links, content, ai, history,
 			score, scorePrev, pillars, deductions, recommendations, topRecommendations,
 			worstPages, bench,
+			hasPrior,
+			scope: { id: ctx.scopeId || 'all', label: ctx.scopeLabel || 'All pages' },
+			fingerprint: {
+				industry: ctx.industry,
+				cms: ctx.cms,
+				language: ctx.language,
+				country: ctx.country,
+			},
+			crawl: {
+				lastAt: ctx.lastCrawlAt || null,
+				durationMs: ctx.crawlDuration || 0,
+				pagesCrawled: total,
+				errors: issues.errors,
+				blocked: status.blocked,
+				status: ctx.crawlStatus || 'done',
+			},
+			connectors: {
+				gsc:    { connected: !!ctx.gscConnected, lastSync: ctx.gscLastSync },
+				ga4:    { connected: !!ctx.ga4Connected, lastSync: ctx.ga4LastSync },
+				crux:   { connected: !!ctx.cruxConnected, lastSync: ctx.cruxLastSync },
+				ahrefs: { connected: !!ctx.ahrefsConnected, lastSync: ctx.ahrefsLastSync },
+				bingWmt:{ connected: !!ctx.bingWmtConnected, lastSync: ctx.bingWmtLastSync },
+				llmsTxt:{ connected: ai.llmsTxt, path: '/llms.txt' },
+			},
 			actions: {
 				open: recommendations.length,
 				done: 0, snoozed: 0,
@@ -205,6 +265,14 @@ export function useFullAuditInsights() {
 					horizonDays: 90,
 					confidence: 0.7,
 				},
+				effortImpact: recommendations.map(r => ({
+					id: r.id, title: r.title,
+					effort: r.effort || 'med',
+					impact: r.impact || 'med',
+					priority: r.priority,
+					ownerId: r.ownerId,
+				})),
+				ownerLoad: [],
 			},
 			intent: { info: { pages: 0, clicks: 0, impressions: 0 }, comm: { pages: 0, clicks: 0, impressions: 0 }, tx: { pages: 0, clicks: 0, impressions: 0 }, nav: { pages: 0, clicks: 0, impressions: 0 } },
 		}
