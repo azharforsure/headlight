@@ -95,21 +95,21 @@ export function selectIssues(pages: Page[]): { rows: IssueRow[]; severity: Sever
 
 export function selectPillars(pages: Page[]): Pillars {
   // pillar scores are precomputed by services/PostCrawlEnrichment.ts and stored on site summary
-  const sum = (key: keyof Page): number => {
+  const sum = (key: string, altKey?: string): number => {
     let n = 0, c = 0
     for (const p of pages) {
-      const v = Number((p as any)[key])
+      const v = Number((p as any)[key] ?? (p as any)[altKey ?? '']);
       if (Number.isFinite(v)) { n += v; c++ }
     }
     return c ? Math.round(n / c) : 0
   }
   return {
-    content: sum('contentScore' as any),
-    technical: sum('technicalScore' as any),
-    schema: sum('schemaScore' as any),
-    links: sum('linksScore' as any),
-    a11y: sum('a11yScore' as any),
-    security: sum('securityScore' as any),
+    content: sum('contentQualityScore', 'contentScore'),
+    technical: sum('techHealthScore', 'technicalScore'),
+    schema: sum('schemaScore'),
+    links: sum('authorityScore', 'linksScore'),
+    a11y: sum('a11yScore'),
+    security: sum('securityScore'),
   }
 }
 

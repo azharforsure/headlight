@@ -1,43 +1,99 @@
 import React, { useMemo } from 'react'
 import { useSeoCrawler } from '@/contexts/SeoCrawlerContext'
-import { useWqaInsights } from '../_hooks/useWqaInsights'
-import { useDrill } from '../_shared/drill'
+import { useHasTrend } from '../_hooks/useSessionsCount'
+import { Card } from '../_shared/Card'
+import { KpiTile } from '../_shared/KpiTile'
+import { Distribution } from '../_shared/Distribution'
+import { RowItem } from '../_shared/RowItem'
+import { EmptyState } from '../_shared/EmptyState'
 import {
-  HealthBlock, DistBlock, DonutBlock, DistRowsBlock, TrendBlock,
-  TopListBlock, SegmentBlock, HeatmapBlock, TreemapBlock, BenchmarkBlock,
-  CompareBlock, KvBlock, TimelineBlock, DrillFooter,
-  TabbedAlertsBlock, ActionsBlock,
-  EmptyState, fmtNum, fmtPct, fmtMs, compactNum, scoreToTone,
-} from '../_shared'
-import { templateOf, inlinkBucket, depthBucket, ageBucket } from '../_shared/derive'
+	selectActionsByPriority, selectActionsByType, selectActionTemplates,
+	selectImpactForecast, selectOwnerLoad,
+} from './_selectors'
 
 export function WqaActions() {
-  const { pages } = useSeoCrawler()
-  const s = useWqaInsights()
-  if (!pages?.length) return <EmptyState title="No crawl data yet" />
+	const { pages, openIssueDrawer } = useSeoCrawler() as any
+	const hasTrend = useHasTrend()
 
-  return (
-    <div className="space-y-3 p-3">
-      <DistBlock title="Action band" segments={[
-        { value: s.actions.critical, tone: 'bad', label: 'Critical' },
-        { value: s.actions.high, tone: 'warn', label: 'High' },
-        { value: s.actions.med, tone: 'info', label: 'Medium' },
-        { value: s.actions.low, tone: 'neutral', label: 'Low' },
-      ]} />
-      <TrendBlock title="Closed (30d)" values={s.actions.doneSeries} tone="good" />
-      <SegmentBlock title="By reason" headers={['Reason', 'Open', 'Done']} rows={s.actions.byReason.slice(0, 6).map((r: any) => ({
-        id: r.id, label: r.label, values: [r.open, r.done],
-      }))} />
-      <CompareBlock title="vs last crawl" rows={[
-        { label: 'Open', a: { v: s.actions.open, tag: 'now' }, b: { v: s.actions.openPrev, tag: 'prev' } },
-        { label: 'Done', a: { v: s.actions.done, tag: 'now' }, b: { v: s.actions.donePrev, tag: 'prev' } },
-      ]} />
-      <TabbedAlertsBlock tabId="wqa" />
-      <ActionsBlock tabId="wqa" max={12} />
-      <DrillFooter chips={[
-        { label: 'Critical', count: s.actions.critical },
-        { label: 'High', count: s.actions.high },
-      ]} />
-    </div>
-  )
+	const byPriority = useMemo(() => selectActionsByPriority(pages), [pages])
+	const byType = useMemo(() => selectActionsByType(pages), [pages])
+	const templates = useMemo(() => selectActionTemplates(pages), [pages])
+	const forecast = useMemo(() => selectImpactForecast(pages), [pages])
+	const owners = useMemo(() => selectOwnerLoad(pages), [pages])
+
+	if (!pages?.length) return <EmptyState label="No pages crawled yet" />
+
+	const priorityTotal = byPriority.high + byPriority.medium + byPriority.low
+	const typeTotal = byType.content + byType.tech + byType.links + byType.merge + byType.deprecate
+
+	return (
+		<div className="flex flex-col gap-3 p-3">
+			<Card title="By priority">
+				<Distribution 
+					total={priorityTotal}
+					rows={[
+						{ label: 'High', value: byPriority.high, tone: 'bad' },
+						{ label: 'Medium', value: byPriority.medium, tone: 'warn' },
+						{ label: 'Low', value: byPriority.low, tone: undefined },
+					]} 
+				/>
+			</Card>
+
+			<Card title="By type">
+				<Distribution 
+					total={typeTotal}
+					rows={[
+						{ label: 'Content', value: byType.content, color: '#f59e0b' },
+						{ label: 'Technical', value: byType.tech, color: '#3b82f6' },
+						{ label: 'Link equity', value: byType.links, color: '#14b8a6' },
+						{ label: 'Merge/Redirect', value: byType.merge, color: '#a78bfa' },
+						{ label: 'Deprecate', value: byType.deprecate, color: '#94a3b8' },
+					]} 
+				/>
+			</Card>
+
+			<Card padded={false} title="Top action templates">
+				<div className="flex flex-col border-t border-[#1f1f1f]">
+					{templates.length === 0
+						? <div className="p-3 text-[11px] text-[#666]">No actions queued.</div>
+						: templates.map(t => (
+							<RowItem
+								key={t.id}
+								label={t.label}
+								value={`${t.affected}`}
+								onClick={() => openIssueDrawer?.(`action:${t.id}`)}
+							/>
+						))
+					}
+				</div>
+			</Card>
+
+			{forecast && (
+				<Card title="Impact forecast">
+					<div className="flex flex-col gap-2">
+						<div className="text-[10px] text-[#666] uppercase tracking-wider">Estimated if all High priority resolved</div>
+						<div className="flex gap-4">
+							<KpiTile label="Q-avg gain" value={`▲${forecast.deltaScore}`} />
+							<KpiTile label="Click lift" value={`+${forecast.deltaClicksPerMonth}/mo`} />
+						</div>
+						<div className="text-[10px] text-[#444] italic">
+							Confidence score: {Math.round(forecast.confidence * 100)}%
+						</div>
+					</div>
+				</Card>
+			)}
+
+			{owners.length > 0 && (
+				<Card padded={false} title="Owner load">
+					<div className="flex flex-col border-t border-[#1f1f1f]">
+						{owners.map(o => (
+							<RowItem key={o.id} label={o.label} value={`${o.count}`} />
+						))}
+					</div>
+				</Card>
+			)}
+		</div>
+	)
 }
+
+

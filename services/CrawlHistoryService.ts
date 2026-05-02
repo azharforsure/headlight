@@ -55,6 +55,16 @@ export interface CrawlSession {
     sitemapData?: { totalUrls: number; sources: string[]; coverageParsed?: boolean } | null;
     auditModes?: string[];
     industryFilter?: string;
+    summary?: {
+        qualityAvg?: number;
+        search?: {
+            clicks: number;
+            impr: number;
+            ctr: number;
+            pos: number;
+        };
+        [key: string]: any;
+    };
 }
 
 export interface CrawlPageSnapshot {
@@ -260,10 +270,12 @@ const buildSummaryMetrics = (pages: any[], session?: CrawlSession) => {
 
     // Enterprise Summaries
     const totalClicks = pages.reduce((sum, p) => sum + (Number(p.gscClicks) || 0), 0);
+    const totalImpr = pages.reduce((sum, p) => sum + (Number(p.gscImpressions) || 0), 0);
     const totalSessions = pages.reduce((sum, p) => sum + (Number(p.ga4Sessions) || 0), 0);
     const avgGeoScore = average(pages.map(p => Number(p.geoScore || 0)).filter(v => v > 0));
     const avgContentQuality = average(pages.map(p => Number(p.contentQualityScore || 0)).filter(v => v > 0));
     const googlebotVisits = pages.reduce((sum, p) => sum + (Number(p.googlebotVisits30d) || 0), 0);
+    const avgPos = average(pages.map(p => Number(p.gscPosition || 0)).filter(v => v > 0));
 
     return {
         totalPages: pages.length,
@@ -277,7 +289,15 @@ const buildSummaryMetrics = (pages: any[], session?: CrawlSession) => {
         totalSessions,
         avgGeoScore: Math.round(avgGeoScore),
         avgContentQuality: Math.round(avgContentQuality),
-        googlebotVisits
+        googlebotVisits,
+        // WQA compatibility
+        qualityAvg: getSessionHealthScore(pages, session),
+        search: {
+            clicks: totalClicks,
+            impr: totalImpr,
+            ctr: totalImpr > 0 ? totalClicks / totalImpr : 0,
+            pos: avgPos
+        }
     };
 };
 

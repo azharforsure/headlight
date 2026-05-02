@@ -63,7 +63,7 @@ export default function FullAuditScores() {
         </Card>
       ) : null}
 
-      <Card title="Page score distribution">
+      <Card title="Quality distribution">
         <Distribution rows={distribution.map((d) => ({ label: d.bucket, value: d.count }))} />
       </Card>
 

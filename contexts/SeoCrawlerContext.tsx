@@ -428,6 +428,7 @@ export interface CrawlerContextType {
     user: any;
     profile: any;
     signOut: () => Promise<void>;
+    drillToPage: (url: string) => void;
     trialPagesLimit: number;
 
     prioritizeByIssues: boolean;
@@ -5132,6 +5133,11 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
     }, [currentSessionId, crawlHistory, wqaState.scoreDelta]);
 
     const scoreSpark = useMemo(() => site.history.score || [], [site.history.score]);
+    
+    const drillToPage = useCallback((url: string) => {
+        const page = pages.find(p => p.url === url);
+        if (page) setSelectedPage(page);
+    }, [pages, setSelectedPage]);
 
     const value = useMemo(() => ({
         crawlingMode, setCrawlingMode, urlInput, setUrlInput, listUrls, setListUrls, showListModal, setShowListModal,
@@ -5181,7 +5187,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         // Collaboration & Tasks (P5)
         tasks, setTasks, teamMembers, showCollabOverlay, setShowCollabOverlay,
         collabOverlayTarget, setCollabOverlayTarget, activeCommentTarget, setActiveCommentTarget,
-        runAIAnalysis,
+        drillToPage,
         tier4Results, runTier4Checks,
         showAddCompetitorInput, setShowAddCompetitorInput,
         crawlingCompetitorDomain, setCrawlingCompetitorDomain, refreshAllCompetitors,
@@ -5268,6 +5274,7 @@ export function SeoCrawlerProvider({ children }: { children: ReactNode }) {
         saveCrawlSession, loadSession, resumeCrawlSession, compareSessions, deleteCrawlSession, loadCrawlHistory,
         runFullEnrichment, runIncrementalEnrichment, runSelectedEnrichment,
         saveIntegrationConnection, removeIntegrationConnection, signOut,
+        drillToPage,
         runAIAnalysis,
         activateWqaMode, deactivateWqaMode, setWqaViewMode, setWqaIndustryOverride, setWqaLanguageOverride,
         showAddCompetitorInput, crawlingCompetitorDomain, setCrawlingCompetitorDomain, refreshAllCompetitors,
